@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jobradar-tracker-api
+  namespace: jobradar
+  labels:
+    app: tracker-api
+    project: jobradar
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tracker-api
+  template:
+    metadata:
+      labels:
+        app: tracker-api
+    spec:
+      containers:
+        - name: tracker-api
+          # Image is overridden per-environment by Kustomize
+          image: ghcr.io/OWNER/jobradar-tracker-api:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: tracker-api-config
+            - secretRef:
+                name: tracker-api-secrets
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30

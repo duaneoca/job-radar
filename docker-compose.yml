@@ -1,0 +1,145 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────
+# JobRadar — Local Development Stack
+# Start everything: docker compose up --build
+# ─────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Infrastructure ──────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: jobradar-postgres
+    environment:
+      POSTGRES_DB: jobradar
+      POSTGRES_USER: jobradar
+      POSTGRES_PASSWORD: jobradar_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jobradar"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: jobradar-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Services ────────────────────────────────────────────────
+
+  tracker-api:
+    build:
+      context: ./services/tracker-api
+      dockerfile: Dockerfile
+    container_name: jobradar-tracker-api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://jobradar:jobradar_dev@postgres:5432/jobradar
+      REDIS_URL: redis://redis:6379/0
+      ENVIRONMENT: development
+    env_file:
+      - ./services/tracker-api/.env
+    volumes:
+      - ./services/tracker-api:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  scraper:
+    build:
+      context: ./services/scraper
+      dockerfile: Dockerfile
+    container_name: jobradar-scraper
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      TRACKER_API_URL: http://tracker-api:8000
+      ENVIRONMENT: development
+    env_file:
+      - ./services/scraper/.env
+    volumes:
+      - ./services/scraper:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+      tracker-api:
+        condition: service_started
+    profiles:
+      - full  # only start with: docker compose --profile full up
+
+  ai-reviewer:
+    build:
+      context: ./services/ai-reviewer
+      dockerfile: Dockerfile
+    container_name: jobradar-ai-reviewer
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      TRACKER_API_URL: http://tracker-api:8000
+      ENVIRONMENT: development
+    env_file:
+      - ./services/ai-reviewer/.env
+    volumes:
+      - ./services/ai-reviewer:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+      tracker-api:
+        condition: service_started
+    profiles:
+      - full
+
+  email-monitor:
+    build:
+      context: ./services/email-monitor
+      dockerfile: Dockerfile
+    container_name: jobradar-email-monitor
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      TRACKER_API_URL: http://tracker-api:8000
+      ENVIRONMENT: development
+    env_file:
+      - ./services/email-monitor/.env
+    volumes:
+      - ./services/email-monitor:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+      tracker-api:
+        condition: service_started
+    profiles:
+      - full
+
+  frontend:
+    build:
+      context: ./services/frontend
+      dockerfile: Dockerfile
+    container_name: jobradar-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_URL: http://localhost:8000
+    volumes:
+      - ./services/frontend:/app
+      - /app/node_modules
+    depends_on:
+      - tracker-api
+    profiles:
+      - full
+
+volumes:
+  postgres_data:
