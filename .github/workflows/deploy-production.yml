@@ -65,7 +65,7 @@ jobs:
 
       - name: Update image tags
         run: |
-          for svc in tracker-api scraper ai-reviewer email-monitor frontend; do
+          for svc in tracker-api; do
             kubectl set image deployment/jobradar-${svc} \
               ${svc}=${{ env.IMAGE_PREFIX }}-${svc}:${{ github.ref_name }} \
               -n jobradar-production
