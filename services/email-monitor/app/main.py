@@ -9,12 +9,10 @@ Auth flow: OAuth2 — user authorizes once, tokens stored securely.
 
 import time
 from app.config import settings
-from app.gmail import GmailMonitor
 
 
 def run():
     """Main polling loop. Implemented in Phase 4."""
-    monitor = GmailMonitor(credentials_file=settings.gmail_credentials_file)
     print("Email monitor started. Phase 4 implementation pending.")
     while True:
         # TODO (Phase 4): poll inbox, match against applied companies,

@@ -7,8 +7,8 @@ namespace: jobradar-staging
 bases:
   - ../../base
 
-# In staging, run only 1 replica to save resources
 patches:
+  # In staging, run only 1 replica to save resources
   - patch: |-
       - op: replace
         path: /spec/replicas
@@ -16,9 +16,7 @@ patches:
     target:
       kind: Deployment
       name: jobradar-tracker-api
-
-# Override the namespace for all resources
-patches:
+  # Override the namespace for all resources
   - patch: |-
       - op: replace
         path: /metadata/namespace

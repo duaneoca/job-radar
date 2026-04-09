@@ -32,7 +32,7 @@ def create_criteria(payload: schemas.CriteriaCreate, db: Session = Depends(get_d
 @router.get("/active", response_model=schemas.CriteriaOut)
 def get_active_criteria(db: Session = Depends(get_db)):
     """Get the currently active criteria profile."""
-    criteria = db.query(models.Criteria).filter(models.Criteria.is_active == True).first()
+    criteria = db.query(models.Criteria).filter(models.Criteria.is_active).first()
     if not criteria:
         raise HTTPException(status_code=404, detail="No active criteria found. Create one first.")
     return criteria
