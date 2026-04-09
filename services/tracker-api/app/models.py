@@ -8,9 +8,8 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     Boolean, Column, DateTime, Enum, Float, Integer,
-    String, Text, ForeignKey, JSON,
+    String, Text, ForeignKey, JSON, Uuid,
 )
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -46,7 +45,7 @@ class Job(Base):
     """A single job posting."""
     __tablename__ = "jobs"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid(), primary_key=True, default=uuid.uuid4)
     external_id = Column(String(255), nullable=True)    # ID from the job board
     source = Column(Enum(JobSource), nullable=False, default=JobSource.MANUAL)
 
@@ -86,8 +85,8 @@ class TimelineEvent(Base):
     """An event in a job's application history (status change, email received, etc.)."""
     __tablename__ = "timeline_events"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    job_id = Column(UUID(as_uuid=True), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
+    id = Column(Uuid(), primary_key=True, default=uuid.uuid4)
+    job_id = Column(Uuid(), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
     event_type = Column(String(50), nullable=False)   # status_change | email_received | note
     description = Column(Text, nullable=True)
     occurred_at = Column(DateTime(timezone=True), default=utcnow)
@@ -99,7 +98,7 @@ class Criteria(Base):
     """User-defined job matching criteria used by the AI reviewer."""
     __tablename__ = "criteria"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid(), primary_key=True, default=uuid.uuid4)
     name = Column(String(100), nullable=False, default="default")
     is_active = Column(Boolean, default=True)
 

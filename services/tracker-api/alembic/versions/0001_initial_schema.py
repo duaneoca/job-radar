@@ -7,7 +7,6 @@ Create Date: 2026-04-08
 
 from typing import Sequence, Union
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import UUID
 from alembic import op
 
 revision: str = "0001"
@@ -19,7 +18,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.create_table(
         "jobs",
-        sa.Column("id", UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", sa.Uuid(), primary_key=True),
         sa.Column("external_id", sa.String(255), nullable=True),
         sa.Column("source", sa.String(50), nullable=False, server_default="manual"),
         sa.Column("title", sa.String(255), nullable=False),
@@ -41,18 +40,18 @@ def upgrade() -> None:
         sa.Column("ai_pros", sa.JSON(), nullable=True),
         sa.Column("ai_cons", sa.JSON(), nullable=True),
         sa.Column("ai_reviewed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.UniqueConstraint("external_id", "source", name="uq_jobs_external_source"),
     )
     op.create_index("ix_jobs_status", "jobs", ["status"])
     op.create_index("ix_jobs_source", "jobs", ["source"])
     op.create_index("ix_jobs_company", "jobs", ["company"])
     op.create_index("ix_jobs_date_scraped", "jobs", ["date_scraped"])
-    op.create_unique_constraint("uq_jobs_external_source", "jobs", ["external_id", "source"])
 
     op.create_table(
         "timeline_events",
-        sa.Column("id", UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", sa.Uuid(), primary_key=True),
         sa.Column(
-            "job_id", UUID(as_uuid=True),
+            "job_id", sa.Uuid(),
             sa.ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False
         ),
         sa.Column("event_type", sa.String(50), nullable=False),
@@ -63,7 +62,7 @@ def upgrade() -> None:
 
     op.create_table(
         "criteria",
-        sa.Column("id", UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", sa.Uuid(), primary_key=True),
         sa.Column("name", sa.String(100), nullable=False),
         sa.Column("is_active", sa.Boolean(), server_default="true"),
         sa.Column("job_titles", sa.JSON(), nullable=True),
