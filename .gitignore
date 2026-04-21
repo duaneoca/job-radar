@@ -67,3 +67,5 @@ logs/
 
 # Local dev overrides
 docker-compose.override.yml
+
+services/scraper/celerybeat-schedule.db
