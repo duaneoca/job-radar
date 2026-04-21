@@ -32,6 +32,11 @@ class JobStatus(str, enum.Enum):
 
 
 class JobSource(str, enum.Enum):
+    # API-based (Phase 2)
+    ADZUNA = "adzuna"
+    THE_MUSE = "the_muse"
+    REMOTIVE = "remotive"
+    # HTML-scrape targets (kept for historical/manual rows)
     LINKEDIN = "linkedin"
     INDEED = "indeed"
     GLASSDOOR = "glassdoor"
@@ -47,7 +52,10 @@ class Job(Base):
 
     id = Column(Uuid(), primary_key=True, default=uuid.uuid4)
     external_id = Column(String(255), nullable=True)    # ID from the job board
-    source = Column(Enum(JobSource), nullable=False, default=JobSource.MANUAL)
+    # Stored as a plain string (matches the 0001 migration) so we can add
+    # new sources without a schema change. Pydantic's `JobSource` enum
+    # provides the canonical value list at the API layer.
+    source = Column(String(50), nullable=False, default=JobSource.MANUAL.value)
 
     # Core job details
     title = Column(String(255), nullable=False)
