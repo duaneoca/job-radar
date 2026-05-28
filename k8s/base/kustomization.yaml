@@ -3,9 +3,20 @@ kind: Kustomization
 
 resources:
   - namespace.yaml
+  # Infrastructure
   - redis/deployment.yaml
   - redis/service.yaml
+  - postgres/pvc.yaml
+  - postgres/deployment.yaml
+  - postgres/service.yaml
+  # Backend API
   - tracker-api/deployment.yaml
   - tracker-api/service.yaml
   - tracker-api/configmap.yaml
+  # AI worker
+  - ai-reviewer/deployment.yaml
+  # Frontend (nginx serves SPA + proxies API routes)
+  - frontend/deployment.yaml
+  - frontend/service.yaml
+  # Routing
   - ingress.yaml

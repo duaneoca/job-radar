@@ -6,4 +6,5 @@ metadata:
 data:
   ENVIRONMENT: "production"
   REDIS_URL: "redis://redis:6379/0"
-  # DATABASE_URL is in secrets (contains credentials)
+  TRACKER_API_URL: "http://jobradar-tracker-api"
+  # DATABASE_URL and SECRET_KEY are in secrets

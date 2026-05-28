@@ -65,7 +65,7 @@ jobs:
 
       - name: Update image tags
         run: |
-          for svc in tracker-api; do
+          for svc in tracker-api ai-reviewer frontend; do
             kubectl set image deployment/jobradar-${svc} \
               ${svc}=${{ env.IMAGE_PREFIX }}-${svc}:${{ github.ref_name }} \
               -n jobradar-production
@@ -74,6 +74,8 @@ jobs:
       - name: Wait for rollout
         run: |
           kubectl rollout status deployment/jobradar-tracker-api \
+            -n jobradar-production --timeout=180s
+          kubectl rollout status deployment/jobradar-frontend \
             -n jobradar-production --timeout=180s
 
       - name: Create GitHub Release

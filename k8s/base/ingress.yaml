@@ -1,6 +1,9 @@
-# NGINX Ingress — load balancer entry point
-# Install NGINX ingress controller on k3s:
-#   kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.2/deploy/static/provider/cloud/deploy.yaml
+# Traefik Ingress — routes all traffic to the frontend (nginx).
+# Nginx handles API proxying to jobradar-tracker-api internally.
+#
+# k3s ships with Traefik as the default ingress controller.
+# To expose on a custom domain, add:
+#   spec.rules[0].host: your.domain.com
 
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -8,20 +11,12 @@ metadata:
   name: jobradar-ingress
   namespace: jobradar
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
+    traefik.ingress.kubernetes.io/router.entrypoints: web
 spec:
-  ingressClassName: nginx
+  ingressClassName: traefik
   rules:
-    - host: jobradar.yourdomain.com   # replace with your actual domain / EC2 IP
-      http:
+    - http:
         paths:
-          - path: /api
-            pathType: Prefix
-            backend:
-              service:
-                name: jobradar-tracker-api
-                port:
-                  number: 80
           - path: /
             pathType: Prefix
             backend:

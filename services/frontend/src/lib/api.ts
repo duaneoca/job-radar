@@ -2,7 +2,9 @@ import axios from "axios";
 
 // Single axios instance — all backend calls share the same base URL & cookie
 const client = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ?? "http://localhost:8000",
+  // Empty string = same-origin (nginx proxies /auth, /jobs, etc. to tracker-api in k8s)
+  // Set VITE_API_URL in .env.local for local dev if not using docker compose
+  baseURL: import.meta.env.VITE_API_URL ?? "",
   withCredentials: true, // send httpOnly JWT cookie on every request
 });
 
