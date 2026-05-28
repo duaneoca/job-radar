@@ -18,8 +18,8 @@ spec:
     spec:
       containers:
         - name: ai-reviewer
-          # Image is overridden per-environment by Kustomize / CI
-          image: ghcr.io/OWNER/jobradar-ai-reviewer:latest
+          # Image tag is overridden by CI via `kubectl set image` on every deploy.
+          image: ghcr.io/duaneoca/jobradar-ai-reviewer:staging
           envFrom:
             - configMapRef:
                 name: tracker-api-config   # shares REDIS_URL and TRACKER_API_URL

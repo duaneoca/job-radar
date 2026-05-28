@@ -18,8 +18,8 @@ spec:
     spec:
       containers:
         - name: frontend
-          # Image is overridden per-environment by Kustomize / CI
-          image: ghcr.io/OWNER/jobradar-frontend:latest
+          # Image tag is overridden by CI via `kubectl set image` on every deploy.
+          image: ghcr.io/duaneoca/jobradar-frontend:staging
           ports:
             - containerPort: 80
           resources:

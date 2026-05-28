@@ -18,8 +18,9 @@ spec:
     spec:
       containers:
         - name: tracker-api
-          # Image is overridden per-environment by Kustomize / CI
-          image: ghcr.io/OWNER/jobradar-tracker-api:latest
+          # Image tag is overridden by CI via `kubectl set image` on every deploy.
+          # Using :staging as the base default so kubectl apply never causes InvalidImageName.
+          image: ghcr.io/duaneoca/jobradar-tracker-api:staging
           ports:
             - containerPort: 8000
           envFrom:
