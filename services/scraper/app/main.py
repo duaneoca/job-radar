@@ -68,7 +68,7 @@ def scrape_all():
         return
 
     keywords: list[str] = criteria.get("job_titles") or []
-    locations: list[str] = criteria.get("locations") or ["Remote"]
+    locations: list[str] = criteria.get("search_locations") or criteria.get("locations") or ["Remote"]
 
     if not keywords:
         logger.warning("Active criteria has no job_titles — skipping.")
@@ -76,6 +76,7 @@ def scrape_all():
 
     total_created = 0
     total_seen = 0
+    new_job_ids: list[str] = []
 
     for scraper in SCRAPERS:
         for location in locations:
@@ -87,12 +88,19 @@ def scrape_all():
 
             total_seen += len(raw_jobs)
             for raw in raw_jobs:
-                if _post_job(raw):
+                job_id = _post_job(raw)
+                if job_id:
                     total_created += 1
+                    new_job_ids.append(job_id)
+
+    # Enqueue each new job for AI review
+    for job_id in new_job_ids:
+        app.send_task("app.tasks.review_job", args=[job_id], queue="review")
+        logger.debug("Enqueued review for job %s", job_id)
 
     logger.info(
-        "scrape_all complete — %d raw jobs seen, %d newly created",
-        total_seen, total_created,
+        "scrape_all complete — %d raw jobs seen, %d newly created, %d enqueued for review",
+        total_seen, total_created, len(new_job_ids),
     )
 
 
@@ -108,8 +116,8 @@ def _clip(value: str | None, max_len: int) -> str | None:
 
 
 def _fetch_active_criteria() -> dict | None:
-    """Return the active criteria dict from tracker-api, or None on failure."""
-    url = f"{settings.tracker_api_url}/criteria/active"
+    """Return merged criteria from all approved users via the public union endpoint."""
+    url = f"{settings.tracker_api_url}/criteria/scraper/union"
     try:
         resp = httpx.get(url, timeout=10)
         if resp.status_code == 404:
@@ -121,15 +129,11 @@ def _fetch_active_criteria() -> dict | None:
         return None
 
 
-def _post_job(raw: RawJob) -> bool:
+def _post_job(raw: RawJob) -> str | None:
     """
     POST a RawJob to tracker-api as a JobCreate payload.
-    Returns True iff the job was newly created (HTTP 201 with a fresh row).
-
-    Note: tracker-api currently returns 201 for both newly-created and
-    already-existing rows, so this only reliably distinguishes the two
-    when the API is updated to return 200 for existing. Until then,
-    treat the "total_created" counter in scrape_all as "total_posted".
+    Returns the job ID (str) if the job was newly created (HTTP 201),
+    or None if it already existed (HTTP 200) or on error.
     """
     payload = {
         "external_id": _clip(raw.external_id, 255),
@@ -151,7 +155,9 @@ def _post_job(raw: RawJob) -> bool:
     try:
         resp = httpx.post(url, json=payload, timeout=15)
         resp.raise_for_status()
-        return resp.status_code == 201
+        if resp.status_code == 201:
+            return resp.json()["id"]
+        return None  # 200 = already existed, skip review
     except Exception:
         logger.exception("Failed to post job '%s' (%s)", raw.title, raw.external_id)
-        return False
+        return None

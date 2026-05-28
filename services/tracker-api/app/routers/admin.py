@@ -1,0 +1,113 @@
+"""
+Admin router — user management, pending approvals.
+"""
+
+from typing import Optional
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import Session
+
+from app import models, schemas
+from app.database import get_db
+from app.deps import get_current_admin
+from app.security import hash_password
+
+router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+@router.get("/users", response_model=schemas.PaginatedUsers)
+def list_users(
+    approved: Optional[bool] = Query(None, description="Filter by approval status"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    _: models.User = Depends(get_current_admin),
+):
+    """List all users, optionally filtered by approval status."""
+    q = db.query(models.User)
+    if approved is not None:
+        q = q.filter(models.User.is_approved == approved)
+    total = q.count()
+    items = q.order_by(models.User.created_at.desc()).offset(skip).limit(limit).all()
+    return schemas.PaginatedUsers(total=total, items=items)
+
+
+@router.post("/users/{user_id}/approve", response_model=schemas.AdminUserOut)
+def approve_user(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(get_current_admin),
+):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.is_approved = True
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@router.post("/users/{user_id}/reject", status_code=status.HTTP_204_NO_CONTENT)
+def reject_user(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(get_current_admin),
+):
+    """Permanently delete a pending (unapproved) user."""
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.is_approved:
+        raise HTTPException(status_code=400, detail="Cannot reject an already-approved user")
+    db.delete(user)
+    db.commit()
+
+
+@router.patch("/users/{user_id}/toggle-admin", response_model=schemas.AdminUserOut)
+def toggle_admin(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    current_admin: models.User = Depends(get_current_admin),
+):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.id == current_admin.id:
+        raise HTTPException(status_code=400, detail="Cannot change your own admin status")
+    user.is_admin = not user.is_admin
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@router.post("/users/{user_id}/reset-password", status_code=status.HTTP_204_NO_CONTENT)
+def reset_password(
+    user_id: UUID,
+    payload: schemas.AdminResetPasswordRequest,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(get_current_admin),
+):
+    """Admin sets a temporary password; user is forced to change it on next login."""
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.password_hash = hash_password(payload.new_password)
+    user.must_change_password = True
+    db.commit()
+
+
+@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_user(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    current_admin: models.User = Depends(get_current_admin),
+):
+    """Permanently delete any user and all their data."""
+    if str(user_id) == str(current_admin.id):
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    db.delete(user)
+    db.commit()

@@ -10,6 +10,7 @@ returns the full list (typically 1–2k entries), which is cheap and easy.
 """
 
 import logging
+import re as _re
 from typing import List, Optional
 
 import httpx
@@ -121,9 +122,6 @@ def _to_raw_job(item: dict) -> Optional[RawJob]:
     )
 
 
-# Keep import footprint small — reuse the logic locally instead of
-# pulling in a shared util module for one regex.
-import re as _re
 _HTML_TAG_RE = _re.compile(r"<[^>]+>")
 _WHITESPACE_RE = _re.compile(r"\s+")
 

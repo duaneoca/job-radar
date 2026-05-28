@@ -1,5 +1,4 @@
-"""Tests for the /criteria endpoints."""
-
+"""Tests for the /criteria endpoints — per-user upsert API."""
 
 CRITERIA_PAYLOAD = {
     "name": "Senior Python roles",
@@ -11,29 +10,33 @@ CRITERIA_PAYLOAD = {
 }
 
 
-def test_create_criteria(client):
-    resp = client.post("/criteria", json=CRITERIA_PAYLOAD)
-    assert resp.status_code == 201
-    assert resp.json()["name"] == "Senior Python roles"
+def test_get_criteria_empty(client):
+    """404 when the user has no criteria yet."""
+    resp = client.get("/criteria")
+    assert resp.status_code == 404
 
 
-def test_list_criteria(client):
-    client.post("/criteria", json=CRITERIA_PAYLOAD)
+def test_upsert_criteria_creates(client):
+    """PUT /criteria creates criteria when none exists."""
+    resp = client.put("/criteria", json=CRITERIA_PAYLOAD)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["name"] == "Senior Python roles"
+    assert data["min_salary"] == 120000
+
+
+def test_upsert_criteria_updates(client):
+    """Second PUT updates the existing criteria in-place."""
+    client.put("/criteria", json=CRITERIA_PAYLOAD)
+    resp = client.put("/criteria", json={**CRITERIA_PAYLOAD, "min_salary": 150000})
+    assert resp.status_code == 200
+    assert resp.json()["min_salary"] == 150000
+
+
+def test_get_criteria_after_upsert(client):
+    """GET /criteria returns the active criteria after upsert."""
+    client.put("/criteria", json=CRITERIA_PAYLOAD)
     resp = client.get("/criteria")
     assert resp.status_code == 200
-    assert len(resp.json()) == 1
-
-
-def test_activate_criteria(client):
-    id1 = client.post("/criteria", json=CRITERIA_PAYLOAD).json()["id"]
-    id2 = client.post("/criteria", json={**CRITERIA_PAYLOAD, "name": "second"}).json()["id"]
-
-    client.post(f"/criteria/{id2}/activate")
-    active = client.get("/criteria/active").json()
-    assert active["id"] == id2
-
-
-def test_update_criteria(client):
-    cid = client.post("/criteria", json=CRITERIA_PAYLOAD).json()["id"]
-    resp = client.put(f"/criteria/{cid}", json={**CRITERIA_PAYLOAD, "min_salary": 150000})
-    assert resp.json()["min_salary"] == 150000
+    assert resp.json()["min_salary"] == 120000
+    assert resp.json()["name"] == "Senior Python roles"

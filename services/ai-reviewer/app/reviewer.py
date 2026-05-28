@@ -2,14 +2,30 @@
 Job reviewer using the Claude API — Phase 3
 """
 
+import json
+import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
+
+import anthropic
+
+logger = logging.getLogger(__name__)
+
+# Load the system prompt once at import time — no disk I/O per request.
+_PROMPT_PATH = Path(__file__).parent / "prompts" / "review_prompt.md"
+SYSTEM_PROMPT = _PROMPT_PATH.read_text(encoding="utf-8")
 
 
 @dataclass
 class ReviewResult:
     job_id: str
     score: float          # 0.0 – 10.0
+    skills_rank: int      # 1–10
+    experience_rank: int  # 1–10
+    location_rank: int    # 1–10
+    education_rank: int   # 1–10
+    salary_rank: int      # 1–10
     summary: str          # 1-2 sentence plain-English match summary
     pros: list[str]
     cons: list[str]
@@ -19,18 +35,130 @@ class ReviewResult:
 class JobReviewer:
     """
     Scores a job against user-defined criteria using Claude.
-    Phase 3: implement with anthropic SDK.
     """
 
-    def __init__(self, api_key: str):
-        self.api_key = api_key
+    MODEL = "claude-haiku-4-5"
+    MAX_TOKENS = 1024
 
-    async def review(
+    def __init__(self, api_key: str):
+        self.client = anthropic.Anthropic(api_key=api_key)
+
+    def _build_user_message(
         self,
+        job_title: str,
+        company: str,
+        location: str | None,
+        remote: bool,
+        description: str,
+        salary_min: int | None,
+        salary_max: int | None,
+        criteria: dict,
+        profile: dict,
+    ) -> str:
+        """Format everything Claude needs into a single user message."""
+        salary_line = "Not provided"
+        if salary_min and salary_max:
+            salary_line = f"${salary_min:,} – ${salary_max:,}"
+        elif salary_min:
+            salary_line = f"${salary_min:,}+"
+
+        resume_section = ""
+        if profile.get('resume_text'):
+            resume_section = f"\n\n### Full Resume\n{profile['resume_text']}"
+
+        return f"""## Candidate Profile
+Name: {profile.get('name') or 'Not provided'}
+Location: {profile.get('location') or 'Not provided'}
+Summary: {profile.get('summary') or 'See resume below'}
+Skills: {', '.join(profile.get('skills') or []) or 'See resume below'}
+Education: {profile.get('education') or 'See resume below'}
+Desired salary: ${profile.get('desired_salary') or 0:,}
+Commute preference: {profile.get('commute_preference') or 'Not provided'}{resume_section}
+
+## Search Criteria
+Job titles of interest: {', '.join(criteria.get('job_titles') or [])}
+Required skills: {', '.join(criteria.get('required_skills') or [])}
+Preferred skills: {', '.join(criteria.get('preferred_skills') or [])}
+Location preferences: {', '.join(criteria.get('search_locations') or criteria.get('locations') or [])}
+Remote only: {criteria.get('remote_only', False)}
+Minimum salary: ${criteria.get('min_salary') or 0:,}
+
+## Job Posting
+Title: {job_title}
+Company: {company}
+Location: {location or 'Not specified'}
+Remote: {remote}
+Salary range: {salary_line}
+
+### Description
+{description}"""
+
+    def review(
+        self,
+        job_id: str,
         job_title: str,
         company: str,
         description: str,
         criteria: dict,
+        profile: dict,
+        location: str | None = None,
+        remote: bool = False,
+        salary_min: int | None = None,
+        salary_max: int | None = None,
     ) -> Optional[ReviewResult]:
-        # TODO (Phase 3): build prompt, call Claude, parse response
-        raise NotImplementedError("AI reviewer coming in Phase 3")
+        """Score a single job against the candidate's profile and criteria."""
+        user_message = self._build_user_message(
+            job_title=job_title,
+            company=company,
+            location=location,
+            remote=remote,
+            description=description,
+            salary_min=salary_min,
+            salary_max=salary_max,
+            criteria=criteria,
+            profile=profile,
+        )
+
+        try:
+            response = self.client.messages.create(
+                model=self.MODEL,
+                max_tokens=self.MAX_TOKENS,
+                system=SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": user_message}],
+            )
+        except anthropic.APIError as exc:
+            logger.error("Claude API error for job %s: %s", job_id, exc)
+            return None
+
+        raw_text = response.content[0].text.strip()
+
+        # Extract the JSON object robustly — handles markdown fences,
+        # preamble text, or any other wrapper Claude might add.
+        start = raw_text.find("{")
+        end = raw_text.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            raw_text = raw_text[start : end + 1]
+
+        try:
+            data = json.loads(raw_text)
+        except json.JSONDecodeError:
+            logger.error("Claude returned non-JSON for job %s: %.200s", job_id, raw_text)
+            return None
+
+        try:
+            return ReviewResult(
+                job_id=job_id,
+                score=float(data["score"]),
+                skills_rank=int(data["skills_rank"]),
+                experience_rank=int(data["experience_rank"]),
+                location_rank=int(data["location_rank"]),
+                education_rank=int(data["education_rank"]),
+                salary_rank=int(data["salary_rank"]),
+                summary=data["summary"],
+                pros=data["pros"],
+                cons=data["cons"],
+                recommended=bool(data["recommended"]),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            logger.error("Failed to parse Claude response for job %s: %s", job_id, exc)
+            return None

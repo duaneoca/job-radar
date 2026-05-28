@@ -4,7 +4,9 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     tracker_api_url: str = "http://localhost:8000"
-    claude_api_key: str = ""
+    # Accept either ANTHROPIC_API_KEY (the SDK's conventional name)
+    # or CLAUDE_API_KEY for backwards compatibility.
+    anthropic_api_key: str = ""
     environment: str = "development"
 
     class Config:

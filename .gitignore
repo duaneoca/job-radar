@@ -69,3 +69,6 @@ logs/
 docker-compose.override.yml
 
 services/scraper/celerybeat-schedule.db
+
+# Test databases
+*.db
