@@ -4,8 +4,8 @@ kind: Kustomization
 namePrefix: ""
 namespace: jobradar-production
 
-bases:
+resources:
   - ../../base
 
-# Production runs 2 replicas of the API (matches base default)
+# Production runs 2 replicas of the API
 # Scale up here when traffic warrants it

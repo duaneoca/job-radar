@@ -44,11 +44,11 @@ spec:
             periodSeconds: 10
           resources:
             requests:
-              cpu: "100m"
-              memory: "128Mi"
+              cpu: "50m"
+              memory: "64Mi"
             limits:
-              cpu: "500m"
-              memory: "512Mi"
+              cpu: "300m"
+              memory: "256Mi"
       volumes:
         - name: postgres-data
           persistentVolumeClaim:

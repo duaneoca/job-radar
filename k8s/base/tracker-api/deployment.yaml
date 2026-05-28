@@ -7,7 +7,7 @@ metadata:
     app: tracker-api
     project: jobradar
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: tracker-api
@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: tracker-api
-          # Image is overridden per-environment by Kustomize
+          # Image is overridden per-environment by Kustomize / CI
           image: ghcr.io/OWNER/jobradar-tracker-api:latest
           ports:
             - containerPort: 8000
@@ -29,20 +29,20 @@ spec:
                 name: tracker-api-secrets
           resources:
             requests:
-              cpu: "100m"
-              memory: "128Mi"
+              cpu: "50m"
+              memory: "96Mi"
             limits:
               cpu: "500m"
-              memory: "512Mi"
+              memory: "256Mi"
           readinessProbe:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 10
-            periodSeconds: 10
+            initialDelaySeconds: 15
+            periodSeconds: 15
           livenessProbe:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 30
+            initialDelaySeconds: 45
             periodSeconds: 30
