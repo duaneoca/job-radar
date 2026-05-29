@@ -88,8 +88,40 @@ function JobPipelineTab() {
       </ul>
       <P>The scraper uses the union of all approved users' job titles and locations as search
         keywords, so everyone benefits from each other's criteria.</P>
-      <P>You can also add jobs manually from any job site using the bookmarklet in
-        <strong> Settings → Bookmarklet</strong>.</P>
+      <P>You can also capture jobs directly from job sites using the bookmarklet
+        (see below).</P>
+
+      <Separator />
+
+      <H2>Bookmarklet — adding jobs manually</H2>
+      <P>The bookmarklet lets you add a job to Job Radar in one click while browsing
+        any supported job site. No copy-pasting required.</P>
+
+      <H3>Setup (one time)</H3>
+      <ol className="list-decimal list-inside space-y-1 ml-2">
+        <Li>Go to <strong>Settings → Bookmarklet</strong></Li>
+        <Li>Drag the <strong>"Add to Job Radar"</strong> button to your browser's bookmarks bar</Li>
+        <Li>If you don't see the bookmarks bar, enable it in your browser settings</Li>
+      </ol>
+
+      <H3>Using it</H3>
+      <ol className="list-decimal list-inside space-y-1 ml-2">
+        <Li><strong>Keep Job Radar open</strong> in another tab or window — the bookmarklet opens a new tab in Job Radar to complete the import</Li>
+        <Li>Navigate to a job posting on a supported site</Li>
+        <Li>Click <strong>"Add to Job Radar"</strong> in your bookmarks bar</Li>
+        <Li>A new Job Radar tab opens with the job details pre-filled — review and save</Li>
+        <Li>The job is added to your list and queued for AI scoring automatically</Li>
+      </ol>
+
+      <H3>Supported sites</H3>
+      <ul className="list-disc list-inside space-y-1 ml-2">
+        <Li><strong>LinkedIn</strong> — fully supported</Li>
+        <Li><strong>Dice</strong> — coming soon</Li>
+        <Li><strong>BuiltIn</strong> — coming soon</Li>
+        <Li><strong>Monster</strong> — coming soon</Li>
+        <Li><strong>ZipRecruiter</strong> — coming soon</Li>
+      </ul>
+      <P>Indeed is not supported due to bot protection on their job pages.</P>
 
       <Separator />
 
