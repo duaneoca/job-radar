@@ -25,6 +25,32 @@ const WORK_STYLE_OPTIONS: { value: WorkStyle; label: string; description: string
 const DEFAULT_INTERVIEW_PREP_PROMPT =
   `You are an experienced hiring manager preparing to interview a candidate for the role below.\n\nGenerate 12–15 interview questions you would realistically ask, covering four categories:\n- Behavioral (past experience stories — "Tell me about a time…")\n- Technical (skills, tools, and role-specific knowledge)\n- Situational (hypothetical scenarios — "What would you do if…")\n- Culture/Motivation (fit, values, goals — "Why this company?", "Where do you see yourself in 5 years?")\n\nFor each question write a coaching note that:\n1. Names the best career story or experience from the candidate's background to draw on (use story titles if provided)\n2. Specifies what outcome or angle to emphasize for this specific role\n3. Notes any direct connection to language or requirements in the job description`;
 
+const DEFAULT_SCORING_PROMPT =
+`# Job Fit Reviewer
+
+## Role
+You are an expert job fit evaluator. Your job is to assess how well a job posting matches a candidate's profile and search criteria. You are objective, thorough, and honest — a low score is more useful than a falsely optimistic one.
+
+## Evaluation Dimensions
+
+### 1. Skills Match
+Skills matches can be fuzzy. There are skills that have different names, but are transferrable. For the skills listed in the job posting, count the number of skills that match or are transferrable. Take the percentage of the matches, and add 20% up to 100%, then provide a ranking from 1-10 based on that percentage.
+
+### 2. Experience Match
+Apply the same matching for experience as the skills matching.
+
+### 3. Location
+Employers may expect full time in office, hybrid, or remote. Evaluate compatibility between employer and applicant. No overlap = 1, remote-to-remote = 10. Hybrid/onsite scored 2–9 based on commute distance.
+
+### 4. Education
+10 = degree match, 8 = related degree, 5 = level matched, 3 = one level below requested, 1 = none of the above.
+
+### 5. Salary
+10 = well above desired salary, 8–9 = somewhat above, 5–7 = desired salary within range, 2–4 = tight fit, 1 = below desired salary, 5 = no salary listed.
+
+## Scoring
+Overall score = evenly weighted average of the five ranks, rounded to one decimal.`;
+
 const DEFAULT_RESEARCH_PROMPT =
   `Summarize this company based on the job posting:\n1. What they do and their market position\n2. Culture and work environment signals from the posting\n3. Growth stage / stability signals\n4. Why this role could be a good fit given the candidate's background`;
 
@@ -409,23 +435,6 @@ function CriteriaTab() {
         </div>
       </div>
 
-      <Separator />
-
-      <div className="space-y-1.5">
-        <Label>AI scoring prompt</Label>
-        <p className="text-xs text-muted-foreground">
-          The full rubric the AI uses to score jobs. Edit to change how dimensions are weighted or interpreted.
-          Leave blank to use the system default.
-        </p>
-        <Textarea
-          rows={12}
-          value={c.scoring_prompt ?? ""}
-          onChange={(e) => set("scoring_prompt", e.target.value || null)}
-          placeholder="Leave blank to use the default scoring rubric…"
-          className="font-mono text-xs"
-        />
-      </div>
-
       <Button onClick={save} disabled={saving}>{saving ? "Saving…" : "Save criteria"}</Button>
     </div>
   );
@@ -464,6 +473,22 @@ function AIPromptsTab() {
 
   return (
     <div className="max-w-xl space-y-6">
+      <div className="space-y-1.5">
+        <Label>AI scoring prompt</Label>
+        <p className="text-xs text-muted-foreground">
+          The full rubric used to score jobs. Edit to change how dimensions are weighted or interpreted.
+          Saving a blank value resets to the default.
+        </p>
+        <Textarea
+          rows={16}
+          value={c.scoring_prompt ?? DEFAULT_SCORING_PROMPT}
+          onChange={(e) => set("scoring_prompt", e.target.value || null)}
+          className="font-mono text-xs"
+        />
+      </div>
+
+      <Separator />
+
       <div className="space-y-1.5">
         <Label>Voice guidelines</Label>
         <p className="text-xs text-muted-foreground">

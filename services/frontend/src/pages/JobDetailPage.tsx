@@ -502,15 +502,15 @@ export function JobDetailPage() {
         {/* ── Interview Prep ── */}
         <TabsContent value="prep" className="mt-4 space-y-4">
           {/* Header row */}
-          <div className="flex items-start justify-between flex-wrap gap-2">
-            <div>
+          <div className="flex items-start gap-2">
+            <div className="flex-1 min-w-0">
               <p className="text-sm font-medium">Interview preparation</p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 AI-generated questions a hiring manager might ask, with coaching notes tailored to this role.{" "}
                 <a href="/profile?tab=prompts" className="underline underline-offset-2">Customise prompt →</a>
               </p>
             </div>
-            <div className="flex gap-2 ml-auto">
+            <div className="flex gap-2 shrink-0">
               {prepHasChanges && (
                 <Button size="sm" variant="outline" onClick={savePrepChanges} disabled={updateReview.isPending}>
                   {updateReview.isPending ? "Saving…" : "Save changes"}

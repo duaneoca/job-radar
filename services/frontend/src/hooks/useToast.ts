@@ -18,7 +18,7 @@ function emit(updated: ToastMessage[]) {
 export function toast(opts: Omit<ToastMessage, "id">) {
   const id = Math.random().toString(36).slice(2);
   emit([...toasts, { id, ...opts }]);
-  setTimeout(() => emit(toasts.filter((t) => t.id !== id)), 4000);
+  setTimeout(() => emit(toasts.filter((t) => t.id !== id)), 8000);
 }
 
 export function useToastState() {

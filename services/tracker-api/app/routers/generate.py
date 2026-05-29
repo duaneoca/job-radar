@@ -452,9 +452,15 @@ def generate_interview_prep(
         logger.error("Failed to parse interview prep JSON: %s\nRaw: %s", e, raw)
         raise HTTPException(status_code=502, detail="AI returned malformed JSON. Try regenerating.")
 
+    # Claude sometimes wraps the list in {"questions": [...]} — unwrap it.
+    if isinstance(questions_raw, dict):
+        questions_raw = questions_raw.get("questions", [])
+
     # Stamp each question with a unique ID and empty notes field
     questions = []
     for q in questions_raw:
+        if not isinstance(q, dict):
+            continue  # skip any malformed items
         questions.append({
             "id": str(uuid_lib.uuid4()),
             "category": q.get("category", "General"),

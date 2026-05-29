@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { useDarkMode } from "./hooks/useDarkMode";
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "./components/layout/Layout";
 import { Toaster } from "./components/ui/toaster";
@@ -48,6 +49,8 @@ function RequireAdmin({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  useDarkMode(); // Apply system/saved theme on every page including login
+
   return (
     <AuthProvider>
       <Routes>
