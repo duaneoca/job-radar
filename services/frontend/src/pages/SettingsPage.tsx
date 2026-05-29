@@ -381,8 +381,22 @@ var re=/remote/i.test(jmiText);
 var buUrl=window.location.href;
 if(!ti){alert('Job Radar: Could not read this BuiltIn page.\\nNavigate to a specific job posting.');return;}
 data={title:ti,company:co,location:lo,description:de,url:buUrl,external_id:id,remote:re,source:'builtin',salary_min:salMin,salary_max:salMax};
+}else if(host.includes('monster.com')){
+var ti=tc('[data-testid="jobTitle"]');
+var co=tc('[data-testid="company"]');
+var lo=tc('#job-view-header [data-testid="jobDetailLocation"]')||tc('[data-testid="jobDetailLocation"]');
+var de=tc('[data-testid="svx-description-container-inner"]');
+var salText=tc('[data-testid="svx-jobview-salary-value"]');
+var salMatch=salText.match(/\\$([\\d,]+)\\s*[-\\u2013]\\s*\\$([\\d,]+)/);
+var salMin=salMatch?parseInt(salMatch[1].replace(/,/g,''),10):null;
+var salMax=salMatch?parseInt(salMatch[2].replace(/,/g,''),10):null;
+var idMatch=ur.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+var id=idMatch?idMatch[0]:'';
+var re=/remote/i.test(de);
+if(!ti){alert('Job Radar: Could not read this Monster page.\\nNavigate to a specific job posting.');return;}
+data={title:ti,company:co,location:lo,description:de,url:ur,external_id:id,remote:re,source:'monster',salary_min:salMin,salary_max:salMax};
 }else{
-alert('Job Radar: This site is not yet supported.\\nSupported: LinkedIn, Dice, BuiltIn.');
+alert('Job Radar: This site is not yet supported.\\nSupported: LinkedIn, Dice, BuiltIn, Monster.');
 return;
 }
 window.open('${appOrigin}/jobs/add#'+btoa(unescape(encodeURIComponent(JSON.stringify(data)))),'_blank');
@@ -438,7 +452,7 @@ function BookmarkletTab() {
           page to add it to Job Radar instantly.
         </p>
         <p className="text-sm text-muted-foreground">
-          <strong>Supported:</strong> LinkedIn, Dice, BuiltIn
+          <strong>Supported:</strong> LinkedIn, Dice, BuiltIn, Monster
         </p>
       </div>
 

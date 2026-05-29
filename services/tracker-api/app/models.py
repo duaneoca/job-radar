@@ -51,6 +51,7 @@ class JobSource(str, enum.Enum):
     GLASSDOOR = "glassdoor"
     DICE      = "dice"
     BUILTIN   = "builtin"
+    MONSTER   = "monster"
     MANUAL    = "manual"
 
 
