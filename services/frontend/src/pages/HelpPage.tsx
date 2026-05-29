@@ -69,9 +69,9 @@ function GettingStartedTab() {
       <Separator />
 
       <H2>Step 4 — Get jobs</H2>
-      <P>Jobs are scraped automatically every 2 hours. To pull in jobs immediately, go to
-        <strong> Admin → System → Run scrape now</strong>. New jobs appear in your Jobs list
-        within a minute or two.</P>
+      <P>Jobs are scraped automatically every 2 hours and appear in your Jobs list shortly
+        after. You can also add jobs manually from any job site using the bookmarklet
+        in <strong>Settings → Bookmarklet</strong>.</P>
 
       <Separator />
 
@@ -86,20 +86,22 @@ function JobPipelineTab() {
   return (
     <div className="max-w-2xl space-y-4">
       <H2>How jobs get in</H2>
-      <P>The scraper runs on a Celery Beat schedule every 2 hours. It queries three sources:</P>
+      <P>The scraper runs automatically every 2 hours and queries three sources:</P>
       <ul className="list-disc list-inside space-y-1 ml-2">
-        <Li><strong>Adzuna</strong> — broad job board with salary data (requires API key)</Li>
-        <Li><strong>The Muse</strong> — tech and creative roles, free</Li>
-        <Li><strong>Remotive</strong> — remote-only roles, free</Li>
+        <Li><strong>Adzuna</strong> — broad job board with salary data</Li>
+        <Li><strong>The Muse</strong> — tech and creative roles</Li>
+        <Li><strong>Remotive</strong> — remote-only roles</Li>
       </ul>
       <P>The scraper uses the union of all approved users' job titles and locations as search
         keywords, so everyone benefits from each other's criteria.</P>
+      <P>You can also add jobs manually from any job site using the bookmarklet in
+        <strong> Settings → Bookmarklet</strong>.</P>
 
       <Separator />
 
       <H2>Deduplication</H2>
-      <P>Jobs are deduplicated by source + external ID. Re-running the scraper won't create
-        duplicate listings — it only creates a new row when a job hasn't been seen before.</P>
+      <P>Jobs are deduplicated by source + external ID. The scraper won't create
+        duplicate listings — it only adds a job when it hasn't been seen before.</P>
 
       <Separator />
 
@@ -107,8 +109,6 @@ function JobPipelineTab() {
       <P>Each new job is automatically queued for AI scoring. The reviewer runs per-user —
         the same job gets scored separately against each person's profile and criteria.
         Scores appear on the job card once the review completes (usually within seconds).</P>
-      <P>To re-score jobs that haven't been reviewed yet, use <strong>Admin → System →
-        Evaluate unscored jobs</strong>.</P>
 
       <Separator />
 
@@ -137,7 +137,8 @@ function ScoringTab() {
   return (
     <div className="max-w-2xl space-y-4">
       <P>Each job gets an overall score from 1–10, built from five equal-weight dimensions.
-        The overall score is the simple average of the five ranks.</P>
+        The overall score is the simple average of the five ranks. You can customise the
+        entire scoring rubric in <strong>Profile → AI Prompts → AI scoring prompt</strong>.</P>
 
       <Separator />
 
@@ -169,13 +170,23 @@ function ScoringTab() {
 
       <H2>Recommended flag</H2>
       <P>Jobs with an overall score ≥ 6.0 are flagged as <strong>Recommended</strong>.
-        You can adjust this threshold by editing the scoring prompt (see the Prompts tab).</P>
+        You can adjust this threshold by editing the scoring prompt.</P>
 
       <Separator />
 
       <H2>Pros and cons</H2>
       <P>Along with the numeric score, the AI writes 2–4 specific strengths and 1–3 honest
         gaps grounded in the actual job description and your profile — not generic filler.</P>
+
+      <Separator />
+
+      <H2>Customising the scoring</H2>
+      <P>The full rubric is editable in <strong>Profile → AI Prompts → AI scoring prompt</strong>.
+        The default text is pre-loaded so you can see exactly how it works and tweak from
+        there. Good reasons to edit: adjust the salary bands, change how skills fuzziness
+        is applied, add a sixth dimension, or emphasise certain factors more heavily.
+        The JSON output format is always appended automatically and can't be changed —
+        everything else is yours to modify. Saving a blank value resets to the default.</P>
     </div>
   );
 }
@@ -218,13 +229,6 @@ function ApplicationToolsTab() {
         your profile to draw on and the angle to emphasise for this specific role. Add
         your own notes to each card as you prepare.</P>
       <P>You can edit, delete, or add questions manually, and save your changes.</P>
-
-      <Separator />
-
-      <H2>Timeline</H2>
-      <P>The Timeline tab lets you log events as you progress — application submitted,
-        phone screen, onsite, offer, etc. Use it to keep a clear record of where each
-        opportunity stands.</P>
     </div>
   );
 }
@@ -239,13 +243,12 @@ function PromptsTab() {
 
       <H2>AI scoring prompt</H2>
       <P>This is the full rubric the AI uses when scoring a job. It defines the five
-        dimensions and how each is evaluated. The output format (the JSON structure
-        the code parses) is always appended automatically and cannot be changed —
-        everything else is fair game.</P>
+        dimensions and how each is evaluated. The default is pre-loaded so you can see
+        exactly how it works. The output format (the JSON structure the code parses) is
+        always appended automatically — everything else is yours to change.</P>
       <P>Good reasons to edit it: change how skills fuzziness is calculated, adjust the
         salary scoring bands, add a sixth dimension, or weight certain factors higher
-        by adding explicit instructions.</P>
-      <P>Saving a blank value resets to the system default.</P>
+        by adding explicit instructions. Saving a blank value resets to the default.</P>
 
       <Separator />
 
