@@ -20,6 +20,9 @@ python-multipart==0.0.12
 # AI generation (on-demand: research summary, application assistance)
 anthropic>=0.52.0
 
+# AWS SES (email notifications)
+boto3==1.35.76
+
 # Task queue (for fan-out to ai-reviewer)
 celery==5.4.0
 redis==5.2.0

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app import models, schemas
 from app.database import get_db
 from app.deps import get_current_user
+from app.email import notify_new_account
 from app.security import create_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -35,6 +36,9 @@ def signup(payload: schemas.SignupRequest, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    notify_new_account(user.email, user.full_name)
+
     return {"message": "Account created. Awaiting admin approval."}
 
 

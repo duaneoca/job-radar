@@ -13,6 +13,7 @@ from app import models, schemas
 from app.config import settings
 from app.database import get_db
 from app.deps import get_current_admin
+from app.email import notify_account_approved
 from app.security import hash_password
 
 # Celery producer — sends tasks to scraper and ai-reviewer queues
@@ -50,6 +51,7 @@ def approve_user(
     user.is_approved = True
     db.commit()
     db.refresh(user)
+    notify_account_approved(user.email, user.full_name)
     return user
 
 

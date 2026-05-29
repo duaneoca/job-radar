@@ -19,6 +19,13 @@ class Settings(BaseSettings):
     # Job pool — unactioned jobs older than this many days are soft-expired.
     job_ttl_days: int = 30
 
+    # AWS SES — email notifications (all optional; notifications silently skipped if unset)
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
+    ses_region: str = "us-east-1"
+    ses_from_email: str = ""       # must be verified in SES, e.g. "jobradar@duanesworld.org"
+    admin_notify_email: str = ""   # where new-account alerts go, e.g. "duaneo@duanesworld.org"
+
     class Config:
         env_file = ".env"
 
