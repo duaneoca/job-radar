@@ -116,8 +116,8 @@ function JobPipelineTab() {
       <H3>Supported sites</H3>
       <ul className="list-disc list-inside space-y-1 ml-2">
         <Li><strong>LinkedIn</strong> — fully supported</Li>
-        <Li><strong>Dice</strong> — coming soon</Li>
-        <Li><strong>BuiltIn</strong> — coming soon</Li>
+        <Li><strong>Dice</strong> — fully supported</Li>
+        <Li><strong>BuiltIn</strong> — fully supported</Li>
         <Li><strong>Monster</strong> — coming soon</Li>
         <Li><strong>ZipRecruiter</strong> — coming soon</Li>
       </ul>

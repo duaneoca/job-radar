@@ -358,8 +358,31 @@ var dparts=ur.split('/job-detail/');var id=dparts.length>1?dparts[1].split('/')[
 var re=/remote/i.test(lo)||/remote/i.test(de.substring(0,300));
 if(!ti){alert('Job Radar: Could not read this Dice page.\\nNavigate to a specific job posting.');return;}
 data={title:ti,company:co,location:lo,description:de,url:ur,external_id:id,remote:re,source:'dice',salary_min:salMin,salary_max:salMax};
+}else if(host.includes('builtin.com')){
+var id=new URLSearchParams(window.location.search).get('jobid')||'';
+var jmi=id?document.getElementById(id):document.querySelector('.job-match-item');
+if(!jmi){alert('Job Radar: Could not find the current job.\\nNavigate to a specific BuiltIn job posting.');return;}
+var tiEl=jmi.querySelector('h3 span')||jmi.querySelector('h3');
+var ti=tiEl?(tiEl.textContent||'').replace(/\\s+/g,' ').trim():'';
+var coEl=jmi.querySelector('a[href^="/company/"] h2')||jmi.querySelector('a[href^="/company/"]');
+var co=coEl?(coEl.textContent||'').replace(/\\s+/g,' ').trim():'';
+var loSpan=jmi.querySelector('[data-bs-original-title]');
+var loHtml=loSpan?loSpan.getAttribute('data-bs-original-title'):'';
+var loRx=(loHtml||'').match(/>([^<]+)</g)||[];
+var lo=loRx.map(function(m){return m.slice(1,-1).trim();}).filter(Boolean).join(', ');
+if(!lo&&loSpan){lo=(loSpan.textContent||'').trim();}
+var deEl=jmi.querySelector('.html-parsed-content')||jmi.querySelector('[id^="match-body-"]');
+var de=deEl?(deEl.textContent||'').replace(/\\s+/g,' ').trim():'';
+var jmiText=(jmi.textContent||'');
+var salMatch=jmiText.match(/\\$([\\d,]+)\\s*[-\\u2013]\\s*\\$([\\d,]+)/);
+var salMin=salMatch?parseInt(salMatch[1].replace(/,/g,''),10):null;
+var salMax=salMatch?parseInt(salMatch[2].replace(/,/g,''),10):null;
+var re=/remote/i.test(jmiText);
+var buUrl=window.location.href;
+if(!ti){alert('Job Radar: Could not read this BuiltIn page.\\nNavigate to a specific job posting.');return;}
+data={title:ti,company:co,location:lo,description:de,url:buUrl,external_id:id,remote:re,source:'builtin',salary_min:salMin,salary_max:salMax};
 }else{
-alert('Job Radar: This site is not yet supported.\\nSupported: LinkedIn, Dice.');
+alert('Job Radar: This site is not yet supported.\\nSupported: LinkedIn, Dice, BuiltIn.');
 return;
 }
 window.open('${appOrigin}/jobs/add#'+btoa(unescape(encodeURIComponent(JSON.stringify(data)))),'_blank');
@@ -415,7 +438,7 @@ function BookmarkletTab() {
           page to add it to Job Radar instantly.
         </p>
         <p className="text-sm text-muted-foreground">
-          <strong>Supported:</strong> LinkedIn, Dice
+          <strong>Supported:</strong> LinkedIn, Dice, BuiltIn
         </p>
       </div>
 

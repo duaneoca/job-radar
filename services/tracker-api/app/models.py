@@ -50,6 +50,7 @@ class JobSource(str, enum.Enum):
     INDEED    = "indeed"
     GLASSDOOR = "glassdoor"
     DICE      = "dice"
+    BUILTIN   = "builtin"
     MANUAL    = "manual"
 
 
