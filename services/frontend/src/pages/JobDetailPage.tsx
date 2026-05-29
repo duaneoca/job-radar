@@ -447,8 +447,8 @@ export function JobDetailPage() {
           <TabsTrigger value="research">Research</TabsTrigger>
           <TabsTrigger value="application">Application</TabsTrigger>
           <TabsTrigger value="prep">Interview Prep</TabsTrigger>
-          <TabsTrigger value="notes">Notes</TabsTrigger>
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
+          <TabsTrigger value="notes">Notes</TabsTrigger>
         </TabsList>
 
         {/* ── Description ── */}

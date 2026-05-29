@@ -229,6 +229,15 @@ function ApplicationToolsTab() {
         your profile to draw on and the angle to emphasise for this specific role. Add
         your own notes to each card as you prepare.</P>
       <P>You can edit, delete, or add questions manually, and save your changes.</P>
+
+      <Separator />
+
+      <H2>Timeline</H2>
+      <P>The Timeline tab keeps a running log of everything that happens with a job.
+        Status changes (New → Applied → Interviewing etc.) and AI review scores are
+        logged automatically. You can also add your own freeform notes — phone screen
+        scheduled, recruiter name, follow-up sent — anything worth remembering.
+        Events are shown newest-first.</P>
     </div>
   );
 }
