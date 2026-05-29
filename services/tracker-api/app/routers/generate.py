@@ -95,9 +95,18 @@ def _get_profile(user_id: UUID, db: Session) -> models.Profile | None:
 
 
 def _resume_block(profile: models.Profile | None) -> str:
-    if profile and profile.resume_text:
-        return f"\n\n## Candidate Resume\n{profile.resume_text}"
-    return "\n\n## Candidate Resume\nNot provided"
+    if not profile:
+        return "\n\n## Candidate Resume\nNot provided"
+    parts = []
+    if profile.resume_text:
+        parts.append(f"## Candidate Resume\n{profile.resume_text}")
+    if profile.career_stories:
+        stories_text = "\n\n".join(
+            f"### {s.get('title', 'Story')}\n{s.get('content', '')}"
+            for s in profile.career_stories
+        )
+        parts.append(f"## Career Stories (use these as specific examples)\n{stories_text}")
+    return "\n\n" + "\n\n".join(parts) if parts else "\n\n## Candidate Resume\nNot provided"
 
 
 def _job_block(job: models.Job) -> str:
@@ -192,6 +201,8 @@ def generate_application_answer(
         )
     except anthropic.AuthenticationError:
         raise HTTPException(status_code=400, detail="Invalid Anthropic API key.")
+    except anthropic.RateLimitError:
+        raise HTTPException(status_code=429, detail="Anthropic rate limit reached. Check your plan or try again later.")
     except Exception as e:
         logger.exception("Claude API error during application generation")
         raise HTTPException(status_code=502, detail=f"AI generation failed: {e}")
@@ -469,6 +480,10 @@ def generate_interview_prep(
             "story_refs": q.get("story_refs") or [],
             "notes": "",
         })
+
+    if not questions:
+        logger.error("Claude returned no usable questions. Raw: %.500s", raw)
+        raise HTTPException(status_code=502, detail="AI returned no questions. Try regenerating.")
 
     review.interview_questions = questions
     db.commit()
