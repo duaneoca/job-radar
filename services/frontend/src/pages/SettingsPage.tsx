@@ -350,12 +350,10 @@ var lo='';
 var loSpans=document.querySelectorAll('[data-testid="job-detail-header-card"] span span');
 for(var i=0;i<loSpans.length;i++){var st=(loSpans[i].textContent||'').trim();if(st.length>3&&st.indexOf('\\u2022')<0&&st.indexOf('Posted')<0&&st.indexOf('Updated')<0){lo=st;break;}}
 var de=tc('[class*="jobDescription"]')||longest(['#job-description','article']);
-var salText='';
-var badges=document.querySelectorAll('.SeuiInfoBadge div');
-for(var j=0;j<badges.length;j++){if((badges[j].textContent||'').indexOf('$')>-1){salText=(badges[j].textContent||'').trim();break;}}
-var salNums=salText.match(/[\\d,]+/g)||[];
-var salMin=salNums.length>0?parseInt(salNums[0].replace(/,/g,''),10):null;
-var salMax=salNums.length>1?parseInt(salNums[1].replace(/,/g,''),10):null;
+var hdText=(document.querySelector('[data-testid="job-detail-header-card"]')||{textContent:''}).textContent;
+var salMatch=hdText.match(/\\$([\\d,]+)\\s*[-\\u2013]\\s*\\$([\\d,]+)/);
+var salMin=salMatch?parseInt(salMatch[1].replace(/,/g,''),10):null;
+var salMax=salMatch?parseInt(salMatch[2].replace(/,/g,''),10):null;
 var dparts=ur.split('/job-detail/');var id=dparts.length>1?dparts[1].split('/')[0]:'';
 var re=/remote/i.test(lo)||/remote/i.test(de.substring(0,300));
 if(!ti){alert('Job Radar: Could not read this Dice page.\\nNavigate to a specific job posting.');return;}
