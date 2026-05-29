@@ -12,6 +12,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { AdminPage } from "./pages/AdminPage";
 import { AddJobPage } from "./pages/AddJobPage";
+import { HelpPage } from "./pages/HelpPage";
 import { useAuthStore } from "./store/auth";
 import { authApi } from "./lib/api";
 import type { User } from "./lib/types";
@@ -118,6 +119,17 @@ export default function App() {
                   <AdminPage />
                 </Layout>
               </RequireAdmin>
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="/help"
+          element={
+            <RequireAuth>
+              <Layout>
+                <HelpPage />
+              </Layout>
             </RequireAuth>
           }
         />

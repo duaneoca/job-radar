@@ -1,0 +1,311 @@
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
+import { Separator } from "../components/ui/separator";
+import { useSearchParams } from "react-router-dom";
+
+// ─── Section heading helpers ──────────────────────────────────────────────────
+
+function H2({ children }: { children: React.ReactNode }) {
+  return <h2 className="text-base font-semibold mt-6 mb-1 first:mt-0">{children}</h2>;
+}
+
+function H3({ children }: { children: React.ReactNode }) {
+  return <h3 className="text-sm font-medium mt-4 mb-1">{children}</h3>;
+}
+
+function P({ children }: { children: React.ReactNode }) {
+  return <p className="text-sm text-muted-foreground leading-relaxed">{children}</p>;
+}
+
+function Li({ children }: { children: React.ReactNode }) {
+  return <li className="text-sm text-muted-foreground leading-relaxed">{children}</li>;
+}
+
+function Callout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground leading-relaxed">
+      {children}
+    </div>
+  );
+}
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+
+function GettingStartedTab() {
+  return (
+    <div className="max-w-2xl space-y-4">
+      <Callout>
+        Job Radar is a personal AI-assisted job hunting tool. It scrapes job boards, scores
+        each posting against your profile and criteria, and helps you apply — all driven by
+        your own AI API key.
+      </Callout>
+
+      <H2>Step 1 — Set up your profile</H2>
+      <P>Go to <strong>Profile → Resume</strong> and paste in your resume text. This is the
+        foundation for all AI features — scoring, cover letters, research summaries, and
+        interview prep all draw from it.</P>
+      <P>While you're there, add a few <strong>Career Stories</strong> (Profile → Career Stories).
+        These are specific examples from your work history that the AI references when
+        generating coaching notes and application answers.</P>
+
+      <Separator />
+
+      <H2>Step 2 — Set your criteria</H2>
+      <P>Go to <strong>Profile → Job Criteria</strong> and fill in:</P>
+      <ul className="list-disc list-inside space-y-1 ml-2">
+        <Li><strong>Job titles</strong> — what roles you're targeting (one per line). The scraper uses these as search keywords.</Li>
+        <Li><strong>Work arrangement</strong> — remote, hybrid, onsite, or any.</Li>
+        <Li><strong>Search regions</strong> — locations fed to job boards.</Li>
+        <Li><strong>Minimum salary</strong> — jobs below this get a low salary score.</Li>
+        <Li><strong>Target / excluded companies</strong> — boost or hide specific employers.</Li>
+      </ul>
+
+      <Separator />
+
+      <H2>Step 3 — Add your API key</H2>
+      <P>Go to <strong>Settings → API Keys</strong> and add your Anthropic key. All AI features
+        (scoring, generation, research) run on your own key — Job Radar never stores it in
+        plaintext.</P>
+
+      <Separator />
+
+      <H2>Step 4 — Get jobs</H2>
+      <P>Jobs are scraped automatically every 2 hours. To pull in jobs immediately, go to
+        <strong> Admin → System → Run scrape now</strong>. New jobs appear in your Jobs list
+        within a minute or two.</P>
+
+      <Separator />
+
+      <H2>Step 5 — Work your pipeline</H2>
+      <P>Jobs arrive scored and sorted. Open any job to see the AI breakdown, generate
+        application materials, and track your status as you move through the process.</P>
+    </div>
+  );
+}
+
+function JobPipelineTab() {
+  return (
+    <div className="max-w-2xl space-y-4">
+      <H2>How jobs get in</H2>
+      <P>The scraper runs on a Celery Beat schedule every 2 hours. It queries three sources:</P>
+      <ul className="list-disc list-inside space-y-1 ml-2">
+        <Li><strong>Adzuna</strong> — broad job board with salary data (requires API key)</Li>
+        <Li><strong>The Muse</strong> — tech and creative roles, free</Li>
+        <Li><strong>Remotive</strong> — remote-only roles, free</Li>
+      </ul>
+      <P>The scraper uses the union of all approved users' job titles and locations as search
+        keywords, so everyone benefits from each other's criteria.</P>
+
+      <Separator />
+
+      <H2>Deduplication</H2>
+      <P>Jobs are deduplicated by source + external ID. Re-running the scraper won't create
+        duplicate listings — it only creates a new row when a job hasn't been seen before.</P>
+
+      <Separator />
+
+      <H2>AI review</H2>
+      <P>Each new job is automatically queued for AI scoring. The reviewer runs per-user —
+        the same job gets scored separately against each person's profile and criteria.
+        Scores appear on the job card once the review completes (usually within seconds).</P>
+      <P>To re-score jobs that haven't been reviewed yet, use <strong>Admin → System →
+        Evaluate unscored jobs</strong>.</P>
+
+      <Separator />
+
+      <H2>Job statuses</H2>
+      <ul className="list-disc list-inside space-y-1 ml-2">
+        <Li><strong>New</strong> — just arrived, not yet actioned</Li>
+        <Li><strong>Reviewed</strong> — you've looked at it</Li>
+        <Li><strong>Applied</strong> — application submitted</Li>
+        <Li><strong>Interviewing</strong> — active interview process</Li>
+        <Li><strong>Offer</strong> — offer received</Li>
+        <Li><strong>Rejected</strong> — closed out</Li>
+        <Li><strong>Dismissed</strong> — not interested, hidden from default view</Li>
+      </ul>
+
+      <Separator />
+
+      <H2>Filtering and sorting</H2>
+      <P>The Jobs list defaults to showing New jobs sorted by AI score descending — highest
+        matches first. Use the filters to switch status, sort by date, or search by title
+        or company.</P>
+    </div>
+  );
+}
+
+function ScoringTab() {
+  return (
+    <div className="max-w-2xl space-y-4">
+      <P>Each job gets an overall score from 1–10, built from five equal-weight dimensions.
+        The overall score is the simple average of the five ranks.</P>
+
+      <Separator />
+
+      <H2>The five dimensions</H2>
+
+      <H3>1. Skills match</H3>
+      <P>Counts how many skills in the job posting match or are transferable to yours.
+        Takes the match percentage, adds 20% (employers rarely expect all listed skills),
+        caps at 100%, then maps to 1–10.</P>
+
+      <H3>2. Experience match</H3>
+      <P>Same fuzzy matching logic applied to years and types of experience described
+        in the posting versus your background.</P>
+
+      <H3>3. Location</H3>
+      <P>Compares the job's work arrangement (remote / hybrid / onsite) with your preference
+        and commute tolerance. Remote-to-remote = 10. Incompatible arrangement = 1.
+        Hybrid and onsite roles are scored 2–9 based on estimated commute distance.</P>
+
+      <H3>4. Education</H3>
+      <P>10 = exact degree match · 8 = related degree · 5 = level matched ·
+        3 = one level below requested · 1 = no match.</P>
+
+      <H3>5. Salary</H3>
+      <P>10 = well above your desired salary · 8–9 = somewhat above · 5–7 = within range ·
+        2–4 = tight fit · 1 = below your minimum · 5 = no salary listed (neutral).</P>
+
+      <Separator />
+
+      <H2>Recommended flag</H2>
+      <P>Jobs with an overall score ≥ 6.0 are flagged as <strong>Recommended</strong>.
+        You can adjust this threshold by editing the scoring prompt (see the Prompts tab).</P>
+
+      <Separator />
+
+      <H2>Pros and cons</H2>
+      <P>Along with the numeric score, the AI writes 2–4 specific strengths and 1–3 honest
+        gaps grounded in the actual job description and your profile — not generic filler.</P>
+    </div>
+  );
+}
+
+function ApplicationToolsTab() {
+  return (
+    <div className="max-w-2xl space-y-4">
+      <P>Open any job and use the tabs to generate AI-assisted content. All generation
+        uses your Anthropic API key and draws from your resume, career stories, and
+        voice guidelines.</P>
+
+      <Separator />
+
+      <H2>Research</H2>
+      <P>The Research tab generates a company summary based on the job posting. It covers
+        what the company does, culture signals, growth stage, and why this role could be
+        a good fit for your background.</P>
+      <P>You can customise the research prompt in <strong>Profile → AI Prompts →
+        Company research prompt</strong>.</P>
+
+      <Separator />
+
+      <H2>Application</H2>
+      <P>The Application tab shows one section per template you've defined in
+        <strong> Profile → AI Prompts → Application templates</strong>. Defaults include
+        a cover letter, "Why do you want to work here?", and an "About me" summary.</P>
+      <P>Each section generates independently. You can refine any answer with the
+        chat box below it — ask the AI to make it shorter, more formal, or to emphasise
+        a different aspect of your background.</P>
+      <P>Your <strong>voice guidelines</strong> are automatically injected into every
+        application prompt so generated text sounds like you.</P>
+
+      <Separator />
+
+      <H2>Interview prep</H2>
+      <P>The Interview Prep tab generates 12–15 questions a hiring manager would
+        realistically ask, across four categories: Behavioral, Technical, Situational,
+        and Culture/Motivation.</P>
+      <P>Each question includes a coaching note that names the best career story from
+        your profile to draw on and the angle to emphasise for this specific role. Add
+        your own notes to each card as you prepare.</P>
+      <P>You can edit, delete, or add questions manually, and save your changes.</P>
+
+      <Separator />
+
+      <H2>Timeline</H2>
+      <P>The Timeline tab lets you log events as you progress — application submitted,
+        phone screen, onsite, offer, etc. Use it to keep a clear record of where each
+        opportunity stands.</P>
+    </div>
+  );
+}
+
+function PromptsTab() {
+  return (
+    <div className="max-w-2xl space-y-4">
+      <P>All AI behaviour in Job Radar is driven by prompts you control. Go to
+        <strong> Profile → AI Prompts</strong> to edit them.</P>
+
+      <Separator />
+
+      <H2>AI scoring prompt</H2>
+      <P>This is the full rubric the AI uses when scoring a job. It defines the five
+        dimensions and how each is evaluated. The output format (the JSON structure
+        the code parses) is always appended automatically and cannot be changed —
+        everything else is fair game.</P>
+      <P>Good reasons to edit it: change how skills fuzziness is calculated, adjust the
+        salary scoring bands, add a sixth dimension, or weight certain factors higher
+        by adding explicit instructions.</P>
+      <P>Saving a blank value resets to the system default.</P>
+
+      <Separator />
+
+      <H2>Voice guidelines</H2>
+      <P>Describe your writing style, tone, and preferences. This block is injected into
+        every application prompt automatically. Example:</P>
+      <div className="rounded-md bg-muted px-4 py-3 text-xs font-mono text-muted-foreground whitespace-pre-wrap">
+        {`I write in a direct, confident tone. I avoid buzzwords like "passionate" and "synergy". I prefer short sentences and focus on outcomes over activities. I don't use em dashes.`}
+      </div>
+
+      <Separator />
+
+      <H2>Company research prompt</H2>
+      <P>Instructions for the AI when you click Generate in the Research tab. The job
+        posting and your resume are always included as context — this prompt tells the AI
+        what to focus on and how to structure the output.</P>
+
+      <Separator />
+
+      <H2>Application templates</H2>
+      <P>Each template becomes a section in the Application tab for every job. The label
+        is the section heading. The prompt tells the AI what to write — it's automatically
+        combined with your voice guidelines and the job + resume context.</P>
+      <P>You can add, remove, and reorder templates. Changes apply to all future
+        generation; previously generated answers are preserved.</P>
+
+      <Separator />
+
+      <H2>Interview prep prompt</H2>
+      <P>Controls what the AI generates when you click Generate prep. The default asks
+        for 12–15 questions across four categories with career-story-linked coaching
+        notes. Edit it to change the number of questions, add a fifth category, or
+        shift the focus toward technical depth.</P>
+    </div>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export function HelpPage() {
+  const [searchParams] = useSearchParams();
+  const defaultTab = searchParams.get("tab") ?? "start";
+
+  return (
+    <div className="space-y-4">
+      <h1 className="text-xl font-bold">Help</h1>
+      <Tabs defaultValue={defaultTab}>
+        <TabsList className="flex-wrap h-auto gap-1">
+          <TabsTrigger value="start">Getting started</TabsTrigger>
+          <TabsTrigger value="pipeline">Job pipeline</TabsTrigger>
+          <TabsTrigger value="scoring">Scoring</TabsTrigger>
+          <TabsTrigger value="tools">Application tools</TabsTrigger>
+          <TabsTrigger value="prompts">Prompts</TabsTrigger>
+        </TabsList>
+        <TabsContent value="start"    className="mt-6"><GettingStartedTab /></TabsContent>
+        <TabsContent value="pipeline" className="mt-6"><JobPipelineTab /></TabsContent>
+        <TabsContent value="scoring"  className="mt-6"><ScoringTab /></TabsContent>
+        <TabsContent value="tools"    className="mt-6"><ApplicationToolsTab /></TabsContent>
+        <TabsContent value="prompts"  className="mt-6"><PromptsTab /></TabsContent>
+      </Tabs>
+    </div>
+  );
+}

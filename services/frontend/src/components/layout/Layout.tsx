@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
-import { Menu, Briefcase, Radar, Settings, Users, LogOut, X, Sun, Moon, Monitor, User } from "lucide-react";
+import { NavLink, useNavigate, Link } from "react-router-dom";
+import { Menu, Briefcase, Radar, Settings, Users, LogOut, X, Sun, Moon, Monitor, User, CircleHelp } from "lucide-react";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 import { useDarkMode, type ThemeMode } from "../../hooks/useDarkMode";
@@ -48,6 +48,11 @@ export function Layout({ children }: LayoutProps) {
             <Radar className="h-5 w-5" />
             <span>Job Radar</span>
           </NavLink>
+          {/* Help link */}
+          <Link to="/help" aria-label="Help" className="text-muted-foreground hover:text-foreground transition-colors">
+            <CircleHelp className="h-5 w-5" />
+          </Link>
+
           {/* User name / initials */}
           {user && (
             <button
