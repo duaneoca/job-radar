@@ -76,10 +76,10 @@ jobs:
         uses: azure/setup-kubectl@v4
 
       - name: Configure kubeconfig
-        # KUBECONFIG_STAGING is the base64-encoded kubeconfig stored as a repo secret
+        # KUBECONFIG_STAGING is the raw kubeconfig YAML stored as an environment secret
         run: |
           mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_STAGING }}" | tr -d ' \n\r' | base64 -d > ~/.kube/config
+          printf '%s' "${{ secrets.KUBECONFIG_STAGING }}" > ~/.kube/config
           chmod 600 ~/.kube/config
 
       - name: Deploy with Kustomize
