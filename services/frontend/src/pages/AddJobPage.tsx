@@ -18,6 +18,8 @@ interface BookmarkletData {
   external_id?: string;
   remote?: boolean;
   source?: string;
+  salary_min?: number;
+  salary_max?: number;
 }
 
 function decodeHash(): BookmarkletData {
@@ -43,8 +45,8 @@ export function AddJobPage() {
   const [url, setUrl] = useState(prefilled.url ?? "");
   const [location, setLocation] = useState(prefilled.location ?? "");
   const [remote, setRemote] = useState(prefilled.remote ?? false);
-  const [salaryMin, setSalaryMin] = useState("");
-  const [salaryMax, setSalaryMax] = useState("");
+  const [salaryMin, setSalaryMin] = useState(prefilled.salary_min ? String(prefilled.salary_min) : "");
+  const [salaryMax, setSalaryMax] = useState(prefilled.salary_max ? String(prefilled.salary_max) : "");
   const [description, setDescription] = useState(prefilled.description ?? "");
   const source = prefilled.source ?? "manual";
   const externalId = prefilled.external_id ?? "";

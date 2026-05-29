@@ -349,16 +349,27 @@ if(host.includes('linkedin.com')){
 
 // ── Dice ──────────────────────────────────────────────────────────────────────
 else if(host.includes('dice.com')){
-  var ti=tc('[data-testid="job-detail-header-card"] h1');
-  var co=tc('a[data-wa-click="djv-job-company-profile-click"]');
-  var loEl=document.querySelector('[data-testid="job-detail-header-card"] .order-3');
-  var lo=loEl?(loEl.textContent||'').split('\\u2022')[0].trim():'';
+  var hd=document.querySelector('[data-testid="job-detail-header-card"]');
+  var ti=hd?tc.call(null,'[data-testid="job-detail-header-card"] h1'):'';
+  if(!ti){ti=(document.querySelector('h1')||{textContent:''}).textContent.replace(/\\s+/g,' ').trim();}
+  var co=tc('a[href*="/company-profile/"]');
+  if(!co){co=tc('[data-wa-click="djv-job-company-profile-click"]');}
+  var lo='';
+  if(hd){var loSpans=hd.querySelectorAll('span>span');for(var i=0;i<loSpans.length;i++){var st=(loSpans[i].textContent||'').trim();if(st&&!st.startsWith('•')&&!st.includes('Posted')&&!st.includes('Updated')&&st.length>3){lo=st;break;}}}
   var de=tc('[class*="jobDescription"]');
+  if(!de){de=tc('[class*="job-description"]');}
+  if(!de){de=longest(['#job-description','[data-testid="job-description"]','article']);}
+  var salText='';
+  var allBadges=document.querySelectorAll('.SeuiInfoBadge div');
+  for(var i=0;i<allBadges.length;i++){if(/\\$/.test(allBadges[i].textContent||'')){salText=(allBadges[i].textContent||'').trim();break;}}
+  var salNums=salText.match(/[\\d,]+/g)||[];
+  var salMin=salNums.length>0?parseInt(salNums[0].replace(/,/g,''),10):null;
+  var salMax=salNums.length>1?parseInt(salNums[1].replace(/,/g,''),10):null;
   var pathParts=ur.split('/job-detail/');
   var id=pathParts.length>1?pathParts[1].replace(/\\//g,''):'';
   var re=/remote/i.test(lo)||/remote/i.test(de.substring(0,300));
   if(!ti){alert('Job Radar: Could not read this Dice page.\\nPlease navigate to a specific job posting.');return;}
-  data={title:ti,company:co,location:lo,description:de,url:ur,external_id:id,remote:re,source:'dice'};
+  data={title:ti,company:co,location:lo,description:de,url:ur,external_id:id,remote:re,source:'dice',salary_min:salMin,salary_max:salMax};
 }
 
 // ── Unsupported ───────────────────────────────────────────────────────────────
@@ -442,7 +453,7 @@ function BookmarkletTab() {
           }}
         >
           <BookmarkIcon className="h-4 w-4" />
-          Add to Job Radar
+          📡 Add to Job Radar
         </a>
         <p className="text-xs text-muted-foreground text-center">
           ↑ Drag me to your bookmarks bar
