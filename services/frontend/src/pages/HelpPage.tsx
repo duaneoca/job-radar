@@ -120,8 +120,8 @@ function JobPipelineTab() {
         <Li><strong>BuiltIn</strong> — fully supported</Li>
         <Li><strong>Monster</strong> — fully supported</Li>
         <Li><strong>ZipRecruiter</strong> — fully supported</Li>
+        <Li><strong>Indeed</strong> — fully supported</Li>
       </ul>
-      <P>Indeed is not supported due to bot protection on their job pages.</P>
 
       <Separator />
 
