@@ -510,7 +510,7 @@ export function JobDetailPage() {
                 <a href="/profile?tab=prompts" className="underline underline-offset-2">Customise prompt →</a>
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 ml-auto">
               {prepHasChanges && (
                 <Button size="sm" variant="outline" onClick={savePrepChanges} disabled={updateReview.isPending}>
                   {updateReview.isPending ? "Saving…" : "Save changes"}
