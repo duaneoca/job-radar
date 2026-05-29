@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, ExternalLink, Star, Building2, MapPin, DollarSign,
   UserCheck, Loader2, Calendar, Sparkles, MessageSquarePlus, Plus, AlertTriangle,
+  Clock, Send,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -37,6 +38,88 @@ const DEFAULT_APP_TEMPLATES: ApplicationTemplate[] = [
     prompt: "Write a 2-3 sentence professional summary tailored for this specific application, highlighting the most relevant skills and experience from the resume.",
   },
 ];
+
+// ─── Timeline tab ─────────────────────────────────────────────────────────────
+
+const EVENT_LABELS: Record<string, string> = {
+  status_change: "Status update",
+  ai_review:     "AI review",
+  note:          "Note",
+};
+
+function TimelineTab({ reviewId, events }: { reviewId: string; events: import("../lib/types").TimelineEvent[] }) {
+  const qc = useQueryClient();
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function addNote() {
+    if (!note.trim()) return;
+    setSaving(true);
+    try {
+      await jobsApi.post(`/jobs/${reviewId}/timeline/note`, null, { params: { note: note.trim() } });
+      qc.invalidateQueries({ queryKey: ["job", reviewId] });
+      setNote("");
+    } catch {
+      toast({ title: "Failed to save note", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4 max-w-lg">
+      {/* Event list */}
+      <div className="relative">
+        {events.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4">No events yet.</p>
+        ) : (
+          <ol className="space-y-0">
+            {[...events].reverse().map((ev, idx) => (
+              <li key={ev.id} className="flex gap-3">
+                {/* Spine */}
+                <div className="flex flex-col items-center">
+                  <div className="mt-1 h-2 w-2 rounded-full bg-primary shrink-0" />
+                  {idx < events.length - 1 && <div className="w-px flex-1 bg-border mt-1" />}
+                </div>
+                {/* Content */}
+                <div className="pb-4 min-w-0">
+                  <p className="text-xs text-muted-foreground">
+                    {EVENT_LABELS[ev.event_type] ?? ev.event_type} ·{" "}
+                    {formatDate(ev.occurred_at)}
+                  </p>
+                  {ev.description && (
+                    <p className="text-sm mt-0.5">{ev.description}</p>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+
+      <Separator />
+
+      {/* Add note */}
+      <div className="space-y-2">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Add a note</p>
+        <div className="flex gap-2">
+          <input
+            className="flex-1 rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            placeholder="Phone screen scheduled, follow-up sent…"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") addNote(); }}
+          />
+          <Button size="sm" onClick={addNote} disabled={saving || !note.trim()}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
 
 export function JobDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -365,6 +448,7 @@ export function JobDetailPage() {
           <TabsTrigger value="application">Application</TabsTrigger>
           <TabsTrigger value="prep">Interview Prep</TabsTrigger>
           <TabsTrigger value="notes">Notes</TabsTrigger>
+          <TabsTrigger value="timeline">Timeline</TabsTrigger>
         </TabsList>
 
         {/* ── Description ── */}
@@ -584,6 +668,11 @@ export function JobDetailPage() {
           >
             {updateReview.isPending ? "Saving…" : "Save notes"}
           </Button>
+        </TabsContent>
+
+        {/* ── Timeline ── */}
+        <TabsContent value="timeline" className="mt-4">
+          <TimelineTab reviewId={job.id} events={job.timeline ?? []} />
         </TabsContent>
       </Tabs>
 
