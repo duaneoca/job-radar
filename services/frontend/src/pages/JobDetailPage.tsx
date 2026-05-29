@@ -368,7 +368,7 @@ export function JobDetailPage() {
         </TabsList>
 
         {/* ── Description ── */}
-        <TabsContent value="description" className="mt-4">
+        <TabsContent value="description" className="mt-4 space-y-3">
           {job.description ? (
             <div className="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap text-sm leading-relaxed">
               {job.description}
@@ -376,6 +376,14 @@ export function JobDetailPage() {
           ) : (
             <p className="text-muted-foreground text-sm">No description available.</p>
           )}
+          <a
+            href={job.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-sm text-primary underline underline-offset-2 hover:opacity-80"
+          >
+            Open full job posting ↗
+          </a>
         </TabsContent>
 
         {/* ── Research ── */}
