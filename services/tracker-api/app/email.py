@@ -12,17 +12,21 @@ logger = logging.getLogger(__name__)
 
 
 def _ses_client():
-    """Return a boto3 SES client, or None if credentials are missing."""
-    if not settings.ses_from_email or not settings.aws_access_key_id:
+    """Return a boto3 SES client, or None if ses_from_email is not configured.
+
+    Credentials are resolved by boto3's standard chain:
+      1. Explicit env vars (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY) if set
+      2. EC2 instance IAM role (preferred — no keys to manage)
+    """
+    if not settings.ses_from_email:
         return None
     try:
         import boto3
-        return boto3.client(
-            "ses",
-            region_name=settings.ses_region,
-            aws_access_key_id=settings.aws_access_key_id,
-            aws_secret_access_key=settings.aws_secret_access_key,
-        )
+        kwargs = {"region_name": settings.ses_region}
+        if settings.aws_access_key_id:
+            kwargs["aws_access_key_id"] = settings.aws_access_key_id
+            kwargs["aws_secret_access_key"] = settings.aws_secret_access_key
+        return boto3.client("ses", **kwargs)
     except Exception as exc:
         logger.warning("Could not create SES client: %s", exc)
         return None
