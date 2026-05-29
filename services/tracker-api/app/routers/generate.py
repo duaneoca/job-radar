@@ -463,21 +463,40 @@ def generate_interview_prep(
         logger.error("Failed to parse interview prep JSON: %s\nRaw: %s", e, raw)
         raise HTTPException(status_code=502, detail="AI returned malformed JSON. Try regenerating.")
 
-    # Claude sometimes wraps the list in {"questions": [...]} — unwrap it.
-    if isinstance(questions_raw, dict):
-        questions_raw = questions_raw.get("questions", [])
+    # Claude sometimes wraps the list — unwrap whatever structure it returns.
+    def _extract_questions_list(data) -> list:
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            # Try common top-level keys first
+            for key in ("questions", "interview_questions", "items"):
+                if isinstance(data.get(key), list):
+                    return data[key]
+            # One level deeper (e.g. {"interview_plan": {"questions": [...]}})
+            for val in data.values():
+                if isinstance(val, dict):
+                    result = _extract_questions_list(val)
+                    if result:
+                        return result
+        return []
+
+    questions_raw = _extract_questions_list(questions_raw)
 
     # Stamp each question with a unique ID and empty notes field
     questions = []
     for q in questions_raw:
         if not isinstance(q, dict):
             continue  # skip any malformed items
+        # coaching may be keyed as "coaching", "coaching_note", or be a dict itself
+        coaching_raw = q.get("coaching") or q.get("coaching_note") or ""
+        if isinstance(coaching_raw, dict):
+            coaching_raw = " ".join(str(v) for v in coaching_raw.values())
         questions.append({
             "id": str(uuid_lib.uuid4()),
             "category": q.get("category", "General"),
             "question": q.get("question", ""),
-            "coaching": q.get("coaching", ""),
-            "story_refs": q.get("story_refs") or [],
+            "coaching": coaching_raw,
+            "story_refs": q.get("story_refs") or q.get("story_references") or [],
             "notes": "",
         })
 
