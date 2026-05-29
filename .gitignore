@@ -72,3 +72,4 @@ services/scraper/celerybeat-schedule.db
 
 # Test databases
 *.db
+.claude/

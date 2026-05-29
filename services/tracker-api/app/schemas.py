@@ -238,7 +238,8 @@ class CriteriaBase(BaseModel):
     min_salary: Optional[int] = None
     excluded_companies: Optional[List[str]] = None
     target_companies: Optional[List[str]] = None   # score boost
-    extra_instructions: Optional[str] = None
+    extra_instructions: Optional[str] = None   # deprecated — use scoring_prompt
+    scoring_prompt: Optional[str] = None
     research_prompt: Optional[str] = None
     application_templates: Optional[List[dict]] = None  # [{label, prompt}]
     voice_guidelines: Optional[str] = None

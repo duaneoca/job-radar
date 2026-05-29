@@ -1,21 +1,20 @@
-# Traefik Ingress — routes all traffic to the frontend (nginx).
-# Nginx handles API proxying to jobradar-tracker-api internally.
-#
-# k3s ships with Traefik as the default ingress controller.
-# To expose on a custom domain, add:
-#   spec.rules[0].host: your.domain.com
-
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: jobradar-ingress
-  namespace: jobradar
+  namespace: jobradar-production
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
   ingressClassName: traefik
+  tls:
+    - hosts:
+        - jobradar.duanesworld.org
+      secretName: jobradar-tls
   rules:
-    - http:
+    - host: jobradar.duanesworld.org
+      http:
         paths:
           - path: /
             pathType: Prefix

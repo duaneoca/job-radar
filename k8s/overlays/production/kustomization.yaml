@@ -7,5 +7,9 @@ namespace: jobradar-production
 resources:
   - ../../base
 
+patches:
+  # Override ingress with hostname + TLS for production
+  - path: ingress-patch.yaml
+
 # Production runs 2 replicas of the API
 # Scale up here when traffic warrants it

@@ -412,13 +412,17 @@ function CriteriaTab() {
       <Separator />
 
       <div className="space-y-1.5">
-        <Label>Extra instructions for AI scoring</Label>
-        <p className="text-xs text-muted-foreground">Free-form guidance the AI considers when scoring.</p>
+        <Label>AI scoring prompt</Label>
+        <p className="text-xs text-muted-foreground">
+          The full rubric the AI uses to score jobs. Edit to change how dimensions are weighted or interpreted.
+          Leave blank to use the system default.
+        </p>
         <Textarea
-          rows={3}
-          value={c.extra_instructions ?? ""}
-          onChange={(e) => set("extra_instructions", e.target.value || null)}
-          placeholder="I prefer companies under 500 people. Avoid consulting firms and agencies."
+          rows={12}
+          value={c.scoring_prompt ?? ""}
+          onChange={(e) => set("scoring_prompt", e.target.value || null)}
+          placeholder="Leave blank to use the default scoring rubric…"
+          className="font-mono text-xs"
         />
       </div>
 

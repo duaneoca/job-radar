@@ -12,9 +12,10 @@ import anthropic
 
 logger = logging.getLogger(__name__)
 
-# Load the system prompt once at import time — no disk I/O per request.
-_PROMPT_PATH = Path(__file__).parent / "prompts" / "review_prompt.md"
-SYSTEM_PROMPT = _PROMPT_PATH.read_text(encoding="utf-8")
+# Load prompts once at import time — no disk I/O per request.
+_PROMPT_DIR = Path(__file__).parent / "prompts"
+DEFAULT_SCORING_PROMPT = (_PROMPT_DIR / "review_prompt.md").read_text(encoding="utf-8")
+OUTPUT_FORMAT = (_PROMPT_DIR / "output_format.md").read_text(encoding="utf-8")
 
 
 @dataclass
@@ -119,11 +120,15 @@ Salary range: {salary_line}
             profile=profile,
         )
 
+        # Use the user's custom scoring prompt if set, otherwise fall back to default.
+        rubric = criteria.get("scoring_prompt") or DEFAULT_SCORING_PROMPT
+        system_prompt = f"{rubric.strip()}\n\n{OUTPUT_FORMAT.strip()}"
+
         try:
             response = self.client.messages.create(
                 model=self.MODEL,
                 max_tokens=self.MAX_TOKENS,
-                system=SYSTEM_PROMPT,
+                system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
             )
         except anthropic.APIError as exc:

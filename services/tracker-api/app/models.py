@@ -196,7 +196,8 @@ class Criteria(Base):
     min_salary           = Column(Integer, nullable=True)
     excluded_companies   = Column(JSON, nullable=True)
     target_companies     = Column(JSON, nullable=True)
-    extra_instructions   = Column(Text, nullable=True)
+    extra_instructions   = Column(Text, nullable=True)   # deprecated — use scoring_prompt
+    scoring_prompt       = Column(Text, nullable=True)
     research_prompt      = Column(Text, nullable=True)
     application_templates = Column(JSON, nullable=True)  # [{label, prompt}]
     voice_guidelines     = Column(Text, nullable=True)

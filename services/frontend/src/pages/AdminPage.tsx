@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle, XCircle, ShieldCheck, ShieldOff, Loader2,
-  ChevronLeft, ChevronRight, KeyRound, Trash2,
+  ChevronLeft, ChevronRight, KeyRound, Trash2, RefreshCw, Brain,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -234,20 +234,84 @@ function UserTable({ approved }: { approved: boolean }) {
   );
 }
 
+// ─── System triggers ──────────────────────────────────────────────────────────
+function SystemTab() {
+  const [scraping, setScraping] = useState(false);
+  const [evaluating, setEvaluating] = useState(false);
+
+  async function triggerScrape() {
+    setScraping(true);
+    try {
+      await adminApi.post("/admin/trigger-scrape");
+      toast({ title: "Scrape enqueued", description: "Jobs will appear within a few minutes." });
+    } catch (err: any) {
+      toast({ title: "Failed to trigger scrape", description: err?.response?.data?.detail, variant: "destructive" });
+    } finally {
+      setScraping(false);
+    }
+  }
+
+  async function triggerEvaluate() {
+    setEvaluating(true);
+    try {
+      const res = await adminApi.post("/admin/trigger-evaluate");
+      toast({ title: "Evaluation enqueued", description: res.data.detail });
+    } catch (err: any) {
+      toast({ title: "Failed to trigger evaluation", description: err?.response?.data?.detail, variant: "destructive" });
+    } finally {
+      setEvaluating(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6 max-w-md">
+      <div className="rounded-lg border p-4 space-y-3">
+        <div>
+          <h3 className="font-medium">Manual scrape</h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            Trigger an immediate scrape run across all job sources. Normally runs automatically every 2 hours.
+          </p>
+        </div>
+        <Button onClick={triggerScrape} disabled={scraping} variant="outline">
+          {scraping ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+          Run scrape now
+        </Button>
+      </div>
+
+      <div className="rounded-lg border p-4 space-y-3">
+        <div>
+          <h3 className="font-medium">Manual evaluate</h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            Enqueue AI scoring for all jobs that haven't been evaluated yet.
+          </p>
+        </div>
+        <Button onClick={triggerEvaluate} disabled={evaluating} variant="outline">
+          {evaluating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Brain className="h-4 w-4 mr-2" />}
+          Evaluate unscored jobs
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function AdminPage() {
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-bold">Admin — User Management</h1>
+      <h1 className="text-xl font-bold">Admin</h1>
       <Tabs defaultValue="pending">
         <TabsList>
           <TabsTrigger value="pending">Pending approval</TabsTrigger>
           <TabsTrigger value="approved">Approved users</TabsTrigger>
+          <TabsTrigger value="system">System</TabsTrigger>
         </TabsList>
         <TabsContent value="pending" className="mt-6">
           <UserTable approved={false} />
         </TabsContent>
         <TabsContent value="approved" className="mt-6">
           <UserTable approved={true} />
+        </TabsContent>
+        <TabsContent value="system" className="mt-6">
+          <SystemTab />
         </TabsContent>
       </Tabs>
     </div>

@@ -108,7 +108,8 @@ export interface Criteria {
   min_salary: number | null;
   excluded_companies: string[] | null;
   target_companies: string[] | null;
-  extra_instructions: string | null;
+  extra_instructions: string | null;  // deprecated — use scoring_prompt
+  scoring_prompt: string | null;
   research_prompt: string | null;
   application_templates: ApplicationTemplate[] | null;
   voice_guidelines: string | null;

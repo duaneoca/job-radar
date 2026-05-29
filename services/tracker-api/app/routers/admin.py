@@ -1,17 +1,22 @@
 """
-Admin router — user management, pending approvals.
+Admin router — user management, pending approvals, manual triggers.
 """
 
 from typing import Optional
 from uuid import UUID
 
+from celery import Celery
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app import models, schemas
+from app.config import settings
 from app.database import get_db
 from app.deps import get_current_admin
 from app.security import hash_password
+
+# Celery producer — sends tasks to scraper and ai-reviewer queues
+_celery = Celery(broker=settings.redis_url)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -111,3 +116,36 @@ def delete_user(
         raise HTTPException(status_code=404, detail="User not found")
     db.delete(user)
     db.commit()
+
+
+# ── Manual triggers ───────────────────────────────────────────────────────────
+
+@router.post("/trigger-scrape", status_code=status.HTTP_202_ACCEPTED)
+def trigger_scrape(
+    _: models.User = Depends(get_current_admin),
+):
+    """Enqueue an immediate scrape run (normally runs every 2 hours via Celery Beat)."""
+    _celery.send_task("app.tasks.scrape_all")
+    return {"detail": "Scrape enqueued"}
+
+
+@router.post("/trigger-evaluate", status_code=status.HTTP_202_ACCEPTED)
+def trigger_evaluate(
+    db: Session = Depends(get_db),
+    _: models.User = Depends(get_current_admin),
+):
+    """Enqueue AI review for every job that has no score yet for any approved user."""
+    unreviewed = (
+        db.query(models.UserJobReview)
+        .filter(models.UserJobReview.ai_score == None)  # noqa: E711
+        .all()
+    )
+    count = 0
+    for review in unreviewed:
+        _celery.send_task(
+            "app.tasks.review_job",
+            args=[str(review.job_id)],
+            queue="review",
+        )
+        count += 1
+    return {"detail": f"{count} jobs enqueued for evaluation"}
