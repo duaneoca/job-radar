@@ -79,7 +79,7 @@ jobs:
         # KUBECONFIG_STAGING is the base64-encoded kubeconfig stored as a repo secret
         run: |
           mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_STAGING }}" | base64 -d > ~/.kube/config
+          echo "${{ secrets.KUBECONFIG_STAGING }}" | tr -d ' \n\r' | base64 -d > ~/.kube/config
           chmod 600 ~/.kube/config
 
       - name: Deploy with Kustomize
