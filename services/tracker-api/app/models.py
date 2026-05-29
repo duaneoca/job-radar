@@ -51,8 +51,9 @@ class JobSource(str, enum.Enum):
     GLASSDOOR = "glassdoor"
     DICE      = "dice"
     BUILTIN   = "builtin"
-    MONSTER   = "monster"
-    MANUAL    = "manual"
+    MONSTER      = "monster"
+    ZIPRECRUITER = "ziprecruiter"
+    MANUAL       = "manual"
 
 
 class LLMProvider(str, enum.Enum):

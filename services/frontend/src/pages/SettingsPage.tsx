@@ -395,8 +395,29 @@ var id=idMatch?idMatch[0]:'';
 var re=/remote/i.test(de);
 if(!ti){alert('Job Radar: Could not read this Monster page.\\nNavigate to a specific job posting.');return;}
 data={title:ti,company:co,location:lo,description:de,url:ur,external_id:id,remote:re,source:'monster',salary_min:salMin,salary_max:salMax};
+}else if(host.includes('ziprecruiter.com')){
+var id=new URLSearchParams(window.location.search).get('lk')||'';
+var card=id?document.getElementById('job-card-'+id):null;
+if(!card){alert('Job Radar: Could not find the current job.\\nOpen a specific job on ZipRecruiter first.');return;}
+var tiEl=card.querySelector('h2[aria-label]');
+var ti=tiEl?tiEl.getAttribute('aria-label').replace(/\\s+/g,' ').trim():'';
+var coEl=card.querySelector('[data-testid="job-card-company"]');
+var co=coEl?(coEl.textContent||'').trim():'';
+var loEl=card.querySelector('[data-testid="job-card-location"]');
+var lo=loEl?(loEl.textContent||'').trim():'';
+var salText='';
+var pEls=card.querySelectorAll('p');
+for(var k=0;k<pEls.length;k++){if((pEls[k].textContent||'').indexOf('$')>-1){salText=(pEls[k].textContent||'').trim();break;}}
+var salMin=null,salMax=null;
+var srm=salText.match(/\\$([\\d.]+)(K?)\\s*[-\\u2013]\\s*\\$([\\d.]+)(K?)/i);
+if(srm){salMin=Math.round(parseFloat(srm[1])*(srm[2].toUpperCase()==='K'?1000:1));salMax=Math.round(parseFloat(srm[3])*(srm[4].toUpperCase()==='K'?1000:1));}
+else{var ssm=salText.match(/\\$([\\d.]+)(K?)/i);if(ssm){salMin=Math.round(parseFloat(ssm[1])*(ssm[2].toUpperCase()==='K'?1000:1));}}
+var re=/remote/i.test(lo)||/remote/i.test(card.textContent||'');
+var zrUrl='https://www.ziprecruiter.com/jobseeker/home?lk='+id;
+if(!ti){alert('Job Radar: Could not read this ZipRecruiter page.\\nNavigate to a specific job posting.');return;}
+data={title:ti,company:co,location:lo,description:'',url:zrUrl,external_id:id,remote:re,source:'ziprecruiter',salary_min:salMin,salary_max:salMax};
 }else{
-alert('Job Radar: This site is not yet supported.\\nSupported: LinkedIn, Dice, BuiltIn, Monster.');
+alert('Job Radar: This site is not yet supported.\\nSupported: LinkedIn, Dice, BuiltIn, Monster, ZipRecruiter.');
 return;
 }
 window.open('${appOrigin}/jobs/add#'+btoa(unescape(encodeURIComponent(JSON.stringify(data)))),'_blank');
@@ -452,7 +473,7 @@ function BookmarkletTab() {
           page to add it to Job Radar instantly.
         </p>
         <p className="text-sm text-muted-foreground">
-          <strong>Supported:</strong> LinkedIn, Dice, BuiltIn, Monster
+          <strong>Supported:</strong> LinkedIn, Dice, BuiltIn, Monster, ZipRecruiter
         </p>
       </div>
 
