@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jobradar-scraper
+  namespace: jobradar
+  labels:
+    app: scraper
+    project: jobradar
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scraper
+  template:
+    metadata:
+      labels:
+        app: scraper
+    spec:
+      containers:
+        - name: scraper
+          # Image tag is overridden by CI via `kubectl set image` on every deploy.
+          image: ghcr.io/duaneoca/jobradar-scraper:staging
+          command: ["celery", "-A", "app.main", "worker", "--loglevel=info", "--beat"]
+          envFrom:
+            - configMapRef:
+                name: tracker-api-config   # REDIS_URL + TRACKER_API_URL
+            - secretRef:
+                name: scraper-secrets      # ADZUNA_APP_ID, ADZUNA_APP_KEY (optional)
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "96Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
