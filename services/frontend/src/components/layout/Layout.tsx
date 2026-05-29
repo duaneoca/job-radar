@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
-import { Menu, Briefcase, Settings, Users, LogOut, X, Sun, Moon, Monitor, User } from "lucide-react";
+import { Menu, Briefcase, Radar, Settings, Users, LogOut, X, Sun, Moon, Monitor, User } from "lucide-react";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 import { useDarkMode, type ThemeMode } from "../../hooks/useDarkMode";
@@ -45,7 +45,7 @@ export function Layout({ children }: LayoutProps) {
             <Menu className="h-5 w-5" />
           </Button>
           <NavLink to="/jobs" className="flex items-center gap-2 font-bold text-primary flex-1 hover:opacity-80 transition-opacity">
-            <Briefcase className="h-5 w-5" />
+            <Radar className="h-5 w-5" />
             <span>Job Radar</span>
           </NavLink>
           {/* User name / initials */}
@@ -79,7 +79,7 @@ export function Layout({ children }: LayoutProps) {
         {/* Drawer header */}
         <div className="flex items-center justify-between h-14 px-4 border-b shrink-0">
           <div className="flex items-center gap-2 font-bold text-primary">
-            <Briefcase className="h-5 w-5" />
+            <Radar className="h-5 w-5" />
             Job Radar
           </div>
           <Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Close menu">
