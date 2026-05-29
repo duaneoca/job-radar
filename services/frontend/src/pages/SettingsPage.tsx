@@ -319,29 +319,54 @@ function KeysTab() {
 // ─── Bookmarklet tab ──────────────────────────────────────────────────────────
 
 function buildBookmarklet(appOrigin: string): string {
-  // Uses stable selectors (aria-label, href patterns, document.title) instead of
-  // LinkedIn's obfuscated CSS class names which change on every deploy.
   const js = `(function(){
 function tc(s){try{var e=document.querySelector(s);return e?(e.textContent||'').replace(/\\s+/g,' ').trim():''}catch(x){return '';}}
 function longest(ss){return ss.reduce(function(a,s){var t=tc(s);return t.length>a.length?t:a;},'');}
-var raw=document.title.replace(/^\\(\\d+\\)\\s*/,'');
-var main=raw.split(' | ')[0].trim();
-var atIdx=main.lastIndexOf(' at ');
-var ti=atIdx>-1?main.substring(0,atIdx).trim():main;
-var co='';
-var ariaEl=document.querySelector('[aria-label^="Company,"]');
-if(ariaEl)co=ariaEl.getAttribute('aria-label').replace(/^Company,\\s*/,'').replace(/\\.$/,'').trim();
-if(!co){var cl=document.querySelector('a[href*="/company/"]');if(cl)co=(cl.textContent||'').trim();}
-if(!co&&atIdx>-1)co=main.substring(atIdx+4).trim();
-var lo='';
-var allP=document.querySelectorAll('p');
-for(var i=0;i<allP.length;i++){var pt=(allP[i].textContent||'').replace(/\\s+/g,' ').trim();if(pt.includes('\\u00b7')&&pt.length<400){var sp=allP[i].querySelector('span');if(sp&&sp.textContent&&sp.textContent.trim().length>1){lo=sp.textContent.trim();break;}}}
-var de=longest(['[data-testid="expandable-text-box"]','[class*="show-more-less-html"]','#job-details','.jobs-description__content','article']);
+var host=window.location.hostname;
+var data=null;
 var ur=window.location.href.split('?')[0];
-var parts=ur.split('/view/');var id=parts.length>1?parts[1].replace(/[^0-9]/g,''):'';
-var re=/remote/i.test(lo)||/remote/i.test(de.substring(0,300));
-if(!ti){alert('Job Radar: Could not read this page.\\nPlease navigate to a specific LinkedIn job posting.');return;}
-var data={title:ti,company:co,location:lo,description:de,url:ur,external_id:id,remote:re,source:'linkedin'};
+
+// ── LinkedIn ──────────────────────────────────────────────────────────────────
+if(host.includes('linkedin.com')){
+  var raw=document.title.replace(/^\\(\\d+\\)\\s*/,'');
+  var main=raw.split(' | ')[0].trim();
+  var atIdx=main.lastIndexOf(' at ');
+  var ti=atIdx>-1?main.substring(0,atIdx).trim():main;
+  var co='';
+  var ariaEl=document.querySelector('[aria-label^="Company,"]');
+  if(ariaEl)co=ariaEl.getAttribute('aria-label').replace(/^Company,\\s*/,'').replace(/\\.$/,'').trim();
+  if(!co){var cl=document.querySelector('a[href*="/company/"]');if(cl)co=(cl.textContent||'').trim();}
+  if(!co&&atIdx>-1)co=main.substring(atIdx+4).trim();
+  var lo='';
+  var allP=document.querySelectorAll('p');
+  for(var i=0;i<allP.length;i++){var pt=(allP[i].textContent||'').replace(/\\s+/g,' ').trim();if(pt.includes('\\u00b7')&&pt.length<400){var sp=allP[i].querySelector('span');if(sp&&sp.textContent&&sp.textContent.trim().length>1){lo=sp.textContent.trim();break;}}}
+  var de=longest(['[data-testid="expandable-text-box"]','[class*="show-more-less-html"]','#job-details','.jobs-description__content','article']);
+  var parts=ur.split('/view/');var id=parts.length>1?parts[1].replace(/[^0-9]/g,''):'';
+  var re=/remote/i.test(lo)||/remote/i.test(de.substring(0,300));
+  if(!ti){alert('Job Radar: Could not read this page.\\nPlease navigate to a specific LinkedIn job posting.');return;}
+  data={title:ti,company:co,location:lo,description:de,url:ur,external_id:id,remote:re,source:'linkedin'};
+}
+
+// ── Dice ──────────────────────────────────────────────────────────────────────
+else if(host.includes('dice.com')){
+  var ti=tc('[data-testid="job-detail-header-card"] h1');
+  var co=tc('a[data-wa-click="djv-job-company-profile-click"]');
+  var loEl=document.querySelector('[data-testid="job-detail-header-card"] .order-3');
+  var lo=loEl?(loEl.textContent||'').split('\\u2022')[0].trim():'';
+  var de=tc('[class*="jobDescription"]');
+  var pathParts=ur.split('/job-detail/');
+  var id=pathParts.length>1?pathParts[1].replace(/\\//g,''):'';
+  var re=/remote/i.test(lo)||/remote/i.test(de.substring(0,300));
+  if(!ti){alert('Job Radar: Could not read this Dice page.\\nPlease navigate to a specific job posting.');return;}
+  data={title:ti,company:co,location:lo,description:de,url:ur,external_id:id,remote:re,source:'dice'};
+}
+
+// ── Unsupported ───────────────────────────────────────────────────────────────
+else{
+  alert('Job Radar: This site is not yet supported.\\nSupported sites: LinkedIn, Dice.');
+  return;
+}
+
 window.open('${appOrigin}/jobs/add#'+btoa(unescape(encodeURIComponent(JSON.stringify(data)))),'_blank');
 })();`;
   return "javascript:" + js.replace(/\n/g, "");
@@ -388,11 +413,14 @@ function BookmarkletTab() {
   return (
     <div className="max-w-lg space-y-6">
       <div className="space-y-2">
-        <h3 className="font-medium">LinkedIn Bookmarklet</h3>
+        <h3 className="font-medium">Job Radar Bookmarklet</h3>
         <p className="text-sm text-muted-foreground">
-          The bookmarklet lets you capture a LinkedIn job posting in one click. Drag the
-          button below to your browser's bookmarks bar, then click it on any LinkedIn job
+          Capture a job posting in one click while browsing a supported job site. Drag the
+          button below to your browser's bookmarks bar, then click it on any supported job
           page to add it to Job Radar instantly.
+        </p>
+        <p className="text-sm text-muted-foreground">
+          <strong>Supported:</strong> LinkedIn, Dice
         </p>
       </div>
 
@@ -410,7 +438,7 @@ function BookmarkletTab() {
           onClick={(e) => {
             // Allow drag; prevent accidental navigation on click
             e.preventDefault();
-            alert("Drag this button to your bookmarks bar, then click it on any LinkedIn job page.");
+            alert("Drag this button to your bookmarks bar, then click it on any supported job page (LinkedIn, Dice).");
           }}
         >
           <BookmarkIcon className="h-4 w-4" />
