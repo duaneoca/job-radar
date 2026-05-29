@@ -33,12 +33,6 @@ function Callout({ children }: { children: React.ReactNode }) {
 function GettingStartedTab() {
   return (
     <div className="max-w-2xl space-y-4">
-      <Callout>
-        Job Radar is a personal AI-assisted job hunting tool. It scrapes job boards, scores
-        each posting against your profile and criteria, and helps you apply — all driven by
-        your own AI API key.
-      </Callout>
-
       <H2>Step 1 — Set up your profile</H2>
       <P>Go to <strong>Profile → Resume</strong> and paste in your resume text. This is the
         foundation for all AI features — scoring, cover letters, research summaries, and
@@ -304,6 +298,11 @@ export function HelpPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-bold">Help</h1>
+      <Callout>
+        Job Radar is a personal AI-assisted job hunting tool. It scrapes job boards, scores
+        each posting against your profile and criteria, and helps you apply — all driven by
+        your own AI API key.
+      </Callout>
       <Tabs defaultValue={defaultTab}>
         <TabsList className="flex-wrap h-auto gap-1">
           <TabsTrigger value="start">Getting started</TabsTrigger>
