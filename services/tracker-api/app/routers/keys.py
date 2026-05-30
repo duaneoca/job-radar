@@ -85,6 +85,31 @@ def upsert_key(
     )
 
 
+@router.get("/{provider}/models")
+def list_models_for_provider(
+    provider: models.LLMProvider,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """
+    Fetch the live model list from the provider's API using the user's stored key.
+    Returns [{id, label, descriptor}] filtered to chat/generation models only.
+    """
+    from app.llm import fetch_provider_models
+    key_obj = (
+        db.query(models.UserAPIKey)
+        .filter(
+            models.UserAPIKey.user_id == current_user.id,
+            models.UserAPIKey.provider == provider,
+        )
+        .first()
+    )
+    if not key_obj:
+        raise HTTPException(status_code=404, detail="No key configured for this provider")
+    api_key = decrypt_api_key(key_obj.encrypted_key)
+    return fetch_provider_models(provider.value, api_key)
+
+
 @router.patch("/{provider}", response_model=schemas.APIKeyOut)
 def update_key_model(
     provider: models.LLMProvider,

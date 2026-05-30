@@ -11,6 +11,7 @@ Usage:
 import logging
 from uuid import UUID
 
+import httpx
 import litellm
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 # Silence LiteLLM's verbose logging
 litellm.suppress_debug_info = True
 
-# Best model per provider — cost/speed balance comparable to claude-haiku
+# Default model per provider — cost/speed balance comparable to claude-haiku
 PROVIDER_MODELS: dict[models.LLMProvider, str] = {
     models.LLMProvider.ANTHROPIC: "claude-haiku-4-5",
     models.LLMProvider.OPENAI:    "gpt-4o-mini",
@@ -31,6 +32,158 @@ PROVIDER_MODELS: dict[models.LLMProvider, str] = {
     models.LLMProvider.GROQ:      "groq/llama-3.3-70b-versatile",
 }
 
+# Descriptors for known models — shown alongside model name in the UI
+MODEL_DESCRIPTORS: dict[str, str] = {
+    # Anthropic
+    "claude-haiku-4-5":  "Fast · lowest cost",
+    "claude-sonnet-4-6": "Balanced · recommended",
+    "claude-opus-4-6":   "Most capable · higher cost",
+    "claude-opus-4-7":   "Latest Opus · highest cost",
+    # OpenAI
+    "gpt-4o-mini":  "Fast · lowest cost",
+    "gpt-4o":       "Balanced · recommended",
+    "o1-mini":      "Reasoning · higher cost",
+    "o1":           "Advanced reasoning · highest cost",
+    "o3-mini":      "Fast reasoning",
+    "o3":           "Advanced reasoning · highest cost",
+    # Google (keyed without prefix for matching after stripping "gemini/")
+    "gemini-1.5-flash":    "Fast · lowest cost",
+    "gemini-1.5-pro":      "Balanced · recommended",
+    "gemini-2.0-flash":    "Fast · latest generation",
+    "gemini-2.0-pro":      "Most capable · higher cost",
+    # Groq (keyed without prefix for matching after stripping "groq/")
+    "llama-3.3-70b-versatile": "Balanced · free tier",
+    "llama-3.1-8b-instant":    "Fastest · free tier",
+    "mixtral-8x7b-32768":      "Long context · free tier",
+    "llama3-70b-8192":         "Balanced · free tier",
+}
+
+# Prefixes that identify chat/completion models for OpenAI
+_OPENAI_CHAT_PREFIXES = ("gpt-", "o1", "o3", "o4", "chatgpt-")
+
+
+def _descriptor(model_id: str) -> str | None:
+    """Return a human descriptor for a model ID, stripping provider prefixes."""
+    bare = model_id.removeprefix("gemini/").removeprefix("groq/")
+    return MODEL_DESCRIPTORS.get(bare) or MODEL_DESCRIPTORS.get(model_id)
+
+
+# ── Provider model listing ────────────────────────────────────────────────────
+
+def fetch_provider_models(provider: str, api_key: str) -> list[dict]:
+    """
+    Query the provider's live models API and return a filtered list of
+    chat/generation models as [{id, label, descriptor}].
+    """
+    try:
+        if provider == "anthropic":
+            return _fetch_anthropic_models(api_key)
+        elif provider == "openai":
+            return _fetch_openai_models(api_key)
+        elif provider == "google":
+            return _fetch_google_models(api_key)
+        elif provider == "groq":
+            return _fetch_groq_models(api_key)
+    except httpx.HTTPStatusError as e:
+        logger.warning("Provider model fetch failed (%s): %s", provider, e)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Could not fetch models from {provider}: {e.response.status_code}"
+        )
+    except Exception as e:
+        logger.warning("Provider model fetch error (%s): %s", provider, e)
+        raise HTTPException(status_code=502, detail=f"Could not fetch models: {e}")
+    return []
+
+
+def _fetch_anthropic_models(api_key: str) -> list[dict]:
+    resp = httpx.get(
+        "https://api.anthropic.com/v1/models",
+        headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    data = resp.json().get("data", [])
+    return [
+        {
+            "id": m["id"],
+            "label": m.get("display_name") or m["id"],
+            "descriptor": _descriptor(m["id"]),
+        }
+        for m in data
+        if m.get("id", "").startswith("claude-")
+    ]
+
+
+def _fetch_openai_models(api_key: str) -> list[dict]:
+    resp = httpx.get(
+        "https://api.openai.com/v1/models",
+        headers={"Authorization": f"Bearer {api_key}"},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    data = resp.json().get("data", [])
+    filtered = [
+        m for m in data
+        if any(m["id"].startswith(p) for p in _OPENAI_CHAT_PREFIXES)
+    ]
+    # Sort newest first by created timestamp
+    filtered.sort(key=lambda m: m.get("created", 0), reverse=True)
+    return [
+        {
+            "id": m["id"],
+            "label": m["id"],   # OpenAI doesn't provide display names
+            "descriptor": _descriptor(m["id"]),
+        }
+        for m in filtered
+    ]
+
+
+def _fetch_google_models(api_key: str) -> list[dict]:
+    resp = httpx.get(
+        "https://generativelanguage.googleapis.com/v1beta/models",
+        params={"key": api_key},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    data = resp.json().get("models", [])
+    results = []
+    for m in data:
+        bare_name = m["name"].split("/")[-1]   # "models/gemini-1.5-flash" → "gemini-1.5-flash"
+        if not bare_name.startswith("gemini-"):
+            continue
+        if "generateContent" not in m.get("supportedGenerationMethods", []):
+            continue
+        litellm_id = f"gemini/{bare_name}"
+        results.append({
+            "id": litellm_id,
+            "label": m.get("displayName") or bare_name,
+            "descriptor": _descriptor(litellm_id),
+        })
+    return results
+
+
+def _fetch_groq_models(api_key: str) -> list[dict]:
+    resp = httpx.get(
+        "https://api.groq.com/openai/v1/models",
+        headers={"Authorization": f"Bearer {api_key}"},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    data = resp.json().get("data", [])
+    filtered = [m for m in data if not m["id"].startswith("whisper")]
+    filtered.sort(key=lambda m: m.get("created", 0), reverse=True)
+    return [
+        {
+            "id": f"groq/{m['id']}",
+            "label": m["id"],
+            "descriptor": _descriptor(f"groq/{m['id']}"),
+        }
+        for m in filtered
+    ]
+
+
+# ── Core helpers ──────────────────────────────────────────────────────────────
 
 def get_llm_provider(user_id: UUID, db: Session) -> tuple[str, str]:
     """
@@ -96,7 +249,19 @@ def llm_complete(
     except litellm.RateLimitError:
         raise HTTPException(status_code=429, detail="AI provider rate limit reached. Try again later.")
     except litellm.BadRequestError as e:
+        err = str(e).lower()
+        if "model" in err and any(w in err for w in ("not found", "deprecated", "invalid", "does not exist")):
+            raise HTTPException(
+                status_code=400,
+                detail="The selected model is no longer available. Go to Settings → API Keys and choose a different model.",
+            )
         raise HTTPException(status_code=400, detail=f"Bad request to AI provider: {e}")
     except Exception as e:
+        err = str(e).lower()
+        if "model" in err and any(w in err for w in ("not found", "deprecated", "invalid", "does not exist")):
+            raise HTTPException(
+                status_code=400,
+                detail="The selected model is no longer available. Go to Settings → API Keys and choose a different model.",
+            )
         logger.exception("LLM completion failed (model=%s)", model)
         raise HTTPException(status_code=502, detail=f"AI generation failed: {e}")

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookmarkIcon, Chrome, Eye, EyeOff, Loader2, Trash2 } from "lucide-react";
+import { AlertTriangle, BookmarkIcon, Chrome, Eye, EyeOff, Loader2, Trash2 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -133,29 +133,62 @@ const AI_PROVIDERS: { value: LLMProvider; label: string; description: string; pl
 
 const PREFERRED_PROVIDER_KEY = "jobradar-ai-provider";
 
-// Curated model list per provider — model string + human descriptor
-const MODEL_CATALOG: Record<string, { model: string; label: string; descriptor: string }[]> = {
-  anthropic: [
-    { model: "claude-haiku-4-5",  label: "Claude Haiku 4.5",  descriptor: "Fast · lowest cost" },
-    { model: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", descriptor: "Balanced · recommended" },
-    { model: "claude-opus-4-6",   label: "Claude Opus 4.6",   descriptor: "Most capable · highest cost" },
-  ],
-  openai: [
-    { model: "gpt-4o-mini", label: "GPT-4o Mini", descriptor: "Fast · lowest cost" },
-    { model: "gpt-4o",      label: "GPT-4o",      descriptor: "Balanced · recommended" },
-    { model: "o1-mini",     label: "o1 Mini",     descriptor: "Reasoning · higher cost" },
-  ],
-  google: [
-    { model: "gemini/gemini-1.5-flash", label: "Gemini 1.5 Flash", descriptor: "Fast · lowest cost" },
-    { model: "gemini/gemini-1.5-pro",   label: "Gemini 1.5 Pro",   descriptor: "Balanced · recommended" },
-    { model: "gemini/gemini-2.0-flash", label: "Gemini 2.0 Flash", descriptor: "Fast · latest generation" },
-  ],
-  groq: [
-    { model: "groq/llama-3.3-70b-versatile", label: "Llama 3.3 70B",    descriptor: "Balanced · free tier" },
-    { model: "groq/llama-3.1-8b-instant",    label: "Llama 3.1 8B",     descriptor: "Fastest · free tier" },
-    { model: "groq/mixtral-8x7b-32768",      label: "Mixtral 8x7B 32K", descriptor: "Long context · free tier" },
-  ],
-};
+interface ProviderModel { id: string; label: string; descriptor?: string | null; }
+
+function ModelSelector({ provider, existing, onSave }: {
+  provider: LLMProvider;
+  existing: APIKey;
+  onSave: (model: string) => Promise<void>;
+}) {
+  const { data: modelList, isLoading, isError } = useQuery<ProviderModel[]>({
+    queryKey: ["models", provider],
+    queryFn: () => keysApi.get(`/keys/${provider}/models`).then(r => r.data),
+    staleTime: 5 * 60 * 1000,   // 5 min — don't re-fetch on every expand
+    retry: 1,
+  });
+
+  const currentModel = existing.preferred_model ?? "";
+  const inList = modelList?.some(m => m.id === currentModel);
+  const stale = currentModel && modelList && !inList;
+
+  if (isLoading) return (
+    <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
+      <Loader2 className="h-3 w-3 animate-spin" /> Fetching available models…
+    </div>
+  );
+
+  if (isError) return (
+    <p className="text-xs text-destructive mt-2">Could not load model list. Check your API key.</p>
+  );
+
+  if (!modelList?.length) return null;
+
+  return (
+    <div className="space-y-1.5 mt-2">
+      <label className="text-xs font-medium text-muted-foreground">Model</label>
+      {stale && (
+        <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          <span>
+            <span className="font-mono">{currentModel}</span> is not in the current model list — it may have been retired. Please select a new model.
+          </span>
+        </div>
+      )}
+      <select
+        className="w-full rounded-md border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        value={inList ? currentModel : ""}
+        onChange={(e) => { if (e.target.value) onSave(e.target.value); }}
+      >
+        {!inList && <option value="">— choose a model —</option>}
+        {modelList.map(({ id, label, descriptor }) => (
+          <option key={id} value={id}>
+            {label}{descriptor ? ` — ${descriptor}` : ""}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
 
 function KeyInput({
   provider, placeholder, existing, onSave, onDelete,
@@ -317,27 +350,18 @@ function KeysTab() {
                   </div>
                 </div>
                 {isSelected && (
-                  <div onClick={(e) => e.stopPropagation()} className="space-y-3 mt-1">
+                  <div onClick={(e) => e.stopPropagation()}>
                     <KeyInput
                       provider={value} placeholder={placeholder} existing={existing}
                       onSave={(k) => saveKey(value, k)}
                       onDelete={() => deleteKey(value)}
                     />
-                    {existing && MODEL_CATALOG[value] && (
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-muted-foreground">Model</label>
-                        <select
-                          className="w-full rounded-md border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                          value={existing.preferred_model ?? MODEL_CATALOG[value][0].model}
-                          onChange={(e) => saveModel(value, e.target.value)}
-                        >
-                          {MODEL_CATALOG[value].map(({ model, label: mLabel, descriptor }) => (
-                            <option key={model} value={model}>
-                              {mLabel} — {descriptor}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                    {existing && (
+                      <ModelSelector
+                        provider={value}
+                        existing={existing}
+                        onSave={(m) => saveModel(value, m)}
+                      />
                     )}
                   </div>
                 )}
