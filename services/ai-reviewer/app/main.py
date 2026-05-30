@@ -62,20 +62,22 @@ def review_job(self, job_id: str, user_id: str):
         logger.warning("Could not fetch profile for user %s: %s", user_id, exc)
         profile = {}
 
-    # 4. Fetch user's Anthropic API key
+    # 4. Fetch user's best available LLM key
     try:
-        resp = httpx.get(f"{base}/keys/internal/{user_id}/anthropic", timeout=10)
+        resp = httpx.get(f"{base}/keys/internal/{user_id}/llm", timeout=10)
         if resp.status_code == 404:
-            logger.warning("No Anthropic key for user %s — skipping review", user_id)
+            logger.warning("No AI key configured for user %s — skipping review", user_id)
             return
         resp.raise_for_status()
-        api_key = resp.json()["api_key"]
+        key_data = resp.json()
+        api_key = key_data["api_key"]
+        model = key_data["model"]
     except Exception as exc:
         logger.exception("Failed to fetch API key for user %s", user_id)
         raise self.retry(exc=exc, countdown=30)
 
     # 5. Score the job
-    reviewer = JobReviewer(api_key=api_key)
+    reviewer = JobReviewer(api_key=api_key, model=model)
     result = reviewer.review(
         job_id=job_id,
         job_title=job["title"],

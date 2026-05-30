@@ -8,8 +8,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-import anthropic
+import litellm
 
+litellm.suppress_debug_info = True
 logger = logging.getLogger(__name__)
 
 # Load prompts once at import time — no disk I/O per request.
@@ -35,14 +36,14 @@ class ReviewResult:
 
 class JobReviewer:
     """
-    Scores a job against user-defined criteria using Claude.
+    Scores a job against user-defined criteria using any supported LLM provider.
     """
 
-    MODEL = "claude-haiku-4-5"
     MAX_TOKENS = 1024
 
-    def __init__(self, api_key: str):
-        self.client = anthropic.Anthropic(api_key=api_key)
+    def __init__(self, api_key: str, model: str = "claude-haiku-4-5"):
+        self.api_key = api_key
+        self.model = model
 
     def _build_user_message(
         self,
@@ -125,17 +126,20 @@ Salary range: {salary_line}
         system_prompt = f"{rubric.strip()}\n\n{OUTPUT_FORMAT.strip()}"
 
         try:
-            response = self.client.messages.create(
-                model=self.MODEL,
+            response = litellm.completion(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message},
+                ],
+                api_key=self.api_key,
                 max_tokens=self.MAX_TOKENS,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_message}],
             )
-        except anthropic.APIError as exc:
-            logger.error("Claude API error for job %s: %s", job_id, exc)
+        except Exception as exc:
+            logger.error("LLM API error for job %s (model=%s): %s", job_id, self.model, exc)
             return None
 
-        raw_text = response.content[0].text.strip()
+        raw_text = response.choices[0].message.content.strip()
 
         # Extract the JSON object robustly — handles markdown fences,
         # preamble text, or any other wrapper Claude might add.

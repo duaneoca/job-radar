@@ -1,6 +1,7 @@
 """
 On-demand AI generation — research summaries and application assistance.
-All calls use the user's own Anthropic API key (BYOK).
+All calls use the user's own API key (BYOK) via LiteLLM — supports
+Anthropic, OpenAI, Google, and Groq interchangeably.
 """
 
 import json
@@ -9,7 +10,6 @@ import uuid as uuid_lib
 from typing import List, Optional
 from uuid import UUID
 
-import anthropic
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
@@ -17,13 +17,11 @@ from sqlalchemy.orm import Session, joinedload
 from app import models
 from app.database import get_db
 from app.deps import get_current_user
-from app.security import decrypt_api_key
+from app.llm import get_llm_provider, llm_complete
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/jobs", tags=["generate"])
-
-MODEL = "claude-haiku-4-5"
 
 DEFAULT_RESEARCH_PROMPT = """Summarize this company based on the job posting:
 1. What they do and their market position
@@ -61,19 +59,6 @@ def _get_review(review_id: UUID, user: models.User, db: Session) -> models.UserJ
         raise HTTPException(status_code=404, detail="Job not found")
     return review
 
-
-def _get_api_key(user_id: UUID, db: Session) -> str:
-    key_obj = (
-        db.query(models.UserAPIKey)
-        .filter(
-            models.UserAPIKey.user_id == user_id,
-            models.UserAPIKey.provider == models.LLMProvider.ANTHROPIC,
-        )
-        .first()
-    )
-    if not key_obj:
-        raise HTTPException(status_code=400, detail="No Anthropic API key configured. Add one in Settings → API Keys.")
-    return decrypt_api_key(key_obj.encrypted_key)
 
 
 def _get_criteria(user_id: UUID, db: Session) -> models.Criteria | None:
@@ -131,28 +116,15 @@ def generate_research(
 
     criteria = _get_criteria(current_user.id, db)
     profile = _get_profile(current_user.id, db)
-    api_key = _get_api_key(current_user.id, db)
-
+    api_key, model = get_llm_provider(current_user.id, db)
     research_prompt = (criteria.research_prompt if criteria else None) or DEFAULT_RESEARCH_PROMPT
 
-    client = anthropic.Anthropic(api_key=api_key)
-    try:
-        msg = client.messages.create(
-            model=MODEL,
-            max_tokens=1024,
-            system="You are a career research assistant helping a job candidate research a company before applying. Be concise and practical.",
-            messages=[{
-                "role": "user",
-                "content": f"{_job_block(job)}{_resume_block(profile)}\n\n## Research Request\n{research_prompt}",
-            }],
-        )
-    except anthropic.AuthenticationError:
-        raise HTTPException(status_code=400, detail="Invalid Anthropic API key.")
-    except Exception as e:
-        logger.exception("Claude API error during research generation")
-        raise HTTPException(status_code=502, detail=f"AI generation failed: {e}")
-
-    summary = msg.content[0].text
+    summary = llm_complete(
+        system="You are a career research assistant helping a job candidate research a company before applying. Be concise and practical.",
+        messages=[{"role": "user", "content": f"{_job_block(job)}{_resume_block(profile)}\n\n## Research Request\n{research_prompt}"}],
+        api_key=api_key,
+        model=model,
+    )
 
     review.research_summary = summary
     db.commit()
@@ -173,7 +145,7 @@ def generate_application_answer(
 
     criteria = _get_criteria(current_user.id, db)
     profile = _get_profile(current_user.id, db)
-    api_key = _get_api_key(current_user.id, db)
+    api_key, model = get_llm_provider(current_user.id, db)
 
     templates = (criteria.application_templates if criteria else None) or DEFAULT_APPLICATION_TEMPLATES
     if template_idx < 0 or template_idx >= len(templates):
@@ -188,26 +160,12 @@ def generate_application_answer(
         f"Write in first person as the candidate. Be specific and draw from the resume.{voice_section}"
     )
 
-    client = anthropic.Anthropic(api_key=api_key)
-    try:
-        msg = client.messages.create(
-            model=MODEL,
-            max_tokens=1024,
-            system=system_prompt,
-            messages=[{
-                "role": "user",
-                "content": f"{_job_block(job)}{_resume_block(profile)}\n\n## Task: {template['label']}\n{template['prompt']}",
-            }],
-        )
-    except anthropic.AuthenticationError:
-        raise HTTPException(status_code=400, detail="Invalid Anthropic API key.")
-    except anthropic.RateLimitError:
-        raise HTTPException(status_code=429, detail="Anthropic rate limit reached. Check your plan or try again later.")
-    except Exception as e:
-        logger.exception("Claude API error during application generation")
-        raise HTTPException(status_code=502, detail=f"AI generation failed: {e}")
-
-    answer = msg.content[0].text
+    answer = llm_complete(
+        system=system_prompt,
+        messages=[{"role": "user", "content": f"{_job_block(job)}{_resume_block(profile)}\n\n## Task: {template['label']}\n{template['prompt']}"}],
+        api_key=api_key,
+        model=model,
+    )
 
     # Save answer back to the review
     answers = dict(review.application_answers or {})
@@ -244,7 +202,7 @@ def refine_application(
 
     criteria = _get_criteria(current_user.id, db)
     profile = _get_profile(current_user.id, db)
-    api_key = _get_api_key(current_user.id, db)
+    api_key, model = get_llm_provider(current_user.id, db)
 
     templates = (criteria.application_templates if criteria else None) or DEFAULT_APPLICATION_TEMPLATES
     if body.template_idx < 0 or body.template_idx >= len(templates):
@@ -254,7 +212,6 @@ def refine_application(
     voice = (criteria.voice_guidelines if criteria else None) or ""
     voice_section = f"\n\nVoice and style guidelines — follow these carefully:\n{voice}" if voice else ""
 
-    # Build the current-draft section so the model always knows what exists
     if body.current_answer:
         draft_section = f"\n\n## Current draft (what you already wrote)\n{body.current_answer}"
     else:
@@ -273,22 +230,7 @@ def refine_application(
     )
 
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
-
-    client = anthropic.Anthropic(api_key=api_key)
-    try:
-        msg = client.messages.create(
-            model=MODEL,
-            max_tokens=1024,
-            system=system_prompt,
-            messages=messages,
-        )
-    except anthropic.AuthenticationError:
-        raise HTTPException(status_code=400, detail="Invalid Anthropic API key.")
-    except Exception as e:
-        logger.exception("Claude API error during refinement")
-        raise HTTPException(status_code=502, detail=f"AI generation failed: {e}")
-
-    return {"response": msg.content[0].text}
+    return {"response": llm_complete(system=system_prompt, messages=messages, api_key=api_key, model=model)}
 
 
 # ── Prompt-extraction (merge conversation learnings into existing prompts) ────
@@ -317,7 +259,7 @@ def extract_prompt_changes(
 
     _get_review(review_id, current_user, db)  # validates ownership
     criteria = _get_criteria(current_user.id, db)
-    api_key = _get_api_key(current_user.id, db)
+    api_key, model = get_llm_provider(current_user.id, db)
 
     conversation_text = "\n".join(
         f"{'User' if m.role == 'user' else 'AI'}: {m.content}"
@@ -368,21 +310,12 @@ def extract_prompt_changes(
             "Produce the merged application prompt."
         )
 
-    client = anthropic.Anthropic(api_key=api_key)
-    try:
-        msg = client.messages.create(
-            model=MODEL,
-            max_tokens=1024,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_content}],
-        )
-    except anthropic.AuthenticationError:
-        raise HTTPException(status_code=400, detail="Invalid Anthropic API key.")
-    except Exception as e:
-        logger.exception("Claude API error during prompt extraction")
-        raise HTTPException(status_code=502, detail=f"AI extraction failed: {e}")
-
-    return {"proposed": msg.content[0].text}
+    return {"proposed": llm_complete(
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_content}],
+        api_key=api_key,
+        model=model,
+    )}
 
 
 # ── Interview prep ────────────────────────────────────────────────────────────
@@ -416,8 +349,7 @@ def generate_interview_prep(
 
     criteria = _get_criteria(current_user.id, db)
     profile = _get_profile(current_user.id, db)
-    api_key = _get_api_key(current_user.id, db)
-
+    api_key, model = get_llm_provider(current_user.id, db)
     prep_prompt = (criteria.interview_prep_prompt if criteria else None) or DEFAULT_INTERVIEW_PREP_PROMPT
 
     # Build career stories block
@@ -434,21 +366,13 @@ def generate_interview_prep(
 
     user_content = f"{_job_block(job)}{_resume_block(profile)}{stories_block}\n\n{prep_prompt}"
 
-    client = anthropic.Anthropic(api_key=api_key)
-    try:
-        msg = client.messages.create(
-            model=MODEL,
-            max_tokens=4096,
-            system="You are an expert interview coach and hiring manager. Always respond with valid JSON only.",
-            messages=[{"role": "user", "content": user_content}],
-        )
-    except anthropic.AuthenticationError:
-        raise HTTPException(status_code=400, detail="Invalid Anthropic API key.")
-    except Exception as e:
-        logger.exception("Claude API error during interview prep generation")
-        raise HTTPException(status_code=502, detail=f"AI generation failed: {e}")
-
-    raw = msg.content[0].text.strip()
+    raw = llm_complete(
+        system="You are an expert interview coach and hiring manager. Always respond with valid JSON only.",
+        messages=[{"role": "user", "content": user_content}],
+        api_key=api_key,
+        model=model,
+        max_tokens=4096,
+    ).strip()
 
     # Strip markdown code fences if present
     if raw.startswith("```"):

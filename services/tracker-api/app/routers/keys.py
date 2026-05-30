@@ -118,3 +118,29 @@ def get_key_for_service(
     if not key_obj:
         raise HTTPException(status_code=404, detail="No key configured")
     return {"api_key": decrypt_api_key(key_obj.encrypted_key)}
+
+
+@router.get("/internal/{user_id}/llm", include_in_schema=False)
+def get_best_llm_key(user_id: str, db: Session = Depends(get_db)):
+    """
+    Returns the decrypted API key and LiteLLM model string for the user's
+    best available provider (Anthropic → OpenAI → Google → Groq).
+    Called by the ai-reviewer service.
+    """
+    from app.llm import PROVIDER_MODELS
+    for provider, model in PROVIDER_MODELS.items():
+        key_obj = (
+            db.query(models.UserAPIKey)
+            .filter(
+                models.UserAPIKey.user_id == user_id,
+                models.UserAPIKey.provider == provider,
+            )
+            .first()
+        )
+        if key_obj:
+            return {
+                "api_key": decrypt_api_key(key_obj.encrypted_key),
+                "model": model,
+                "provider": provider.value,
+            }
+    raise HTTPException(status_code=404, detail="No AI key configured")
