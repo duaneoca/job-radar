@@ -31,7 +31,10 @@ def list_keys(
         except Exception:
             hint = "…?????"
         result.append(schemas.APIKeyOut(
-            provider=k.provider, key_hint=hint, updated_at=k.updated_at
+            provider=k.provider,
+            key_hint=hint,
+            preferred_model=k.preferred_model,
+            updated_at=k.updated_at,
         ))
     return result
 
@@ -57,6 +60,7 @@ def upsert_key(
     )
     if existing:
         existing.encrypted_key = encrypted
+        existing.preferred_model = payload.preferred_model or None
         db.commit()
         db.refresh(existing)
         key_obj = existing
@@ -65,6 +69,7 @@ def upsert_key(
             user_id=current_user.id,
             provider=payload.provider,
             encrypted_key=encrypted,
+            preferred_model=payload.preferred_model or None,
         )
         db.add(key_obj)
         db.commit()
@@ -72,7 +77,46 @@ def upsert_key(
 
     plain = payload.api_key.strip()
     hint = f"…{plain[-4:]}" if len(plain) >= 4 else "…"
-    return schemas.APIKeyOut(provider=key_obj.provider, key_hint=hint, updated_at=key_obj.updated_at)
+    return schemas.APIKeyOut(
+        provider=key_obj.provider,
+        key_hint=hint,
+        preferred_model=key_obj.preferred_model,
+        updated_at=key_obj.updated_at,
+    )
+
+
+@router.patch("/{provider}", response_model=schemas.APIKeyOut)
+def update_key_model(
+    provider: models.LLMProvider,
+    payload: schemas.APIKeyModelUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Update just the preferred model for an existing key — no key re-entry needed."""
+    existing = (
+        db.query(models.UserAPIKey)
+        .filter(
+            models.UserAPIKey.user_id == current_user.id,
+            models.UserAPIKey.provider == provider,
+        )
+        .first()
+    )
+    if not existing:
+        raise HTTPException(status_code=404, detail="Key not found")
+    existing.preferred_model = payload.preferred_model or None
+    db.commit()
+    db.refresh(existing)
+    try:
+        plain = decrypt_api_key(existing.encrypted_key)
+        hint = f"…{plain[-4:]}" if len(plain) >= 4 else "…"
+    except Exception:
+        hint = "…?????"
+    return schemas.APIKeyOut(
+        provider=existing.provider,
+        key_hint=hint,
+        preferred_model=existing.preferred_model,
+        updated_at=existing.updated_at,
+    )
 
 
 @router.delete("/{provider}", status_code=status.HTTP_204_NO_CONTENT)
@@ -140,7 +184,7 @@ def get_best_llm_key(user_id: str, db: Session = Depends(get_db)):
         if key_obj:
             return {
                 "api_key": decrypt_api_key(key_obj.encrypted_key),
-                "model": model,
+                "model": key_obj.preferred_model or model,
                 "provider": provider.value,
             }
     raise HTTPException(status_code=404, detail="No AI key configured")

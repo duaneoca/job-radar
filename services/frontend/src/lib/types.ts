@@ -140,6 +140,7 @@ export interface Profile {
 export interface APIKey {
   provider: LLMProvider;
   key_hint: string;
+  preferred_model?: string;
   updated_at: string;
 }
 

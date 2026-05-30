@@ -254,9 +254,10 @@ class UserAPIKey(Base):
     id            = Column(Uuid(), primary_key=True, default=uuid.uuid4)
     user_id       = Column(Uuid(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     provider      = Column(Enum(LLMProvider), nullable=False)
-    encrypted_key = Column(Text, nullable=False)   # Fernet-encrypted, never plaintext
-    created_at    = Column(DateTime(timezone=True), default=utcnow)
-    updated_at    = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    encrypted_key   = Column(Text, nullable=False)   # Fernet-encrypted, never plaintext
+    preferred_model = Column(String(100), nullable=True)  # LiteLLM model string, e.g. "gpt-4o"
+    created_at      = Column(DateTime(timezone=True), default=utcnow)
+    updated_at      = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     user = relationship("User", back_populates="api_keys")
 

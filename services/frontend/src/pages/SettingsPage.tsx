@@ -133,6 +133,30 @@ const AI_PROVIDERS: { value: LLMProvider; label: string; description: string; pl
 
 const PREFERRED_PROVIDER_KEY = "jobradar-ai-provider";
 
+// Curated model list per provider — model string + human descriptor
+const MODEL_CATALOG: Record<string, { model: string; label: string; descriptor: string }[]> = {
+  anthropic: [
+    { model: "claude-haiku-4-5",  label: "Claude Haiku 4.5",  descriptor: "Fast · lowest cost" },
+    { model: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", descriptor: "Balanced · recommended" },
+    { model: "claude-opus-4-6",   label: "Claude Opus 4.6",   descriptor: "Most capable · highest cost" },
+  ],
+  openai: [
+    { model: "gpt-4o-mini", label: "GPT-4o Mini", descriptor: "Fast · lowest cost" },
+    { model: "gpt-4o",      label: "GPT-4o",      descriptor: "Balanced · recommended" },
+    { model: "o1-mini",     label: "o1 Mini",     descriptor: "Reasoning · higher cost" },
+  ],
+  google: [
+    { model: "gemini/gemini-1.5-flash", label: "Gemini 1.5 Flash", descriptor: "Fast · lowest cost" },
+    { model: "gemini/gemini-1.5-pro",   label: "Gemini 1.5 Pro",   descriptor: "Balanced · recommended" },
+    { model: "gemini/gemini-2.0-flash", label: "Gemini 2.0 Flash", descriptor: "Fast · latest generation" },
+  ],
+  groq: [
+    { model: "groq/llama-3.3-70b-versatile", label: "Llama 3.3 70B",    descriptor: "Balanced · free tier" },
+    { model: "groq/llama-3.1-8b-instant",    label: "Llama 3.1 8B",     descriptor: "Fastest · free tier" },
+    { model: "groq/mixtral-8x7b-32768",      label: "Mixtral 8x7B 32K", descriptor: "Long context · free tier" },
+  ],
+};
+
 function KeyInput({
   provider, placeholder, existing, onSave, onDelete,
 }: {
@@ -211,14 +235,24 @@ function KeysTab() {
 
   const keyMap: Record<string, APIKey> = Object.fromEntries(keys.map((k) => [k.provider, k]));
 
-  async function saveKey(provider: LLMProvider, key: string) {
+  async function saveKey(provider: LLMProvider, key: string, preferred_model?: string) {
     try {
-      await keysApi.put("/keys", { provider, api_key: key });
+      await keysApi.put("/keys", { provider, api_key: key, preferred_model });
       qc.invalidateQueries({ queryKey: ["keys"] });
       toast({ title: "Key saved" });
     } catch (err: any) {
       toast({ title: "Failed to save key", description: err?.response?.data?.detail, variant: "destructive" });
       throw err;
+    }
+  }
+
+  async function saveModel(provider: LLMProvider, preferred_model: string) {
+    try {
+      await keysApi.patch(`/keys/${provider}`, { preferred_model });
+      qc.invalidateQueries({ queryKey: ["keys"] });
+      toast({ title: "Model preference saved" });
+    } catch (err: any) {
+      toast({ title: "Failed to save model", description: err?.response?.data?.detail, variant: "destructive" });
     }
   }
 
@@ -283,12 +317,28 @@ function KeysTab() {
                   </div>
                 </div>
                 {isSelected && (
-                  <div onClick={(e) => e.stopPropagation()}>
+                  <div onClick={(e) => e.stopPropagation()} className="space-y-3 mt-1">
                     <KeyInput
                       provider={value} placeholder={placeholder} existing={existing}
                       onSave={(k) => saveKey(value, k)}
                       onDelete={() => deleteKey(value)}
                     />
+                    {existing && MODEL_CATALOG[value] && (
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-muted-foreground">Model</label>
+                        <select
+                          className="w-full rounded-md border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                          value={existing.preferred_model ?? MODEL_CATALOG[value][0].model}
+                          onChange={(e) => saveModel(value, e.target.value)}
+                        >
+                          {MODEL_CATALOG[value].map(({ model, label: mLabel, descriptor }) => (
+                            <option key={model} value={model}>
+                              {mLabel} — {descriptor}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

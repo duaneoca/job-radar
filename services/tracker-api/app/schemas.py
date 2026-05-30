@@ -311,12 +311,18 @@ class ProfileOut(ProfileBase):
 
 class APIKeyUpsert(BaseModel):
     provider: LLMProvider
-    api_key: str   # plaintext — encrypted before storage
+    api_key: str                         # plaintext — encrypted before storage
+    preferred_model: Optional[str] = None  # LiteLLM model string
+
+
+class APIKeyModelUpdate(BaseModel):
+    preferred_model: Optional[str] = None
 
 
 class APIKeyOut(BaseModel):
     provider: LLMProvider
-    key_hint: str   # last 4 chars only, e.g. "…xYZ9"
+    key_hint: str                        # last 4 chars only, e.g. "…xYZ9"
+    preferred_model: Optional[str] = None
     updated_at: datetime
 
     class Config:

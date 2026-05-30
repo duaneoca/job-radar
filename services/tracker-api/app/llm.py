@@ -47,7 +47,7 @@ def get_llm_provider(user_id: UUID, db: Session) -> tuple[str, str]:
             .first()
         )
         if key_obj:
-            return decrypt_api_key(key_obj.encrypted_key), model
+            return decrypt_api_key(key_obj.encrypted_key), key_obj.preferred_model or model
 
     raise HTTPException(
         status_code=400,
