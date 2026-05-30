@@ -2,16 +2,10 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: jobradar-ingress
-  namespace: jobradar-production
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
-    cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
   ingressClassName: traefik
-  tls:
-    - hosts:
-        - jobradar.duanesworld.org
-      secretName: jobradar-tls
   rules:
     - host: jobradar.duanesworld.org
       http:

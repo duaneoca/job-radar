@@ -10,6 +10,9 @@ resources:
 patches:
   # Override ingress with staging hostname
   - path: ingress-patch.yaml
+    target:
+      kind: Ingress
+      name: jobradar-ingress
   # In staging, run only 1 replica to save resources
   - patch: |-
       - op: replace

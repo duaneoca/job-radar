@@ -10,6 +10,9 @@ resources:
 patches:
   # Override ingress with hostname + TLS for production
   - path: ingress-patch.yaml
+    target:
+      kind: Ingress
+      name: jobradar-ingress
 
 # Production runs 2 replicas of the API
 # Scale up here when traffic warrants it

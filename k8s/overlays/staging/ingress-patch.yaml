@@ -2,7 +2,6 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: jobradar-ingress
-  namespace: jobradar-staging
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
 spec:
