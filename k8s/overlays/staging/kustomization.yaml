@@ -8,6 +8,8 @@ resources:
   - ../../base
 
 patches:
+  # Override ingress with staging hostname
+  - path: ingress-patch.yaml
   # In staging, run only 1 replica to save resources
   - patch: |-
       - op: replace
