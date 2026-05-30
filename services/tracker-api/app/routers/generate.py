@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session, joinedload
 from app import models
 from app.database import get_db
 from app.deps import get_current_user
-from app.llm import get_llm_provider, llm_complete
+from app.llm import get_llm_provider, get_tavily_key, llm_complete
 
 logger = logging.getLogger(__name__)
 
@@ -119,9 +119,28 @@ def generate_research(
     api_key, model = get_llm_provider(current_user.id, db)
     research_prompt = (criteria.research_prompt if criteria else None) or DEFAULT_RESEARCH_PROMPT
 
+    # Tavily web search — enrich context with live company data if key is set
+    web_context = ""
+    tavily_key = get_tavily_key(current_user.id, db)
+    if tavily_key:
+        try:
+            from tavily import TavilyClient
+            tv = TavilyClient(api_key=tavily_key)
+            results = tv.search(
+                query=f"{job.company} company overview culture",
+                max_results=3,
+                search_depth="basic",
+            )
+            snippets = [r["content"] for r in results.get("results", []) if r.get("content")]
+            if snippets:
+                web_context = "\n\n## Live Web Search Results for " + job.company + "\n" + "\n\n---\n".join(snippets)
+                logger.info("Tavily enriched research for %s (%d results)", job.company, len(snippets))
+        except Exception as exc:
+            logger.warning("Tavily search failed for %s: %s", job.company, exc)
+
     summary = llm_complete(
         system="You are a career research assistant helping a job candidate research a company before applying. Be concise and practical.",
-        messages=[{"role": "user", "content": f"{_job_block(job)}{_resume_block(profile)}\n\n## Research Request\n{research_prompt}"}],
+        messages=[{"role": "user", "content": f"{_job_block(job)}{web_context}{_resume_block(profile)}\n\n## Research Request\n{research_prompt}"}],
         api_key=api_key,
         model=model,
     )

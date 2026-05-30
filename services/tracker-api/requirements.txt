@@ -26,6 +26,9 @@ boto3==1.35.76
 # Multi-provider LLM routing
 litellm==1.57.3
 
+# Web search for company research
+tavily-python==0.5.0
+
 # Task queue (for fan-out to ai-reviewer)
 celery==5.4.0
 redis==5.2.0

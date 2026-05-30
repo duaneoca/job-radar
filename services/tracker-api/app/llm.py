@@ -58,6 +58,19 @@ def get_llm_provider(user_id: UUID, db: Session) -> tuple[str, str]:
     )
 
 
+def get_tavily_key(user_id: UUID, db: Session) -> str | None:
+    """Return the user's Tavily API key, or None if not configured."""
+    key_obj = (
+        db.query(models.UserAPIKey)
+        .filter(
+            models.UserAPIKey.user_id == user_id,
+            models.UserAPIKey.provider == models.LLMProvider.TAVILY,
+        )
+        .first()
+    )
+    return decrypt_api_key(key_obj.encrypted_key) if key_obj else None
+
+
 def llm_complete(
     system: str,
     messages: list[dict],
