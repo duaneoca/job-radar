@@ -152,6 +152,7 @@ export interface LinkedInConnection {
   company: string | null;
   position: string | null;
   connected_on: string | null;
+  created_at: string;
 }
 
 export interface AdminUser extends User {}

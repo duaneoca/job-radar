@@ -641,23 +641,34 @@ function ConnectionsTab() {
         <p className="text-sm text-muted-foreground">Uploading a new file replaces your previously imported contacts.</p>
       </div>
 
+      {connections.length > 0 && (
+        <div className="rounded-lg border bg-muted/30 px-4 py-3 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium">{connections.length} contacts</p>
+            <p className="text-xs text-muted-foreground">
+              Last uploaded {new Date(connections[0].created_at).toLocaleDateString(undefined, {
+                year: "numeric", month: "short", day: "numeric",
+              })}
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={clearAll} className="text-destructive hover:bg-destructive/10">
+            <Trash2 className="h-4 w-4 mr-1" />
+            Clear all
+          </Button>
+        </div>
+      )}
+
       <div className="flex gap-2">
         <Button onClick={() => fileRef.current?.click()} disabled={uploading}>
           {uploading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Upload className="h-4 w-4 mr-1" />}
           {connections.length > 0 ? "Replace contacts" : "Upload CSV"}
         </Button>
-        {connections.length > 0 && (
-          <Button variant="outline" size="sm" onClick={clearAll} className="text-destructive hover:bg-destructive/10">
-            <Trash2 className="h-4 w-4 mr-1" />
-            Clear all
-          </Button>
-        )}
         <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleUpload} />
       </div>
 
       {connections.length > 0 && (
         <div>
-          <p className="text-sm text-muted-foreground mb-2">{connections.length} contacts loaded</p>
+          <p className="text-sm text-muted-foreground mb-2">Showing first 20</p>
           <div className="rounded-lg border overflow-hidden">
             <table className="w-full text-xs">
               <thead>

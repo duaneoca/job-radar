@@ -339,6 +339,7 @@ class LinkedInConnectionOut(BaseModel):
     company: Optional[str]
     position: Optional[str]
     connected_on: Optional[str]
+    created_at: datetime
 
     class Config:
         from_attributes = True
