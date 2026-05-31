@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink, useNavigate, Link } from "react-router-dom";
-import { Menu, Briefcase, Radar, Settings, Users, LogOut, X, Sun, Moon, Monitor, User, CircleHelp } from "lucide-react";
+import { Menu, Briefcase, Radar, Settings, Settings2, Users, LogOut, X, Sun, Moon, Monitor, User, CircleHelp } from "lucide-react";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 import { useDarkMode, type ThemeMode } from "../../hooks/useDarkMode";
@@ -125,7 +125,7 @@ export function Layout({ children }: LayoutProps) {
             <>
               <Separator className="my-2" />
               <p className="px-3 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Admin
+                System
               </p>
               <NavLink
                 to="/admin"
@@ -138,8 +138,8 @@ export function Layout({ children }: LayoutProps) {
                   }`
                 }
               >
-                <Users className="h-4 w-4 shrink-0" />
-                User Management
+                <Settings2 className="h-4 w-4 shrink-0" />
+                Administration
               </NavLink>
             </>
           )}
