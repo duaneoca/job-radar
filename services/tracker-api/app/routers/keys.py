@@ -165,29 +165,8 @@ def delete_key(
 
 
 # ── Internal — used by ai-reviewer service ────────────────────
-
-@router.get("/internal/{user_id}/{provider}", include_in_schema=False)
-def get_key_for_service(
-    user_id: str,
-    provider: models.LLMProvider,
-    db: Session = Depends(get_db),
-):
-    """
-    Returns the decrypted API key for a given user+provider.
-    Called by the ai-reviewer service — not exposed in public API docs.
-    """
-    key_obj = (
-        db.query(models.UserAPIKey)
-        .filter(
-            models.UserAPIKey.user_id == user_id,
-            models.UserAPIKey.provider == provider,
-        )
-        .first()
-    )
-    if not key_obj:
-        raise HTTPException(status_code=404, detail="No key configured")
-    return {"api_key": decrypt_api_key(key_obj.encrypted_key)}
-
+# IMPORTANT: /internal/{user_id}/llm must be defined BEFORE /internal/{user_id}/{provider}
+# so FastAPI matches the literal "llm" segment before the dynamic enum parameter.
 
 @router.get("/internal/{user_id}/llm", include_in_schema=False)
 def get_best_llm_key(user_id: str, db: Session = Depends(get_db)):
@@ -213,3 +192,26 @@ def get_best_llm_key(user_id: str, db: Session = Depends(get_db)):
                 "provider": provider.value,
             }
     raise HTTPException(status_code=404, detail="No AI key configured")
+
+
+@router.get("/internal/{user_id}/{provider}", include_in_schema=False)
+def get_key_for_service(
+    user_id: str,
+    provider: models.LLMProvider,
+    db: Session = Depends(get_db),
+):
+    """
+    Returns the decrypted API key for a given user+provider.
+    Called by the ai-reviewer service — not exposed in public API docs.
+    """
+    key_obj = (
+        db.query(models.UserAPIKey)
+        .filter(
+            models.UserAPIKey.user_id == user_id,
+            models.UserAPIKey.provider == provider,
+        )
+        .first()
+    )
+    if not key_obj:
+        raise HTTPException(status_code=404, detail="No key configured")
+    return {"api_key": decrypt_api_key(key_obj.encrypted_key)}
