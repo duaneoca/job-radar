@@ -52,6 +52,16 @@ async def import_connections(
     except UnicodeDecodeError:
         text = content.decode("latin-1")
 
+    # LinkedIn exports start with a "Notes: …" preamble line before the real header.
+    # Skip lines until we find one containing recognisable column names.
+    lines = text.splitlines()
+    header_idx = 0
+    for i, line in enumerate(lines):
+        if "First Name" in line or "first_name" in line or "FirstName" in line:
+            header_idx = i
+            break
+    text = "\n".join(lines[header_idx:])
+
     reader = csv.DictReader(io.StringIO(text))
 
     if replace:

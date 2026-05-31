@@ -641,22 +641,26 @@ function ConnectionsTab() {
         <p className="text-sm text-muted-foreground">Uploading a new file replaces your previously imported contacts.</p>
       </div>
 
-      {connections.length > 0 && (
-        <div className="rounded-lg border bg-muted/30 px-4 py-3 flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium">{connections.length} contacts</p>
+      <div className="rounded-lg border bg-muted/30 px-4 py-3 flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium">
+            {connections.length > 0 ? `${connections.length} contacts` : "No contacts imported yet"}
+          </p>
+          {connections.length > 0 && (
             <p className="text-xs text-muted-foreground">
               Last uploaded {new Date(connections[0].created_at).toLocaleDateString(undefined, {
                 year: "numeric", month: "short", day: "numeric",
               })}
             </p>
-          </div>
+          )}
+        </div>
+        {connections.length > 0 && (
           <Button variant="outline" size="sm" onClick={clearAll} className="text-destructive hover:bg-destructive/10">
             <Trash2 className="h-4 w-4 mr-1" />
             Clear all
           </Button>
-        </div>
-      )}
+        )}
+      </div>
 
       <div className="flex gap-2">
         <Button onClick={() => fileRef.current?.click()} disabled={uploading}>
