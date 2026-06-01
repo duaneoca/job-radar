@@ -2,6 +2,8 @@
 Admin router — user management, pending approvals, manual triggers.
 """
 
+import logging
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 from uuid import UUID
 
@@ -20,6 +22,54 @@ from app.security import hash_password
 _celery = Celery(broker=settings.redis_url)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+logger = logging.getLogger(__name__)
+
+# Statuses that are candidates for cleanup after terminal_ttl_days
+_TERMINAL_STATUSES = [
+    models.JobStatus.DISMISSED,
+    models.JobStatus.REJECTED,
+    models.JobStatus.EXPIRED,
+]
+
+
+def _do_cleanup(db: Session) -> dict:
+    """
+    1. Hard-delete UserJobReview rows whose status is terminal (dismissed /
+       rejected / expired) and whose updated_at is older than terminal_ttl_days.
+       The DB-level CASCADE on timeline_events.review_id removes timeline rows
+       automatically.
+    2. Hard-delete Job rows that now have no reviews from any user (true orphans).
+
+    Returns a dict with deletion counts.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=settings.terminal_ttl_days)
+
+    reviews_deleted = (
+        db.query(models.UserJobReview)
+        .filter(
+            models.UserJobReview.status.in_(_TERMINAL_STATUSES),
+            models.UserJobReview.updated_at < cutoff,
+        )
+        .delete(synchronize_session=False)
+    )
+
+    # Any job whose last review was just deleted is now an orphan — remove it.
+    # The subquery runs after the review deletions (same transaction, Postgres
+    # READ COMMITTED sees our own changes), so only truly orphaned jobs match.
+    reviewed_job_ids = db.query(models.UserJobReview.job_id)
+    jobs_deleted = (
+        db.query(models.Job)
+        .filter(models.Job.id.not_in(reviewed_job_ids))
+        .delete(synchronize_session=False)
+    )
+
+    db.commit()
+    logger.info(
+        "cleanup_jobs: %d terminal reviews deleted, %d orphan jobs deleted",
+        reviews_deleted, jobs_deleted,
+    )
+    return {"reviews_deleted": reviews_deleted, "orphan_jobs_deleted": jobs_deleted}
 
 
 @router.get("/users", response_model=schemas.PaginatedUsers)
@@ -129,6 +179,25 @@ def trigger_scrape(
     """Enqueue an immediate scrape run (normally runs every 2 hours via Celery Beat)."""
     _celery.send_task("app.tasks.scrape_all")
     return {"detail": "Scrape enqueued"}
+
+
+@router.post("/cleanup-jobs")
+def cleanup_jobs_endpoint(
+    db: Session = Depends(get_db),
+    _: models.User = Depends(get_current_admin),
+):
+    """
+    Hard-delete terminal-status reviews (dismissed/rejected/expired) older than
+    terminal_ttl_days, then remove any jobs that become orphaned.
+    Also available as POST /admin/internal/cleanup for the scheduled task.
+    """
+    return _do_cleanup(db)
+
+
+@router.post("/internal/cleanup", include_in_schema=False)
+def cleanup_jobs_internal(db: Session = Depends(get_db)):
+    """Called by the scraper's daily Celery Beat task — no user auth required."""
+    return _do_cleanup(db)
 
 
 @router.post("/trigger-evaluate", status_code=status.HTTP_202_ACCEPTED)

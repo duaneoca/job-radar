@@ -39,6 +39,10 @@ app.conf.beat_schedule = {
         "task": "app.tasks.scrape_all",
         "schedule": crontab(minute=0, hour="*/2"),  # every 2 hours
     },
+    "cleanup-old-jobs": {
+        "task": "app.tasks.cleanup_jobs",
+        "schedule": crontab(minute=0, hour=3),  # 3 AM UTC daily
+    },
 }
 
 app.conf.timezone = "UTC"
@@ -54,6 +58,27 @@ SCRAPERS: list[BaseScraper] = [
 
 
 # ── Tasks ─────────────────────────────────────────────────────
+
+@app.task(name="app.tasks.cleanup_jobs")
+def cleanup_jobs():
+    """
+    Daily maintenance: delete terminal-status reviews (dismissed/rejected/expired)
+    older than terminal_ttl_days and remove any now-orphaned job records.
+    Delegates to tracker-api which owns the DB.
+    """
+    url = f"{settings.tracker_api_url}/admin/internal/cleanup"
+    try:
+        resp = httpx.post(url, timeout=30)
+        resp.raise_for_status()
+        result = resp.json()
+        logger.info(
+            "cleanup_jobs complete — %d reviews deleted, %d orphan jobs deleted",
+            result.get("reviews_deleted", 0),
+            result.get("orphan_jobs_deleted", 0),
+        )
+    except Exception:
+        logger.exception("cleanup_jobs task failed")
+
 
 @app.task(name="app.tasks.scrape_all")
 def scrape_all():

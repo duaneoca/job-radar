@@ -238,6 +238,7 @@ function UserTable({ approved }: { approved: boolean }) {
 function SystemTab() {
   const [scraping, setScraping] = useState(false);
   const [evaluating, setEvaluating] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
 
   async function triggerScrape() {
     setScraping(true);
@@ -260,6 +261,23 @@ function SystemTab() {
       toast({ title: "Failed to trigger evaluation", description: err?.response?.data?.detail, variant: "destructive" });
     } finally {
       setEvaluating(false);
+    }
+  }
+
+  async function triggerCleanup() {
+    if (!confirm("Delete all dismissed, rejected, and expired jobs older than 14 days? This cannot be undone.")) return;
+    setCleaning(true);
+    try {
+      const res = await adminApi.post("/admin/cleanup-jobs");
+      const { reviews_deleted, orphan_jobs_deleted } = res.data;
+      toast({
+        title: "Cleanup complete",
+        description: `${reviews_deleted} old review${reviews_deleted !== 1 ? "s" : ""} removed, ${orphan_jobs_deleted} orphan job${orphan_jobs_deleted !== 1 ? "s" : ""} deleted.`,
+      });
+    } catch (err: any) {
+      toast({ title: "Cleanup failed", description: err?.response?.data?.detail, variant: "destructive" });
+    } finally {
+      setCleaning(false);
     }
   }
 
@@ -288,6 +306,21 @@ function SystemTab() {
         <Button onClick={triggerEvaluate} disabled={evaluating} variant="outline">
           {evaluating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Brain className="h-4 w-4 mr-2" />}
           Evaluate unscored jobs
+        </Button>
+      </div>
+
+      <div className="rounded-lg border p-4 space-y-3">
+        <div>
+          <h3 className="font-medium">Clean up old jobs</h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            Permanently delete dismissed, rejected, and expired jobs older than 14 days.
+            Active pipeline jobs (applied, interviewing, offer) are never touched.
+            Runs automatically every night at 3 AM UTC.
+          </p>
+        </div>
+        <Button onClick={triggerCleanup} disabled={cleaning} variant="outline" className="text-destructive hover:text-destructive hover:bg-destructive/10">
+          {cleaning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+          Clean up old jobs
         </Button>
       </div>
     </div>

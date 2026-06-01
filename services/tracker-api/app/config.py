@@ -18,6 +18,9 @@ class Settings(BaseSettings):
 
     # Job pool — unactioned jobs older than this many days are soft-expired.
     job_ttl_days: int = 30
+    # Terminal-status reviews (dismissed / rejected / expired) older than this
+    # many days are hard-deleted along with any jobs that become orphaned.
+    terminal_ttl_days: int = 14
 
     # AWS SES — email notifications (all optional; notifications silently skipped if unset)
     aws_access_key_id: str = ""
