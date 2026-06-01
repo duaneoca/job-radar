@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
     ses_region: str = "us-east-1"
-    ses_from_email: str = ""       # must be verified in SES, e.g. "jobradar@duanesworld.org"
+    ses_from_email: str = ""       # must be verified in SES, e.g. "noreply@job-radar.net"
     admin_notify_email: str = ""   # where new-account alerts go, e.g. "duaneo@duanesworld.org"
 
     class Config:

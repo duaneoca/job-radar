@@ -47,7 +47,7 @@ def notify_new_account(email: str, full_name: str | None = None) -> None:
         f"Email: {email}\n"
         f"{name_line}\n\n"
         f"Approve or reject at:\n"
-        f"https://jobradar.duanesworld.org/admin\n"
+        f"https://job-radar.net/admin\n"
     )
     try:
         client.send_email(
@@ -74,7 +74,7 @@ def notify_account_approved(email: str, full_name: str | None = None) -> None:
     body = (
         f"Hi {name},\n\n"
         f"Your Job Radar account has been approved. You can now log in at:\n"
-        f"https://jobradar.duanesworld.org\n\n"
+        f"https://job-radar.net\n\n"
         f"— Job Radar\n"
     )
     try:
