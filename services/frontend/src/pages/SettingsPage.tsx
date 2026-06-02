@@ -421,8 +421,8 @@ var salText='';
 var liInsights=document.querySelectorAll('[class*="job-insight"],[class*="salary"],[class*="compensation"]');
 for(var si=0;si<liInsights.length;si++){var st=(liInsights[si].textContent||'').replace(/\\s+/g,' ').trim();if(st.indexOf('$')>-1&&st.length<300){salText=st;break;}}
 if(!salText){var topCard=document.querySelector('[class*="jobs-unified-top-card"],[class*="job-details-jobs-unified-top-card"]');if(topCard){var tcSpans=topCard.querySelectorAll('span,li');for(var si=0;si<tcSpans.length;si++){var st=(tcSpans[si].textContent||'').trim();if(st.indexOf('$')>-1&&st.length<200){salText=st;break;}}}}
-var salRx=salText.match(/\\$([0-9,]+(?:\\.[0-9]+)?)(K?)\\s*[-\\u2013]\\s*\\$([0-9,]+(?:\\.[0-9]+)?)(K?)/i);
-if(!salRx&&de){salRx=de.match(/\\$([0-9,]+(?:\\.[0-9]+)?)(K?)\\s*[-\\u2013]\\s*\\$([0-9,]+(?:\\.[0-9]+)?)(K?)/i);}
+var salRx=salText.match(/\\$([0-9,]+(?:\\.[0-9]+)?)(K?)\\s*[-\\u2013\\u2014]\\s*\\$([0-9,]+(?:\\.[0-9]+)?)(K?)/i);
+if(!salRx&&de){salRx=de.match(/\\$([0-9,]+(?:\\.[0-9]+)?)(K?)\\s*[-\\u2013\\u2014]\\s*\\$([0-9,]+(?:\\.[0-9]+)?)(K?)/i);}
 if(salRx){salMin=Math.round(parseFloat(salRx[1].replace(/,/g,''))*(salRx[2].toUpperCase()==='K'?1000:1));salMax=Math.round(parseFloat(salRx[3].replace(/,/g,''))*(salRx[4].toUpperCase()==='K'?1000:1));}
 if(!ti){alert('Job Radar: Could not read this page.\\nNavigate to a specific LinkedIn job posting.');return;}
 data={title:ti,company:co,location:lo,description:de,url:ur,external_id:id,remote:re,source:'linkedin',salary_min:salMin,salary_max:salMax};
@@ -434,7 +434,7 @@ var loSpans=document.querySelectorAll('[data-testid="job-detail-header-card"] sp
 for(var i=0;i<loSpans.length;i++){var st=(loSpans[i].textContent||'').trim();if(st.length>3&&st.indexOf('\\u2022')<0&&st.indexOf('Posted')<0&&st.indexOf('Updated')<0){lo=st;break;}}
 var de=tc('[class*="jobDescription"]')||longest(['#job-description','article']);
 var hdText=(document.querySelector('[data-testid="job-detail-header-card"]')||{textContent:''}).textContent;
-var salMatch=hdText.match(/\\$([\\d,]+(?:\\.[\\d]+)?)(K?)\\s*[-\\u2013]\\s*\\$([\\d,]+(?:\\.[\\d]+)?)(K?)/i);
+var salMatch=hdText.match(/\\$([\\d,]+(?:\\.[\\d]+)?)(K?)\\s*[-\\u2013\\u2014]\\s*\\$([\\d,]+(?:\\.[\\d]+)?)(K?)/i);
 var salMin=salMatch?Math.round(parseFloat(salMatch[1].replace(/,/g,''))*(salMatch[2].toUpperCase()==='K'?1000:1)):null;
 var salMax=salMatch?Math.round(parseFloat(salMatch[3].replace(/,/g,''))*(salMatch[4].toUpperCase()==='K'?1000:1)):null;
 var dparts=ur.split('/job-detail/');var id=dparts.length>1?dparts[1].split('/')[0]:'';
@@ -457,7 +457,7 @@ if(!lo&&loSpan){lo=(loSpan.textContent||'').trim();}
 var deEl=jmi.querySelector('.html-parsed-content')||jmi.querySelector('[id^="match-body-"]');
 var de=deEl?(deEl.textContent||'').replace(/\\s+/g,' ').trim():'';
 var jmiText=(jmi.textContent||'');
-var salMatch=jmiText.match(/\\$([\\d,]+(?:\\.[\\d]+)?)(K?)\\s*[-\\u2013]\\s*\\$([\\d,]+(?:\\.[\\d]+)?)(K?)/i);
+var salMatch=jmiText.match(/\\$([\\d,]+(?:\\.[\\d]+)?)(K?)\\s*[-\\u2013\\u2014]\\s*\\$([\\d,]+(?:\\.[\\d]+)?)(K?)/i);
 var salMin=salMatch?Math.round(parseFloat(salMatch[1].replace(/,/g,''))*(salMatch[2].toUpperCase()==='K'?1000:1)):null;
 var salMax=salMatch?Math.round(parseFloat(salMatch[3].replace(/,/g,''))*(salMatch[4].toUpperCase()==='K'?1000:1)):null;
 var re=/remote/i.test(jmiText);
@@ -470,7 +470,7 @@ var co=tc('[data-testid="company"]');
 var lo=tc('#job-view-header [data-testid="jobDetailLocation"]')||tc('[data-testid="jobDetailLocation"]');
 var de=tc('[data-testid="svx-description-container-inner"]');
 var salText=tc('[data-testid="svx-jobview-salary-value"]');
-var salMatch=salText.match(/\\$([\\d,]+(?:\\.[\\d]+)?)(K?)\\s*[-\\u2013]\\s*\\$([\\d,]+(?:\\.[\\d]+)?)(K?)/i);
+var salMatch=salText.match(/\\$([\\d,]+(?:\\.[\\d]+)?)(K?)\\s*[-\\u2013\\u2014]\\s*\\$([\\d,]+(?:\\.[\\d]+)?)(K?)/i);
 var salMin=salMatch?Math.round(parseFloat(salMatch[1].replace(/,/g,''))*(salMatch[2].toUpperCase()==='K'?1000:1)):null;
 var salMax=salMatch?Math.round(parseFloat(salMatch[3].replace(/,/g,''))*(salMatch[4].toUpperCase()==='K'?1000:1)):null;
 var idMatch=ur.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
@@ -492,7 +492,7 @@ var salText='';
 var pEls=card.querySelectorAll('p');
 for(var k=0;k<pEls.length;k++){if((pEls[k].textContent||'').indexOf('$')>-1){salText=(pEls[k].textContent||'').trim();break;}}
 var salMin=null,salMax=null;
-var srm=salText.match(/\\$([\\d.]+)(K?)\\s*[-\\u2013]\\s*\\$([\\d.]+)(K?)/i);
+var srm=salText.match(/\\$([\\d.]+)(K?)\\s*[-\\u2013\\u2014]\\s*\\$([\\d.]+)(K?)/i);
 if(srm){salMin=Math.round(parseFloat(srm[1])*(srm[2].toUpperCase()==='K'?1000:1));salMax=Math.round(parseFloat(srm[3])*(srm[4].toUpperCase()==='K'?1000:1));}
 else{var ssm=salText.match(/\\$([\\d.]+)(K?)/i);if(ssm){salMin=Math.round(parseFloat(ssm[1])*(ssm[2].toUpperCase()==='K'?1000:1));}}
 var re=/remote/i.test(lo)||/remote/i.test(card.textContent||'');
@@ -512,7 +512,7 @@ var lo=loEl?(loEl.textContent||'').replace(/[\\u2022\\u00b7]/g,' · ').replace(/
 var de=tc('#jobDescriptionText');
 var hdEl=document.querySelector('.jobsearch-HeaderContainer');
 var hdText=hdEl?(hdEl.textContent||''):'';
-var salMatch=hdText.match(/\\$([\\d,]+(?:\\.[\\d]+)?)(K?)\\s*[-\\u2013]\\s*\\$([\\d,]+(?:\\.[\\d]+)?)(K?)/i);
+var salMatch=hdText.match(/\\$([\\d,]+(?:\\.[\\d]+)?)(K?)\\s*[-\\u2013\\u2014]\\s*\\$([\\d,]+(?:\\.[\\d]+)?)(K?)/i);
 var salMin=salMatch?Math.round(parseFloat(salMatch[1].replace(/,/g,''))*(salMatch[2].toUpperCase()==='K'?1000:1)):null;
 var salMax=salMatch?Math.round(parseFloat(salMatch[3].replace(/,/g,''))*(salMatch[4].toUpperCase()==='K'?1000:1)):null;
 var re=/remote/i.test(lo)||/remote/i.test(de.substring(0,500));
