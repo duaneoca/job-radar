@@ -35,3 +35,6 @@ The goal is to find jobs that pay at or above the candidate's desired salary. Sc
 
 ## Scoring
 Overall score is evenly weighted, add the five ranks, divide by 5 and round to the nearest integer. Include the 5 original ranks in the summary.
+
+## Summary
+Write the summary in second person, addressed directly to the candidate ("Your background in X aligns well with..."). Tell them *what specifically* about their own skills and experience is a good match — or gap — for this role. Do NOT write from a hiring manager's perspective, do NOT recommend them to apply, and do NOT use language like "The candidate..." or "This applicant...". This is the candidate reading their own job fit assessment.

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, ExternalLink, Star, Building2, MapPin, DollarSign,
   UserCheck, Loader2, Calendar, Sparkles, MessageSquarePlus, Plus, AlertTriangle,
-  Clock, Send,
+  Clock, Send, Trash2,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -17,7 +17,7 @@ import {
   DialogDescription, DialogFooter,
 } from "../components/ui/dialog";
 import { jobsApi, criteriaApi } from "../lib/api";
-import { formatDate, formatSalary, scoreColor, STATUS_OPTIONS } from "../lib/utils";
+import { formatDate, formatSalary, formatSource, scoreColor, STATUS_OPTIONS } from "../lib/utils";
 import { toast } from "../hooks/useToast";
 import type { JobReview, Criteria, ApplicationTemplate, InterviewQuestion } from "../lib/types";
 import { useState } from "react";
@@ -160,6 +160,8 @@ export function JobDetailPage() {
   const [confirmRegenerate, setConfirmRegenerate] = useState(false);
   const [prepHasChanges, setPrepHasChanges] = useState(false);
 
+  const [scoreBreakdownOpen, setScoreBreakdownOpen] = useState(false);
+
   const updateReview = useMutation({
     mutationFn: (patch: Partial<JobReview>) => jobsApi.patch(`/jobs/${id}`, patch).then((r) => r.data),
     onSuccess: () => {
@@ -167,6 +169,22 @@ export function JobDetailPage() {
       qc.invalidateQueries({ queryKey: ["jobs"] });
     },
   });
+
+  const deleteReview = useMutation({
+    mutationFn: () => jobsApi.delete(`/jobs/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["jobs"] });
+      navigate("/jobs");
+      toast({ title: "Job deleted" });
+    },
+    onError: () => toast({ title: "Failed to delete job", variant: "destructive" }),
+  });
+
+  function handleDeleteJob() {
+    if (!job) return;
+    if (!confirm(`Delete "${job.title}" from your list? This cannot be undone.`)) return;
+    deleteReview.mutate();
+  }
 
   async function saveNotes() {
     try {
@@ -387,7 +405,7 @@ export function JobDetailPage() {
               {formatSalary(job.salary_min, job.salary_max)}
             </Badge>
           )}
-          {job.source && <Badge variant="outline">{job.source}</Badge>}
+          {job.source && <Badge variant="outline">{formatSource(job.source)}</Badge>}
           {job.date_posted && (
             <Badge variant="outline" className="gap-1">
               <Calendar className="h-3 w-3" />
@@ -405,25 +423,75 @@ export function JobDetailPage() {
 
       {/* AI Score card */}
       {job.ai_score != null && (
-        <div className="flex items-center gap-4 p-4 rounded-lg border bg-card">
-          <div className="text-center shrink-0">
-            <div className={`text-4xl font-bold ${scoreColor(job.ai_score)}`}>{job.ai_score}</div>
-            <div className="text-xs text-muted-foreground">AI score</div>
+        <>
+          <div className="flex items-center gap-4 p-4 rounded-lg border bg-card">
+            <div className="text-center shrink-0">
+              <button
+                className={`text-4xl font-bold ${scoreColor(job.ai_score)} hover:underline cursor-pointer`}
+                title="Click to see score breakdown"
+                onClick={() => setScoreBreakdownOpen(true)}
+              >
+                {job.ai_score}
+              </button>
+              <div className="text-xs text-muted-foreground">AI score</div>
+            </div>
+            <Separator orientation="vertical" className="h-12" />
+            <div className="flex-1 space-y-1">
+              {job.recommended && (
+                <div className="flex items-center gap-1 text-sm font-medium text-yellow-600 dark:text-yellow-400">
+                  <Star className="h-4 w-4 fill-current" />
+                  Recommended for you
+                </div>
+              )}
+              {job.ai_summary && <p className="text-sm text-muted-foreground leading-relaxed">{job.ai_summary}</p>}
+            </div>
           </div>
-          <Separator orientation="vertical" className="h-12" />
-          <div className="flex-1 space-y-1">
-            {job.recommended && (
-              <div className="flex items-center gap-1 text-sm font-medium text-yellow-600 dark:text-yellow-400">
-                <Star className="h-4 w-4 fill-current" />
-                Recommended for you
+
+          {/* Score breakdown dialog */}
+          <Dialog open={scoreBreakdownOpen} onOpenChange={setScoreBreakdownOpen}>
+            <DialogContent className="max-w-xs">
+              <DialogHeader>
+                <DialogTitle>Score Breakdown</DialogTitle>
+                <DialogDescription>Five equal-weight dimensions averaged to the overall score.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 py-1">
+                {[
+                  { label: "Skills",     value: job.skills_rank },
+                  { label: "Experience", value: job.experience_rank },
+                  { label: "Location",   value: job.location_rank },
+                  { label: "Education",  value: job.education_rank },
+                  { label: "Salary",     value: job.salary_rank },
+                ].map(({ label, value }) => (
+                  <div key={label} className="flex items-center gap-3">
+                    <span className="text-sm w-24 shrink-0 text-muted-foreground">{label}</span>
+                    <div className="flex-1 bg-muted rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className={`h-1.5 rounded-full transition-all ${
+                          value == null ? "bg-muted-foreground/30" :
+                          value >= 7 ? "bg-emerald-500" :
+                          value >= 5 ? "bg-amber-500" : "bg-rose-500"
+                        }`}
+                        style={{ width: `${(value ?? 0) * 10}%` }}
+                      />
+                    </div>
+                    <span className={`text-sm font-bold w-5 text-right ${scoreColor(value)}`}>
+                      {value ?? "—"}
+                    </span>
+                  </div>
+                ))}
+                <Separator />
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-semibold w-24 shrink-0">Overall</span>
+                  <div className="flex-1" />
+                  <span className={`text-xl font-bold ${scoreColor(job.ai_score)}`}>{job.ai_score}</span>
+                </div>
               </div>
-            )}
-            {job.ai_summary && <p className="text-sm text-muted-foreground leading-relaxed">{job.ai_summary}</p>}
-          </div>
-        </div>
+            </DialogContent>
+          </Dialog>
+        </>
       )}
 
-      {/* Status */}
+      {/* Status + delete */}
       <div className="flex flex-wrap gap-4 items-end">
         <div className="space-y-1.5 w-40">
           <Label>Status</Label>
@@ -438,6 +506,16 @@ export function JobDetailPage() {
             </SelectContent>
           </Select>
         </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-destructive hover:bg-destructive/10 hover:text-destructive mb-0.5"
+          onClick={handleDeleteJob}
+          disabled={deleteReview.isPending}
+        >
+          <Trash2 className="h-4 w-4 mr-1" />
+          Delete job
+        </Button>
       </div>
 
       {/* Tabs */}

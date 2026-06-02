@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
   Search, SlidersHorizontal, ExternalLink, RefreshCw, ChevronLeft, ChevronRight,
-  MapPin, Building2, DollarSign, Star, UserCheck, Loader2, Plus,
+  MapPin, Building2, DollarSign, Star, UserCheck, Loader2, Plus, Trash2,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -12,10 +12,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Switch } from "../components/ui/switch";
 import { Label } from "../components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../components/ui/sheet";
+import { Separator } from "../components/ui/separator";
 import { Textarea } from "../components/ui/textarea";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from "../components/ui/dialog";
 import { jobsApi } from "../lib/api";
 import {
-  formatDate, formatSalary, scoreColor, statusBadgeVariant, STATUS_OPTIONS,
+  formatDate, formatSalary, formatSource, scoreColor, statusBadgeVariant,
+  STATUS_OPTIONS, SOURCE_OPTIONS,
 } from "../lib/utils";
 import { toast } from "../hooks/useToast";
 import type { JobReview, JobListResponse } from "../lib/types";
@@ -24,11 +29,63 @@ const PAGE_SIZE_OPTIONS = [25, 50, 100];
 
 interface Filters {
   status: string;
+  source: string;
   remote_only: boolean;
   has_contact: boolean;
   min_score: string;
   search: string;
 }
+
+// ─── Score breakdown dialog ───────────────────────────────────────────────────
+
+function ScoreBreakdownDialog({ job, onClose }: { job: JobReview; onClose: () => void }) {
+  const dims = [
+    { label: "Skills",     value: job.skills_rank },
+    { label: "Experience", value: job.experience_rank },
+    { label: "Location",   value: job.location_rank },
+    { label: "Education",  value: job.education_rank },
+    { label: "Salary",     value: job.salary_rank },
+  ];
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-xs">
+        <DialogHeader>
+          <DialogTitle>Score Breakdown</DialogTitle>
+          <DialogDescription>Five equal-weight dimensions averaged to the overall score.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-1">
+          {dims.map(({ label, value }) => (
+            <div key={label} className="flex items-center gap-3">
+              <span className="text-sm w-24 shrink-0 text-muted-foreground">{label}</span>
+              <div className="flex-1 bg-muted rounded-full h-1.5 overflow-hidden">
+                <div
+                  className={`h-1.5 rounded-full transition-all ${
+                    value == null ? "bg-muted-foreground/30" :
+                    value >= 7 ? "bg-emerald-500" :
+                    value >= 5 ? "bg-amber-500" : "bg-rose-500"
+                  }`}
+                  style={{ width: `${(value ?? 0) * 10}%` }}
+                />
+              </div>
+              <span className={`text-sm font-bold w-5 text-right ${scoreColor(value)}`}>
+                {value ?? "—"}
+              </span>
+            </div>
+          ))}
+          <Separator />
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold w-24 shrink-0">Overall</span>
+            <div className="flex-1" />
+            <span className={`text-xl font-bold ${scoreColor(job.ai_score)}`}>{job.ai_score}</span>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function JobsPage() {
   const navigate = useNavigate();
@@ -38,6 +95,7 @@ export function JobsPage() {
   const [pageSize, setPageSize] = useState(25);
   const [filters, setFilters] = useState<Filters>({
     status: "all",
+    source: "all",
     remote_only: false,
     has_contact: false,
     min_score: "",
@@ -47,12 +105,14 @@ export function JobsPage() {
   const [selected, setSelected] = useState<JobReview | null>(null);
   const [notesDraft, setNotesDraft] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
+  const [scoreBreakdown, setScoreBreakdown] = useState<JobReview | null>(null);
 
   const params: Record<string, any> = {
     skip: (page - 1) * pageSize,
     limit: pageSize,
   };
   if (filters.status && filters.status !== "all") params.status = filters.status;
+  if (filters.source && filters.source !== "all") params.source = filters.source;
   if (filters.remote_only) params.remote_only = true;
   if (filters.has_contact) params.has_contact = true;
   if (filters.min_score) params.min_score = Number(filters.min_score);
@@ -68,6 +128,16 @@ export function JobsPage() {
     mutationFn: ({ id, patch }: { id: string; patch: Partial<JobReview> }) =>
       jobsApi.patch(`/jobs/${id}`, patch).then((r) => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["jobs"] }),
+  });
+
+  const deleteReview = useMutation({
+    mutationFn: (id: string) => jobsApi.delete(`/jobs/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["jobs"] });
+      setSelected(null);
+      toast({ title: "Job deleted" });
+    },
+    onError: () => toast({ title: "Failed to delete job", variant: "destructive" }),
   });
 
   const enqueueReview = useMutation({
@@ -104,12 +174,17 @@ export function JobsPage() {
     }
   }
 
+  function confirmDeleteJob(job: JobReview) {
+    if (!confirm(`Delete "${job.title}" from your list? This cannot be undone.`)) return;
+    deleteReview.mutate(job.id);
+  }
+
   const totalJobs = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalJobs / pageSize));
   const jobs = data?.items ?? [];
 
   function resetFilters() {
-    setFilters({ status: "all", remote_only: false, has_contact: false, min_score: "", search: "" });
+    setFilters({ status: "all", source: "all", remote_only: false, has_contact: false, min_score: "", search: "" });
     setPage(1);
   }
 
@@ -141,7 +216,7 @@ export function JobsPage() {
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search title, company…"
+            placeholder="Search title, company, source…"
             className="pl-8"
             value={filters.search}
             onChange={(e) => { setFilters((f) => ({ ...f, search: e.target.value })); setPage(1); }}
@@ -155,6 +230,18 @@ export function JobsPage() {
           <SelectContent>
             <SelectItem value="all">All statuses</SelectItem>
             {STATUS_OPTIONS.map((s) => (
+              <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={filters.source} onValueChange={(v) => { setFilters((f) => ({ ...f, source: v })); setPage(1); }}>
+          <SelectTrigger className="w-[130px]">
+            <SelectValue placeholder="Source" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All sources</SelectItem>
+            {SOURCE_OPTIONS.map((s) => (
               <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
             ))}
           </SelectContent>
@@ -195,11 +282,11 @@ export function JobsPage() {
               id="minscore"
               type="number"
               min={0}
-              max={100}
+              max={10}
               className="w-20"
               value={filters.min_score}
               onChange={(e) => { setFilters((f) => ({ ...f, min_score: e.target.value })); setPage(1); }}
-              placeholder="0–100"
+              placeholder="0–10"
             />
           </div>
           <Button variant="ghost" size="sm" onClick={resetFilters}>Reset</Button>
@@ -216,20 +303,21 @@ export function JobsPage() {
               <th className="text-left px-3 py-2.5 font-medium hidden lg:table-cell">Salary</th>
               <th className="text-center px-3 py-2.5 font-medium w-16">Score</th>
               <th className="text-left px-3 py-2.5 font-medium w-32">Status</th>
+              <th className="text-left px-3 py-2.5 font-medium hidden sm:table-cell w-24">Source</th>
               <th className="text-center px-3 py-2.5 font-medium hidden sm:table-cell w-10"></th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={6} className="text-center py-12 text-muted-foreground">
+                <td colSpan={7} className="text-center py-12 text-muted-foreground">
                   <Loader2 className="h-5 w-5 animate-spin inline mr-2" />
                   Loading…
                 </td>
               </tr>
             ) : jobs.length === 0 ? (
               <tr>
-                <td colSpan={6} className="text-center py-12 text-muted-foreground">
+                <td colSpan={7} className="text-center py-12 text-muted-foreground">
                   No jobs found. Try adjusting your filters.
                 </td>
               </tr>
@@ -265,9 +353,15 @@ export function JobsPage() {
                   <td className="px-3 py-2.5 hidden lg:table-cell text-xs text-muted-foreground">
                     {formatSalary(job.salary_min, job.salary_max)}
                   </td>
-                  <td className="px-3 py-2.5 text-center">
+                  <td className="px-3 py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
                     {job.ai_score != null ? (
-                      <span className={`font-bold text-sm ${scoreColor(job.ai_score)}`}>{job.ai_score}</span>
+                      <button
+                        className={`font-bold text-sm ${scoreColor(job.ai_score)} hover:underline cursor-pointer`}
+                        title="Click to see score breakdown"
+                        onClick={() => setScoreBreakdown(job)}
+                      >
+                        {job.ai_score}
+                      </button>
                     ) : (
                       <span className="text-muted-foreground text-xs">—</span>
                     )}
@@ -283,6 +377,9 @@ export function JobsPage() {
                         ))}
                       </SelectContent>
                     </Select>
+                  </td>
+                  <td className="px-3 py-2.5 hidden sm:table-cell">
+                    <span className="text-xs text-muted-foreground">{formatSource(job.source)}</span>
                   </td>
                   <td className="px-3 py-2.5 hidden sm:table-cell text-center" onClick={(e) => e.stopPropagation()}>
                     <a
@@ -356,7 +453,7 @@ export function JobsPage() {
                       {formatSalary(selected.salary_min, selected.salary_max)}
                     </Badge>
                   )}
-                  {selected.source && <Badge variant="outline">{selected.source}</Badge>}
+                  {selected.source && <Badge variant="outline">{formatSource(selected.source)}</Badge>}
                   <Badge variant="outline">{formatDate(selected.date_posted)}</Badge>
                 </div>
 
@@ -364,7 +461,13 @@ export function JobsPage() {
                 {selected.ai_score != null && (
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
                     <div className="text-center">
-                      <div className={`text-3xl font-bold ${scoreColor(selected.ai_score)}`}>{selected.ai_score}</div>
+                      <button
+                        className={`text-3xl font-bold ${scoreColor(selected.ai_score)} hover:underline cursor-pointer`}
+                        title="Click to see score breakdown"
+                        onClick={() => setScoreBreakdown(selected)}
+                      >
+                        {selected.ai_score}
+                      </button>
                       <div className="text-xs text-muted-foreground">AI score</div>
                     </div>
                     {selected.recommended && (
@@ -430,12 +533,27 @@ export function JobsPage() {
                   <Button size="sm" variant="secondary" className="flex-1" onClick={() => navigate(`/jobs/${selected.id}`)}>
                     Full details →
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    title="Delete this job"
+                    onClick={() => confirmDeleteJob(selected)}
+                    disabled={deleteReview.isPending}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
             </>
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Score breakdown popup */}
+      {scoreBreakdown && (
+        <ScoreBreakdownDialog job={scoreBreakdown} onClose={() => setScoreBreakdown(null)} />
+      )}
     </div>
   );
 }

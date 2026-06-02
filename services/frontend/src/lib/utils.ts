@@ -41,6 +41,37 @@ export function statusBadgeVariant(status: JobStatus) {
   return map[status] ?? map.new;
 }
 
+export const SOURCE_LABELS: Record<string, string> = {
+  adzuna:      "Adzuna",
+  the_muse:    "The Muse",
+  remotive:    "Remotive",
+  linkedin:    "LinkedIn",
+  indeed:      "Indeed",
+  glassdoor:   "Glassdoor",
+  dice:        "Dice",
+  builtin:     "BuiltIn",
+  monster:     "Monster",
+  ziprecruiter:"ZipRecruiter",
+  manual:      "Manual",
+};
+
+export function formatSource(source: string): string {
+  return SOURCE_LABELS[source] ?? source;
+}
+
+export const SOURCE_OPTIONS: { value: string; label: string }[] = [
+  { value: "linkedin",    label: "LinkedIn" },
+  { value: "indeed",      label: "Indeed" },
+  { value: "dice",        label: "Dice" },
+  { value: "builtin",     label: "BuiltIn" },
+  { value: "monster",     label: "Monster" },
+  { value: "ziprecruiter",label: "ZipRecruiter" },
+  { value: "adzuna",      label: "Adzuna" },
+  { value: "the_muse",    label: "The Muse" },
+  { value: "remotive",    label: "Remotive" },
+  { value: "manual",      label: "Manual" },
+];
+
 export const STATUS_OPTIONS: { value: JobStatus; label: string }[] = [
   { value: "new",          label: "New" },
   { value: "reviewed",     label: "Reviewed" },

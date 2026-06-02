@@ -400,6 +400,7 @@ var host=window.location.hostname;
 var ur=window.location.href.split('?')[0];
 var data=null;
 if(host.includes('linkedin.com')){
+if(!ur.includes('/jobs/view/')){alert('Job Radar: Please open the specific job posting first.\\nClick the job title to open it on its own page (URL must contain /jobs/view/).\\nSearch results and job list pages are not supported.');return;}
 var raw=document.title.replace(/^\\(\\d+\\)\\s*/,'');
 var main=raw.split(' | ')[0].trim();
 var atIdx=main.lastIndexOf(' at ');
@@ -415,8 +416,15 @@ for(var i=0;i<allP.length;i++){var pt=(allP[i].textContent||'').replace(/\\s+/g,
 var de=longest(['[data-testid="expandable-text-box"]','[class*="show-more-less-html"]','#job-details','.jobs-description__content','article']);
 var parts=ur.split('/view/');var id=parts.length>1?parts[1].replace(/[^0-9]/g,''):'';
 var re=/remote/i.test(lo)||/remote/i.test(de.substring(0,300));
+var salMin=null,salMax=null;
+var salText='';
+var liInsights=document.querySelectorAll('[class*="job-insight"],[class*="salary"],[class*="compensation"]');
+for(var si=0;si<liInsights.length;si++){var st=(liInsights[si].textContent||'').replace(/\\s+/g,' ').trim();if(st.indexOf('$')>-1&&st.length<300){salText=st;break;}}
+if(!salText){var topCard=document.querySelector('[class*="jobs-unified-top-card"],[class*="job-details-jobs-unified-top-card"]');if(topCard){var tcSpans=topCard.querySelectorAll('span,li');for(var si=0;si<tcSpans.length;si++){var st=(tcSpans[si].textContent||'').trim();if(st.indexOf('$')>-1&&st.length<200){salText=st;break;}}}}
+var salRx=salText.match(/\\$([0-9,]+(?:\\.[0-9]+)?)(K?)\\s*[-\\u2013]\\s*\\$([0-9,]+(?:\\.[0-9]+)?)(K?)/i);
+if(salRx){salMin=Math.round(parseFloat(salRx[1].replace(/,/g,''))*(salRx[2].toUpperCase()==='K'?1000:1));salMax=Math.round(parseFloat(salRx[3].replace(/,/g,''))*(salRx[4].toUpperCase()==='K'?1000:1));}
 if(!ti){alert('Job Radar: Could not read this page.\\nNavigate to a specific LinkedIn job posting.');return;}
-data={title:ti,company:co,location:lo,description:de,url:ur,external_id:id,remote:re,source:'linkedin'};
+data={title:ti,company:co,location:lo,description:de,url:ur,external_id:id,remote:re,source:'linkedin',salary_min:salMin,salary_max:salMax};
 }else if(host.includes('dice.com')){
 var ti=tc('[data-testid="job-detail-header-card"] h1')||tc('h1');
 var co=tc('a[href*="/company-profile/"]');

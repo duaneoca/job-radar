@@ -181,7 +181,9 @@ def list_jobs(
     if search:
         term = f"%{search}%"
         q = q.filter(
-            (models.Job.title.ilike(term)) | (models.Job.company.ilike(term))
+            (models.Job.title.ilike(term))
+            | (models.Job.company.ilike(term))
+            | (models.Job.source.ilike(term))
         )
 
     total = q.count()
@@ -231,6 +233,33 @@ def update_job(
     db.commit()
     db.refresh(review)
     return schemas.UserJobReviewOut.from_review(review)
+
+
+@router.delete("/{review_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_job(
+    review_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """
+    User deletes their own job review.  If this was the last review for the
+    underlying Job row, that Job is also removed (no orphans).
+    """
+    review = _get_review_or_404(review_id, current_user, db)
+    job_id = review.job_id
+
+    db.delete(review)
+    db.flush()   # make the delete visible within this transaction
+
+    remaining = (
+        db.query(models.UserJobReview)
+        .filter(models.UserJobReview.job_id == job_id)
+        .count()
+    )
+    if remaining == 0:
+        db.query(models.Job).filter(models.Job.id == job_id).delete()
+
+    db.commit()
 
 
 @router.post("/{job_id}/ai-review", response_model=schemas.UserJobReviewOut)
