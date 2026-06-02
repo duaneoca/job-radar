@@ -422,6 +422,7 @@ var liInsights=document.querySelectorAll('[class*="job-insight"],[class*="salary
 for(var si=0;si<liInsights.length;si++){var st=(liInsights[si].textContent||'').replace(/\\s+/g,' ').trim();if(st.indexOf('$')>-1&&st.length<300){salText=st;break;}}
 if(!salText){var topCard=document.querySelector('[class*="jobs-unified-top-card"],[class*="job-details-jobs-unified-top-card"]');if(topCard){var tcSpans=topCard.querySelectorAll('span,li');for(var si=0;si<tcSpans.length;si++){var st=(tcSpans[si].textContent||'').trim();if(st.indexOf('$')>-1&&st.length<200){salText=st;break;}}}}
 var salRx=salText.match(/\\$([0-9,]+(?:\\.[0-9]+)?)(K?)\\s*[-\\u2013]\\s*\\$([0-9,]+(?:\\.[0-9]+)?)(K?)/i);
+if(!salRx&&de){salRx=de.match(/\\$([0-9,]+(?:\\.[0-9]+)?)(K?)\\s*[-\\u2013]\\s*\\$([0-9,]+(?:\\.[0-9]+)?)(K?)/i);}
 if(salRx){salMin=Math.round(parseFloat(salRx[1].replace(/,/g,''))*(salRx[2].toUpperCase()==='K'?1000:1));salMax=Math.round(parseFloat(salRx[3].replace(/,/g,''))*(salRx[4].toUpperCase()==='K'?1000:1));}
 if(!ti){alert('Job Radar: Could not read this page.\\nNavigate to a specific LinkedIn job posting.');return;}
 data={title:ti,company:co,location:lo,description:de,url:ur,external_id:id,remote:re,source:'linkedin',salary_min:salMin,salary_max:salMax};
