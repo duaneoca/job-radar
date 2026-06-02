@@ -433,9 +433,9 @@ var loSpans=document.querySelectorAll('[data-testid="job-detail-header-card"] sp
 for(var i=0;i<loSpans.length;i++){var st=(loSpans[i].textContent||'').trim();if(st.length>3&&st.indexOf('\\u2022')<0&&st.indexOf('Posted')<0&&st.indexOf('Updated')<0){lo=st;break;}}
 var de=tc('[class*="jobDescription"]')||longest(['#job-description','article']);
 var hdText=(document.querySelector('[data-testid="job-detail-header-card"]')||{textContent:''}).textContent;
-var salMatch=hdText.match(/\\$([\\d,]+)\\s*[-\\u2013]\\s*\\$([\\d,]+)/);
-var salMin=salMatch?parseInt(salMatch[1].replace(/,/g,''),10):null;
-var salMax=salMatch?parseInt(salMatch[2].replace(/,/g,''),10):null;
+var salMatch=hdText.match(/\\$([\\d,]+(?:\\.[\\d]+)?)(K?)\\s*[-\\u2013]\\s*\\$([\\d,]+(?:\\.[\\d]+)?)(K?)/i);
+var salMin=salMatch?Math.round(parseFloat(salMatch[1].replace(/,/g,''))*(salMatch[2].toUpperCase()==='K'?1000:1)):null;
+var salMax=salMatch?Math.round(parseFloat(salMatch[3].replace(/,/g,''))*(salMatch[4].toUpperCase()==='K'?1000:1)):null;
 var dparts=ur.split('/job-detail/');var id=dparts.length>1?dparts[1].split('/')[0]:'';
 var re=/remote/i.test(lo)||/remote/i.test(de.substring(0,300));
 if(!ti){alert('Job Radar: Could not read this Dice page.\\nNavigate to a specific job posting.');return;}
@@ -456,9 +456,9 @@ if(!lo&&loSpan){lo=(loSpan.textContent||'').trim();}
 var deEl=jmi.querySelector('.html-parsed-content')||jmi.querySelector('[id^="match-body-"]');
 var de=deEl?(deEl.textContent||'').replace(/\\s+/g,' ').trim():'';
 var jmiText=(jmi.textContent||'');
-var salMatch=jmiText.match(/\\$([\\d,]+)\\s*[-\\u2013]\\s*\\$([\\d,]+)/);
-var salMin=salMatch?parseInt(salMatch[1].replace(/,/g,''),10):null;
-var salMax=salMatch?parseInt(salMatch[2].replace(/,/g,''),10):null;
+var salMatch=jmiText.match(/\\$([\\d,]+(?:\\.[\\d]+)?)(K?)\\s*[-\\u2013]\\s*\\$([\\d,]+(?:\\.[\\d]+)?)(K?)/i);
+var salMin=salMatch?Math.round(parseFloat(salMatch[1].replace(/,/g,''))*(salMatch[2].toUpperCase()==='K'?1000:1)):null;
+var salMax=salMatch?Math.round(parseFloat(salMatch[3].replace(/,/g,''))*(salMatch[4].toUpperCase()==='K'?1000:1)):null;
 var re=/remote/i.test(jmiText);
 var buUrl=window.location.href;
 if(!ti){alert('Job Radar: Could not read this BuiltIn page.\\nNavigate to a specific job posting.');return;}
@@ -469,9 +469,9 @@ var co=tc('[data-testid="company"]');
 var lo=tc('#job-view-header [data-testid="jobDetailLocation"]')||tc('[data-testid="jobDetailLocation"]');
 var de=tc('[data-testid="svx-description-container-inner"]');
 var salText=tc('[data-testid="svx-jobview-salary-value"]');
-var salMatch=salText.match(/\\$([\\d,]+)\\s*[-\\u2013]\\s*\\$([\\d,]+)/);
-var salMin=salMatch?parseInt(salMatch[1].replace(/,/g,''),10):null;
-var salMax=salMatch?parseInt(salMatch[2].replace(/,/g,''),10):null;
+var salMatch=salText.match(/\\$([\\d,]+(?:\\.[\\d]+)?)(K?)\\s*[-\\u2013]\\s*\\$([\\d,]+(?:\\.[\\d]+)?)(K?)/i);
+var salMin=salMatch?Math.round(parseFloat(salMatch[1].replace(/,/g,''))*(salMatch[2].toUpperCase()==='K'?1000:1)):null;
+var salMax=salMatch?Math.round(parseFloat(salMatch[3].replace(/,/g,''))*(salMatch[4].toUpperCase()==='K'?1000:1)):null;
 var idMatch=ur.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
 var id=idMatch?idMatch[0]:'';
 var re=/remote/i.test(de);
@@ -511,9 +511,9 @@ var lo=loEl?(loEl.textContent||'').replace(/[\\u2022\\u00b7]/g,' · ').replace(/
 var de=tc('#jobDescriptionText');
 var hdEl=document.querySelector('.jobsearch-HeaderContainer');
 var hdText=hdEl?(hdEl.textContent||''):'';
-var salMatch=hdText.match(/\\$([\\d,]+)\\s*[-\\u2013]\\s*\\$([\\d,]+)/);
-var salMin=salMatch?parseInt(salMatch[1].replace(/,/g,''),10):null;
-var salMax=salMatch?parseInt(salMatch[2].replace(/,/g,''),10):null;
+var salMatch=hdText.match(/\\$([\\d,]+(?:\\.[\\d]+)?)(K?)\\s*[-\\u2013]\\s*\\$([\\d,]+(?:\\.[\\d]+)?)(K?)/i);
+var salMin=salMatch?Math.round(parseFloat(salMatch[1].replace(/,/g,''))*(salMatch[2].toUpperCase()==='K'?1000:1)):null;
+var salMax=salMatch?Math.round(parseFloat(salMatch[3].replace(/,/g,''))*(salMatch[4].toUpperCase()==='K'?1000:1)):null;
 var re=/remote/i.test(lo)||/remote/i.test(de.substring(0,500));
 var indeedUrl='https://www.indeed.com/viewjob?jk='+id;
 if(!ti){alert('Job Radar: Could not read this Indeed page.\\nNavigate to a specific job posting.');return;}
