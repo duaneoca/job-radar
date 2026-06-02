@@ -167,7 +167,7 @@ export function JobsPage() {
 
   async function changeStatus(job: JobReview, status: string) {
     try {
-      await updateReview.mutateAsync({ id: job.job_id, patch: { status: status as any } });
+      await updateReview.mutateAsync({ id: job.id, patch: { status: status as any } });
       if (selected?.job_id === job.job_id) setSelected((s) => s ? { ...s, status: status as any } : s);
     } catch {
       toast({ title: "Failed to update status", variant: "destructive" });
