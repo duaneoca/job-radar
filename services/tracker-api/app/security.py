@@ -1,16 +1,20 @@
 """
 Security utilities — JWT, password hashing, and API key encryption.
 
-API key encryption uses Fernet (AES-128-CBC + HMAC-SHA256) with a key
-derived from SECRET_KEY.  The plaintext key is never written to the DB.
+API key encryption uses Fernet (AES-128-CBC + HMAC-SHA256).  Key selection:
+  • ENCRYPTION_KEY set           → use it directly as the Fernet key
+  • ENCRYPTION_KEY + OLD set     → MultiFernet([new, old]) — supports rotation
+  • Neither set                  → derive from SECRET_KEY via SHA-256 (legacy)
+
+The plaintext key is never written to the DB.
 """
 
 import base64
 import hashlib
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, Union
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, MultiFernet
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
@@ -49,13 +53,23 @@ def decode_access_token(token: str) -> Optional[str]:
 
 
 # ── API key encryption ────────────────────────────────────────
-# Derive a 32-byte key from SECRET_KEY using SHA-256, then base64-url-encode
-# it to produce a valid Fernet key.
 
-def _fernet() -> Fernet:
+def _legacy_fernet_key() -> bytes:
+    """Derive a Fernet key from SECRET_KEY (SHA-256 + base64url). Legacy path."""
     raw = hashlib.sha256(settings.secret_key.encode()).digest()
-    key = base64.urlsafe_b64encode(raw)
-    return Fernet(key)
+    return base64.urlsafe_b64encode(raw)
+
+
+def _fernet() -> Union[Fernet, MultiFernet]:
+    """Return the active encryption object based on current config."""
+    if settings.encryption_key:
+        primary = Fernet(settings.encryption_key)
+        if settings.encryption_key_old:
+            secondary = Fernet(settings.encryption_key_old)
+            return MultiFernet([primary, secondary])
+        return primary
+    # backward compat: derive from SECRET_KEY
+    return Fernet(_legacy_fernet_key())
 
 
 def encrypt_api_key(plaintext: str) -> str:

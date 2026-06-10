@@ -16,6 +16,40 @@ from app.security import hash_password
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_SECRET_KEY   = "change-me-in-production"
+_DEFAULT_ADMIN_PASS   = "changeme123"
+_MIN_SECRET_KEY_LEN   = 32
+
+
+def _check_production_secrets() -> None:
+    """Refuse to start in production if any credential is default or too weak."""
+    if settings.environment != "production":
+        return
+
+    errors: list[str] = []
+
+    if settings.secret_key == _DEFAULT_SECRET_KEY or len(settings.secret_key) < _MIN_SECRET_KEY_LEN:
+        errors.append(
+            f"SECRET_KEY is default or too short (must be ≥{_MIN_SECRET_KEY_LEN} chars)"
+        )
+
+    if settings.admin_email and settings.admin_password == _DEFAULT_ADMIN_PASS:
+        errors.append("ADMIN_PASSWORD is the default 'changeme123'")
+
+    if not settings.encryption_key:
+        logger.warning(
+            "ENCRYPTION_KEY is not set — falling back to SHA-256(SECRET_KEY) for "
+            "Fernet encryption. Set ENCRYPTION_KEY to decouple JWT rotation from "
+            "credential decryption."
+        )
+
+    if errors:
+        msg = "Refusing to start in production with weak/default secrets:\n" + "".join(
+            f"\n  • {e}" for e in errors
+        )
+        raise RuntimeError(msg)
+
+
 app = FastAPI(
     title="JobRadar Tracker API",
     version="0.2.0",
@@ -39,6 +73,11 @@ app.include_router(profile.router)
 app.include_router(connections.router)
 app.include_router(keys.router)
 app.include_router(generate.router)
+
+
+@app.on_event("startup")
+def check_secrets():
+    _check_production_secrets()
 
 
 @app.on_event("startup")

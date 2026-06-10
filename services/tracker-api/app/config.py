@@ -11,6 +11,16 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_days: int = 7
 
+    # Fernet encryption for stored API keys.
+    # When set, ENCRYPTION_KEY is used directly as the Fernet key (32-byte
+    # URL-safe base64).  When unset, a key is derived from SECRET_KEY via
+    # SHA-256 (backward-compatible with deployments predating this split).
+    # Set ENCRYPTION_KEY_OLD during rotation: the app will try the new key
+    # first, then fall back to the old one so all rows decrypt while the
+    # re-encrypt script runs.
+    encryption_key: str = ""
+    encryption_key_old: str = ""   # previous Fernet key, kept only during rotation
+
     # Bootstrap admin — on startup, if no users exist and these are set,
     # the admin account is created automatically.
     admin_email: str = ""
