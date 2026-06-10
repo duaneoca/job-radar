@@ -21,6 +21,14 @@ patches:
     target:
       kind: Deployment
       name: jobradar-tracker-api
+  # Staging uses environment=staging so the production startup guard doesn't fire
+  - patch: |-
+      - op: replace
+        path: /data/ENVIRONMENT
+        value: staging
+    target:
+      kind: ConfigMap
+      name: tracker-api-config
   # Override the namespace for all resources
   - patch: |-
       - op: replace
