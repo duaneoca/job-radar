@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jobradar-mcp-writer
+  namespace: jobradar
+  labels:
+    app: mcp-writer
+    project: jobradar
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-writer
+  template:
+    metadata:
+      labels:
+        app: mcp-writer
+    spec:
+      containers:
+        - name: mcp-writer
+          # Image tag is overridden by CI via `kubectl set image` on every deploy.
+          image: ghcr.io/duaneoca/jobradar-mcp-writer:staging
+          ports:
+            - containerPort: 8001
+          envFrom:
+            - configMapRef:
+                name: mcp-writer-config
+          resources:
+            requests:
+              cpu: "25m"
+              memory: "64Mi"
+            limits:
+              cpu: "250m"
+              memory: "128Mi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 5
+            periodSeconds: 30

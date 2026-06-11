@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: jobradar-mcp-writer
+  namespace: jobradar
+  labels:
+    app: mcp-writer
+    project: jobradar
+spec:
+  selector:
+    app: mcp-writer
+  ports:
+    - port: 8001
+      targetPort: 8001
