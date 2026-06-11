@@ -14,14 +14,17 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # ── new enum types ────────────────────────────────────────
-    op.execute("CREATE TYPE IF NOT EXISTS emailcategory AS ENUM ('recruiter_outreach','application_confirmation','job_alert','network_notification')")
-    op.execute("CREATE TYPE IF NOT EXISTS emailstatus AS ENUM ('pending','processed','needs_review','discarded')")
-    op.execute("CREATE TYPE IF NOT EXISTS importstatus AS ENUM ('pending','imported','dismissed')")
-    op.execute("CREATE TYPE IF NOT EXISTS emailprovider AS ENUM ('gmail','imap')")
-    op.execute("CREATE TYPE IF NOT EXISTS hitlstatus AS ENUM ('pending','resolved','abandoned')")
-    op.execute("CREATE TYPE IF NOT EXISTS agentrunstatus AS ENUM ('success','partial','failed')")
-    op.execute("CREATE TYPE IF NOT EXISTS agentenvironment AS ENUM ('local','cloud')")
+    # ── new enum types (DO block = create-if-not-exists for PG enums) ────
+    for stmt in [
+        "CREATE TYPE emailcategory AS ENUM ('recruiter_outreach','application_confirmation','job_alert','network_notification')",
+        "CREATE TYPE emailstatus AS ENUM ('pending','processed','needs_review','discarded')",
+        "CREATE TYPE importstatus AS ENUM ('pending','imported','dismissed')",
+        "CREATE TYPE emailprovider AS ENUM ('gmail','imap')",
+        "CREATE TYPE hitlstatus AS ENUM ('pending','resolved','abandoned')",
+        "CREATE TYPE agentrunstatus AS ENUM ('success','partial','failed')",
+        "CREATE TYPE agentenvironment AS ENUM ('local','cloud')",
+    ]:
+        op.execute(f"DO $$ BEGIN {stmt}; EXCEPTION WHEN duplicate_object THEN null; END $$")
 
     # ── inbox_emails ──────────────────────────────────────────
     op.create_table(
