@@ -17,7 +17,6 @@ from urllib.parse import urlparse
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app import models, schemas
@@ -25,7 +24,7 @@ from app.config import settings
 from app.database import get_db
 from app.deps import get_current_admin, get_current_user, get_user_from_agent_key
 from app.routers.jobs import apply_status_change
-from app.security import decrypt_api_key, generate_agent_key, hash_agent_key, verify_slack_signature
+from app.security import decrypt_api_key, generate_agent_key, verify_slack_signature
 
 logger = logging.getLogger(__name__)
 

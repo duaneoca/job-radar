@@ -10,7 +10,7 @@ from pydantic import BaseModel, EmailStr
 
 from app.models import (
     AgentEnvironment, AgentRunStatus,
-    EmailCategory, EmailProvider, EmailStatus,
+    EmailCategory, EmailStatus,
     HitlStatus, ImportStatus,
     JobSource, JobStatus, LLMProvider,
 )
