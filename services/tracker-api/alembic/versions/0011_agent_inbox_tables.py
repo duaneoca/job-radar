@@ -15,13 +15,13 @@ depends_on = None
 
 def upgrade() -> None:
     # ── new enum types ────────────────────────────────────────
-    op.execute("CREATE TYPE emailcategory AS ENUM ('recruiter_outreach','application_confirmation','job_alert','network_notification')")
-    op.execute("CREATE TYPE emailstatus AS ENUM ('pending','processed','needs_review','discarded')")
-    op.execute("CREATE TYPE importstatus AS ENUM ('pending','imported','dismissed')")
-    op.execute("CREATE TYPE emailprovider AS ENUM ('gmail','imap')")
-    op.execute("CREATE TYPE hitlstatus AS ENUM ('pending','resolved','abandoned')")
-    op.execute("CREATE TYPE agentrunstatus AS ENUM ('success','partial','failed')")
-    op.execute("CREATE TYPE agentenvironment AS ENUM ('local','cloud')")
+    op.execute("CREATE TYPE IF NOT EXISTS emailcategory AS ENUM ('recruiter_outreach','application_confirmation','job_alert','network_notification')")
+    op.execute("CREATE TYPE IF NOT EXISTS emailstatus AS ENUM ('pending','processed','needs_review','discarded')")
+    op.execute("CREATE TYPE IF NOT EXISTS importstatus AS ENUM ('pending','imported','dismissed')")
+    op.execute("CREATE TYPE IF NOT EXISTS emailprovider AS ENUM ('gmail','imap')")
+    op.execute("CREATE TYPE IF NOT EXISTS hitlstatus AS ENUM ('pending','resolved','abandoned')")
+    op.execute("CREATE TYPE IF NOT EXISTS agentrunstatus AS ENUM ('success','partial','failed')")
+    op.execute("CREATE TYPE IF NOT EXISTS agentenvironment AS ENUM ('local','cloud')")
 
     # ── inbox_emails ──────────────────────────────────────────
     op.create_table(
@@ -153,10 +153,10 @@ def downgrade() -> None:
     op.drop_table("inbox_postings")
     op.drop_table("inbox_emails")
 
-    op.execute("DROP TYPE agentenvironment")
-    op.execute("DROP TYPE agentrunstatus")
-    op.execute("DROP TYPE hitlstatus")
-    op.execute("DROP TYPE emailprovider")
-    op.execute("DROP TYPE importstatus")
-    op.execute("DROP TYPE emailstatus")
-    op.execute("DROP TYPE emailcategory")
+    op.execute("DROP TYPE IF EXISTS agentenvironment")
+    op.execute("DROP TYPE IF EXISTS agentrunstatus")
+    op.execute("DROP TYPE IF EXISTS hitlstatus")
+    op.execute("DROP TYPE IF EXISTS emailprovider")
+    op.execute("DROP TYPE IF EXISTS importstatus")
+    op.execute("DROP TYPE IF EXISTS emailstatus")
+    op.execute("DROP TYPE IF EXISTS emailcategory")

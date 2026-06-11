@@ -35,6 +35,10 @@ spec:
             limits:
               cpu: "500m"
               memory: "256Mi"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
           readinessProbe:
             httpGet:
               path: /health
