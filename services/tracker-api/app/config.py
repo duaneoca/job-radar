@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     ses_from_email: str = ""       # must be verified in SES, e.g. "noreply@job-radar.net"
     admin_notify_email: str = ""   # where new-account alerts go, e.g. "duaneo@duanesworld.org"
 
+    # Email agent
+    slack_signing_secret: str = ""  # Slack app signing secret for HITL callbacks (C4)
+    hitl_abandon_minutes: int = 30  # abandon pending HITL decisions older than this
+
     class Config:
         env_file = ".env"
 

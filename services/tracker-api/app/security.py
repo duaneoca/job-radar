@@ -11,6 +11,9 @@ The plaintext key is never written to the DB.
 
 import base64
 import hashlib
+import hmac
+import secrets
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Union
 
@@ -80,3 +83,46 @@ def encrypt_api_key(plaintext: str) -> str:
 def decrypt_api_key(ciphertext: str) -> str:
     """Decrypt a stored API key back to plaintext."""
     return _fernet().decrypt(ciphertext.encode()).decode()
+
+
+# ── Agent API key helpers ─────────────────────────────────────
+
+def generate_agent_key() -> tuple[str, str, str]:
+    """Return (raw_key, key_hash, key_hint). Store only hash+hint."""
+    raw = "jr_" + secrets.token_urlsafe(32)
+    key_hash = hashlib.sha256(raw.encode()).hexdigest()
+    key_hint = raw[-4:]
+    return raw, key_hash, key_hint
+
+
+def hash_agent_key(raw: str) -> str:
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+# ── Slack request verification (C4) ──────────────────────────
+
+_SLACK_MAX_SKEW_SECONDS = 300
+
+
+def verify_slack_signature(
+    signing_secret: str,
+    body: bytes,
+    x_slack_signature: str,
+    x_slack_request_timestamp: str,
+) -> bool:
+    """Return True iff the Slack signature is valid and timestamp is fresh."""
+    try:
+        ts = int(x_slack_request_timestamp)
+    except (ValueError, TypeError):
+        return False
+
+    if abs(time.time() - ts) > _SLACK_MAX_SKEW_SECONDS:
+        return False
+
+    sig_base = f"v0:{ts}:{body.decode('utf-8', errors='replace')}"
+    expected = "v0=" + hmac.new(
+        signing_secret.encode(),
+        sig_base.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(expected, x_slack_signature)

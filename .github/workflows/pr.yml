@@ -57,18 +57,24 @@ jobs:
       - name: Lint ai-reviewer
         run: ruff check services/ai-reviewer/app
 
-      - name: Lint email-monitor
-        run: ruff check services/email-monitor/app
+      - name: Lint mcp-writer
+        run: ruff check services/mcp-writer/app
 
   docker-build-check:
     name: Docker build check
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [tracker-api, scraper, ai-reviewer, email-monitor]
+        service: [tracker-api, scraper, ai-reviewer, mcp-writer]
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build ${{ matrix.service }} image
         run: |

@@ -54,6 +54,26 @@ def _add_timeline(db: Session, review_id: UUID, event_type: str, description: st
     ))
 
 
+def apply_status_change(
+    review: models.UserJobReview,
+    new_status: models.JobStatus,
+    note: str,
+    db: Session,
+) -> None:
+    """Apply a status transition + timeline entry to an existing review.
+
+    Reused by the agent /interactions endpoint so the logic stays in one place.
+    Caller must commit after calling this.
+    """
+    if new_status == review.status:
+        return
+    old = review.status.value
+    _add_timeline(db, review.id, "status_change", f"Status: {old} → {new_status.value} — {note}")
+    if new_status == models.JobStatus.APPLIED and not review.date_applied:
+        review.date_applied = datetime.now(timezone.utc)
+    review.status = new_status
+
+
 def _fan_out_review(job_id: str, db: Session):
     """Create a UserJobReview row and enqueue an AI review task for every active approved user."""
     job_uuid = UUID(job_id)

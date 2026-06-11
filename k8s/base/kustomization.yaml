@@ -20,5 +20,9 @@ resources:
   # Frontend (nginx serves SPA + proxies API routes)
   - frontend/deployment.yaml
   - frontend/service.yaml
+  # MCP Writer (in-cluster agent endpoint proxy)
+  - mcp-writer/deployment.yaml
+  - mcp-writer/service.yaml
+  - mcp-writer/configmap.yaml
   # Routing
   - ingress.yaml
