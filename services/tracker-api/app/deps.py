@@ -2,12 +2,14 @@
 FastAPI dependency injection helpers.
 """
 
+from datetime import datetime, timezone
+
 from fastapi import Cookie, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User
-from app.security import decode_access_token
+from app.models import AgentAPIKey, User
+from app.security import decode_access_token, hash_agent_key
 
 
 def get_current_user(
@@ -55,3 +57,29 @@ def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
             detail="Admin access required",
         )
     return current_user
+
+
+def get_user_from_agent_key(
+    x_agent_key: str = Header(default=None, alias="X-Agent-Key"),
+    db: Session = Depends(get_db),
+) -> User:
+    """Derive user from agent API key (H1). Never trust user_id from the request."""
+    if not x_agent_key:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Agent key required")
+
+    key_hash = hash_agent_key(x_agent_key)
+    key_row = (
+        db.query(AgentAPIKey)
+        .filter(AgentAPIKey.key_hash == key_hash, AgentAPIKey.revoked == False)  # noqa: E712
+        .first()
+    )
+    if not key_row:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid agent key")
+
+    key_row.last_used_at = datetime.now(timezone.utc)
+    db.flush()
+
+    user = db.query(User).filter(User.id == key_row.user_id).first()
+    if not user or not user.is_approved:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User not approved")
+    return user

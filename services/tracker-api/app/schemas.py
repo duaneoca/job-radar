@@ -8,7 +8,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr
 
-from app.models import JobSource, JobStatus, LLMProvider
+from app.models import (
+    AgentEnvironment, AgentRunStatus,
+    EmailCategory, EmailProvider, EmailStatus,
+    HitlStatus, ImportStatus,
+    JobSource, JobStatus, LLMProvider,
+)
 
 
 # ── Auth ─────────────────────────────────────────────────────
@@ -355,3 +360,219 @@ class AdminUserOut(UserOut):
 class PaginatedUsers(BaseModel):
     total: int
     items: List[AdminUserOut]
+
+
+# ── Email agent — request/response schemas ────────────────────
+
+# POST /agent/inbox
+class AgentPostingIn(BaseModel):
+    company: str
+    role: str
+    link: Optional[str] = None
+    action_required: bool = False
+    possible_duplicate: bool = False
+    matched_review_id: Optional[UUID] = None
+
+
+class AgentInboxIn(BaseModel):
+    message_id: str
+    subject: str
+    sender: str
+    received_at: datetime
+    category: EmailCategory
+    confidence: float
+    langfuse_trace_id: Optional[str] = None
+    raw_extracted_json: Optional[dict] = None
+    postings: List[AgentPostingIn] = []
+
+
+class AgentInboxOut(BaseModel):
+    inbox_email_id: UUID
+    posting_ids: List[UUID]
+
+
+# POST /agent/interactions
+class AgentInteractionIn(BaseModel):
+    message_id: str
+    subject: str
+    sender: str
+    received_at: datetime
+    category: EmailCategory
+    confidence: float
+    langfuse_trace_id: Optional[str] = None
+    matched_review_id: Optional[UUID] = None
+    match_confidence: float = 0.0
+    new_status: Optional[JobStatus] = None
+    timeline_note: Optional[str] = None
+
+
+class AgentInteractionOut(BaseModel):
+    interaction_id: UUID
+    applied_status: Optional[str] = None  # the status written to the review, if any
+
+
+# GET /agent/reviews
+class AgentReviewOut(BaseModel):
+    review_id: UUID
+    company: str
+    title: str
+    status: JobStatus
+    url: str
+
+    class Config:
+        from_attributes = True
+
+
+# HITL
+class AgentHitlRegisterIn(BaseModel):
+    hitl_id: str
+    candidates: List[UUID]  # review_ids the agent is asking about
+
+
+class HitlDecisionOut(BaseModel):
+    hitl_id: str
+    status: HitlStatus
+    choice_review_id: Optional[UUID]
+
+    class Config:
+        from_attributes = True
+
+
+class AgentHitlConsumeIn(BaseModel):
+    hitl_id: str
+
+
+# POST /agent/runs
+class AgentRunIn(BaseModel):
+    environment: AgentEnvironment
+    agent_version: str
+    status: AgentRunStatus
+    started_at: datetime
+    finished_at: Optional[datetime] = None
+    emails_processed: int = 0
+    postings_created: int = 0
+    interactions_recorded: int = 0
+    escalations: int = 0
+    retries: int = 0
+    error_summary: Optional[str] = None
+
+
+class AgentRunOut(BaseModel):
+    run_id: UUID
+
+
+# Frontend inbox views
+class InboxPostingOut(BaseModel):
+    id: UUID
+    company: str
+    role: str
+    link: Optional[str]
+    action_required: bool
+    possible_duplicate: bool
+    matched_review_id: Optional[UUID]
+    import_status: ImportStatus
+    imported_review_id: Optional[UUID]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class InboxInteractionOut(BaseModel):
+    id: UUID
+    matched_review_id: Optional[UUID]
+    match_confidence: float
+    previous_status: Optional[JobStatus]
+    new_status: Optional[JobStatus]
+    applied_at: Optional[datetime]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class InboxEmailOut(BaseModel):
+    id: UUID
+    message_id: str
+    subject: str
+    sender: str
+    received_at: datetime
+    category: EmailCategory
+    confidence: float
+    status: EmailStatus
+    escalation_reason: Optional[str]
+    langfuse_trace_id: Optional[str]
+    created_at: datetime
+    postings: List[InboxPostingOut] = []
+    interactions: List[InboxInteractionOut] = []
+
+    class Config:
+        from_attributes = True
+
+
+class InboxEmailUpdate(BaseModel):
+    status: Optional[EmailStatus] = None
+
+
+class PaginatedInbox(BaseModel):
+    total: int
+    items: List[InboxEmailOut]
+
+
+# GET /agent/stats
+class AgentLastRunOut(BaseModel):
+    run_id: UUID
+    status: AgentRunStatus
+    finished_at: Optional[datetime]
+    emails_processed: int
+    environment: AgentEnvironment
+
+    class Config:
+        from_attributes = True
+
+
+class AgentStatsOut(BaseModel):
+    emails_today: int
+    emails_this_week: int
+    category_breakdown: dict
+    escalation_rate: float
+    jobs_imported: int
+    last_run: Optional[AgentLastRunOut]
+
+
+# GET /agent/config
+class AgentLLMConfig(BaseModel):
+    provider: str
+    preferred_model: Optional[str]
+    api_key: str  # decrypted — in-cluster only (H6/H6a)
+
+
+class AgentFolderConfig(BaseModel):
+    root: Optional[str]
+    interaction: Optional[str]
+    postings: Optional[str]
+    social: Optional[str]
+    unprocessed: Optional[str]
+
+
+class AgentConfigOut(BaseModel):
+    provider: Optional[str]  # email provider: gmail | imap
+    folders: AgentFolderConfig
+    llm: Optional[AgentLLMConfig]
+    email_credentials: Optional[dict]  # decrypted blob — in-cluster only
+
+
+# Agent API key management
+class AgentAPIKeyOut(BaseModel):
+    id: UUID
+    key_hint: str
+    created_at: datetime
+    last_used_at: Optional[datetime]
+    revoked: bool
+
+    class Config:
+        from_attributes = True
+
+
+class AgentAPIKeyCreatedOut(AgentAPIKeyOut):
+    raw_key: str  # shown once at creation, never stored
