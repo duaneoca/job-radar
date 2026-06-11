@@ -85,6 +85,14 @@ class User(Base):
     profiles    = relationship("Profile", back_populates="user", cascade="all, delete-orphan")
     api_keys    = relationship("UserAPIKey", back_populates="user", cascade="all, delete-orphan")
     connections = relationship("LinkedInConnection", back_populates="user", cascade="all, delete-orphan")
+    # Email agent
+    inbox_emails      = relationship("InboxEmail", back_populates="user", cascade="all, delete-orphan")
+    inbox_postings    = relationship("InboxPosting", back_populates="user", cascade="all, delete-orphan")
+    inbox_interactions = relationship("InboxInteraction", back_populates="user", cascade="all, delete-orphan")
+    agent_api_keys    = relationship("AgentAPIKey", back_populates="user", cascade="all, delete-orphan")
+    email_credential  = relationship("EmailCredential", back_populates="user", cascade="all, delete-orphan", uselist=False)
+    hitl_decisions    = relationship("HitlDecision", back_populates="user", cascade="all, delete-orphan")
+    agent_runs        = relationship("AgentRun", back_populates="user", cascade="all, delete-orphan")
 
 
 # ── Shared job pool ──────────────────────────────────────────
@@ -279,3 +287,183 @@ class LinkedInConnection(Base):
     created_at   = Column(DateTime(timezone=True), default=utcnow)
 
     user = relationship("User", back_populates="connections")
+
+
+# ── Email agent — enums ──────────────────────────────────────
+
+class EmailCategory(str, enum.Enum):
+    RECRUITER_OUTREACH       = "recruiter_outreach"
+    APPLICATION_CONFIRMATION = "application_confirmation"
+    JOB_ALERT                = "job_alert"
+    NETWORK_NOTIFICATION     = "network_notification"
+
+
+class EmailStatus(str, enum.Enum):
+    PENDING      = "pending"
+    PROCESSED    = "processed"
+    NEEDS_REVIEW = "needs_review"
+    DISCARDED    = "discarded"
+
+
+class ImportStatus(str, enum.Enum):
+    PENDING   = "pending"
+    IMPORTED  = "imported"
+    DISMISSED = "dismissed"
+
+
+class EmailProvider(str, enum.Enum):
+    GMAIL = "gmail"
+    IMAP  = "imap"
+
+
+class HitlStatus(str, enum.Enum):
+    PENDING   = "pending"
+    RESOLVED  = "resolved"
+    ABANDONED = "abandoned"
+
+
+class AgentRunStatus(str, enum.Enum):
+    SUCCESS = "success"
+    PARTIAL = "partial"
+    FAILED  = "failed"
+
+
+class AgentEnvironment(str, enum.Enum):
+    LOCAL = "local"
+    CLOUD = "cloud"
+
+
+# ── Email agent — tables ─────────────────────────────────────
+
+class InboxEmail(Base):
+    """One row per processed source email. Idempotent on (user_id, message_id)."""
+    __tablename__ = "inbox_emails"
+    __table_args__ = (UniqueConstraint("user_id", "message_id", name="uq_inbox_user_message"),)
+
+    id                 = Column(Uuid(), primary_key=True, default=uuid.uuid4)
+    user_id            = Column(Uuid(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    message_id         = Column(Text, nullable=False)   # RFC 822 Message-ID
+    subject            = Column(Text, nullable=False)
+    sender             = Column(Text, nullable=False)
+    received_at        = Column(DateTime(timezone=True), nullable=False)
+    category           = Column(Enum(EmailCategory), nullable=False)
+    confidence         = Column(Float, nullable=False)
+    raw_extracted_json = Column(JSON, nullable=True)
+    validation_attempts = Column(Integer, nullable=False, default=0)
+    escalation_reason  = Column(Text, nullable=True)
+    status             = Column(Enum(EmailStatus), nullable=False, default=EmailStatus.PENDING)
+    langfuse_trace_id  = Column(Text, nullable=True)
+    created_at         = Column(DateTime(timezone=True), default=utcnow)
+
+    user     = relationship("User", back_populates="inbox_emails")
+    postings = relationship("InboxPosting", back_populates="inbox_email", cascade="all, delete-orphan")
+    interactions = relationship("InboxInteraction", back_populates="inbox_email", cascade="all, delete-orphan")
+
+
+class InboxPosting(Base):
+    """One row per extracted job posting from an email. Capped at 30 per email (enforced in API)."""
+    __tablename__ = "inbox_postings"
+
+    id             = Column(Uuid(), primary_key=True, default=uuid.uuid4)
+    inbox_email_id = Column(Uuid(), ForeignKey("inbox_emails.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id        = Column(Uuid(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    company        = Column(Text, nullable=False)
+    role           = Column(Text, nullable=False)
+    link           = Column(Text, nullable=True)   # http/https only, validated at write (C2)
+    action_required    = Column(Boolean, nullable=False, default=False)
+    possible_duplicate = Column(Boolean, nullable=False, default=False)
+    matched_review_id  = Column(Uuid(), ForeignKey("user_job_reviews.id", ondelete="SET NULL"), nullable=True)
+    import_status      = Column(Enum(ImportStatus), nullable=False, default=ImportStatus.PENDING)
+    imported_review_id = Column(Uuid(), ForeignKey("user_job_reviews.id", ondelete="SET NULL"), nullable=True)
+    created_at         = Column(DateTime(timezone=True), default=utcnow)
+
+    user        = relationship("User", back_populates="inbox_postings")
+    inbox_email = relationship("InboxEmail", back_populates="postings")
+
+
+class InboxInteraction(Base):
+    """One row per application-status-update email."""
+    __tablename__ = "inbox_interactions"
+
+    id             = Column(Uuid(), primary_key=True, default=uuid.uuid4)
+    inbox_email_id = Column(Uuid(), ForeignKey("inbox_emails.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id        = Column(Uuid(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    matched_review_id = Column(Uuid(), ForeignKey("user_job_reviews.id", ondelete="SET NULL"), nullable=True)
+    match_confidence  = Column(Float, nullable=False, default=0.0)
+    previous_status   = Column(Enum(JobStatus), nullable=True)
+    new_status        = Column(Enum(JobStatus), nullable=True)  # writable subset enforced in API (C1)
+    applied_at        = Column(DateTime(timezone=True), nullable=True)
+    created_at        = Column(DateTime(timezone=True), default=utcnow)
+
+    user        = relationship("User", back_populates="inbox_interactions")
+    inbox_email = relationship("InboxEmail", back_populates="interactions")
+
+
+class AgentAPIKey(Base):
+    """Per-user agent auth key. User derived from key; user_id never trusted from request (H1)."""
+    __tablename__ = "agent_api_keys"
+
+    id           = Column(Uuid(), primary_key=True, default=uuid.uuid4)
+    user_id      = Column(Uuid(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    key_hash     = Column(Text, nullable=False, unique=True, index=True)
+    key_hint     = Column(Text, nullable=False)   # last 4 chars for display
+    created_at   = Column(DateTime(timezone=True), default=utcnow)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
+    revoked      = Column(Boolean, nullable=False, default=False)
+
+    user = relationship("User", back_populates="agent_api_keys")
+
+
+class EmailCredential(Base):
+    """Per-user mailbox credentials, encrypted with ENCRYPTION_KEY (C3/H5)."""
+    __tablename__ = "email_credentials"
+
+    id             = Column(Uuid(), primary_key=True, default=uuid.uuid4)
+    user_id        = Column(Uuid(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    provider       = Column(Enum(EmailProvider), nullable=False)
+    encrypted_blob = Column(Text, nullable=False)   # Fernet via ENCRYPTION_KEY, never SECRET_KEY
+    folder_root          = Column(Text, nullable=True)
+    folder_interaction   = Column(Text, nullable=True)
+    folder_postings      = Column(Text, nullable=True)
+    folder_social        = Column(Text, nullable=True)
+    folder_unprocessed   = Column(Text, nullable=True)
+    created_at     = Column(DateTime(timezone=True), default=utcnow)
+    updated_at     = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    user = relationship("User", back_populates="email_credential", uselist=False)
+
+
+class HitlDecision(Base):
+    """Interactive HITL resolution record (C4)."""
+    __tablename__ = "hitl_decisions"
+
+    id               = Column(Uuid(), primary_key=True, default=uuid.uuid4)
+    user_id          = Column(Uuid(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    hitl_id          = Column(Text, nullable=False, unique=True, index=True)  # agent checkpoint correlator
+    status           = Column(Enum(HitlStatus), nullable=False, default=HitlStatus.PENDING)
+    choice_review_id = Column(Uuid(), ForeignKey("user_job_reviews.id", ondelete="SET NULL"), nullable=True)
+    created_at       = Column(DateTime(timezone=True), default=utcnow)
+    resolved_at      = Column(DateTime(timezone=True), nullable=True)
+
+    user = relationship("User", back_populates="hitl_decisions")
+
+
+class AgentRun(Base):
+    """Operational heartbeat — counts only, no email content (H2)."""
+    __tablename__ = "agent_runs"
+
+    id                    = Column(Uuid(), primary_key=True, default=uuid.uuid4)
+    user_id               = Column(Uuid(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    environment           = Column(Enum(AgentEnvironment), nullable=False)
+    agent_version         = Column(Text, nullable=False)
+    status                = Column(Enum(AgentRunStatus), nullable=False)
+    started_at            = Column(DateTime(timezone=True), nullable=False)
+    finished_at           = Column(DateTime(timezone=True), nullable=True)
+    emails_processed      = Column(Integer, nullable=False, default=0)
+    postings_created      = Column(Integer, nullable=False, default=0)
+    interactions_recorded = Column(Integer, nullable=False, default=0)
+    escalations           = Column(Integer, nullable=False, default=0)
+    retries               = Column(Integer, nullable=False, default=0)
+    error_summary         = Column(Text, nullable=True)
+
+    user = relationship("User", back_populates="agent_runs")
