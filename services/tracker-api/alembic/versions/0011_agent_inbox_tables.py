@@ -46,11 +46,10 @@ agentenvironment = postgresql.ENUM(
     "local", "cloud",
     name="agentenvironment", create_type=False,
 )
-# Pre-existing enum from migration 0003 — referenced only, never created here.
-jobstatus = postgresql.ENUM(
-    "new", "reviewed", "applied", "dismissed", "interviewing", "offer", "rejected", "expired",
-    name="jobstatus", create_type=False,
-)
+# NOTE: JobStatus is stored as VARCHAR(50) in user_job_reviews (migration 0003),
+# NOT as a native PG enum. JobStatus is a str-enum, so the model's Enum(JobStatus)
+# reads/writes plain strings against the varchar column. The inbox_interactions
+# status columns follow the same pattern (String, not a native type).
 
 _NEW_ENUMS = [
     emailcategory, emailstatus, importstatus, emailprovider,
@@ -113,8 +112,8 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Uuid(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("matched_review_id", sa.Uuid(), sa.ForeignKey("user_job_reviews.id", ondelete="SET NULL"), nullable=True),
         sa.Column("match_confidence", sa.Float(), nullable=False, server_default="0"),
-        sa.Column("previous_status", jobstatus, nullable=True),
-        sa.Column("new_status", jobstatus, nullable=True),
+        sa.Column("previous_status", sa.String(50), nullable=True),
+        sa.Column("new_status", sa.String(50), nullable=True),
         sa.Column("applied_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
