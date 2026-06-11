@@ -6,6 +6,7 @@ Create Date: 2026-06-11
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 revision = "0011"
 down_revision = "0010"
@@ -13,18 +14,56 @@ branch_labels = None
 depends_on = None
 
 
+# Shared enum type objects. `create_type=False` ensures op.create_table never
+# emits CREATE TYPE (the generic sa.Enum does NOT reliably honor this). The new
+# types are created explicitly in upgrade() with checkfirst=True so the
+# migration is idempotent even if an earlier run partially applied.
+emailcategory = postgresql.ENUM(
+    "recruiter_outreach", "application_confirmation", "job_alert", "network_notification",
+    name="emailcategory", create_type=False,
+)
+emailstatus = postgresql.ENUM(
+    "pending", "processed", "needs_review", "discarded",
+    name="emailstatus", create_type=False,
+)
+importstatus = postgresql.ENUM(
+    "pending", "imported", "dismissed",
+    name="importstatus", create_type=False,
+)
+emailprovider = postgresql.ENUM(
+    "gmail", "imap",
+    name="emailprovider", create_type=False,
+)
+hitlstatus = postgresql.ENUM(
+    "pending", "resolved", "abandoned",
+    name="hitlstatus", create_type=False,
+)
+agentrunstatus = postgresql.ENUM(
+    "success", "partial", "failed",
+    name="agentrunstatus", create_type=False,
+)
+agentenvironment = postgresql.ENUM(
+    "local", "cloud",
+    name="agentenvironment", create_type=False,
+)
+# Pre-existing enum from migration 0003 — referenced only, never created here.
+jobstatus = postgresql.ENUM(
+    "new", "reviewed", "applied", "dismissed", "interviewing", "offer", "rejected", "expired",
+    name="jobstatus", create_type=False,
+)
+
+_NEW_ENUMS = [
+    emailcategory, emailstatus, importstatus, emailprovider,
+    hitlstatus, agentrunstatus, agentenvironment,
+]
+
+
 def upgrade() -> None:
-    # ── new enum types (DO block = create-if-not-exists for PG enums) ────
-    for stmt in [
-        "CREATE TYPE emailcategory AS ENUM ('recruiter_outreach','application_confirmation','job_alert','network_notification')",
-        "CREATE TYPE emailstatus AS ENUM ('pending','processed','needs_review','discarded')",
-        "CREATE TYPE importstatus AS ENUM ('pending','imported','dismissed')",
-        "CREATE TYPE emailprovider AS ENUM ('gmail','imap')",
-        "CREATE TYPE hitlstatus AS ENUM ('pending','resolved','abandoned')",
-        "CREATE TYPE agentrunstatus AS ENUM ('success','partial','failed')",
-        "CREATE TYPE agentenvironment AS ENUM ('local','cloud')",
-    ]:
-        op.execute(f"DO $$ BEGIN {stmt}; EXCEPTION WHEN duplicate_object THEN null; END $$")
+    bind = op.get_bind()
+    # Idempotent: checkfirst=True skips any type that already exists (e.g. left
+    # behind by a prior partial run of this migration).
+    for enum in _NEW_ENUMS:
+        enum.create(bind, checkfirst=True)
 
     # ── inbox_emails ──────────────────────────────────────────
     op.create_table(
@@ -35,12 +74,12 @@ def upgrade() -> None:
         sa.Column("subject", sa.Text(), nullable=False),
         sa.Column("sender", sa.Text(), nullable=False),
         sa.Column("received_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("category", sa.Enum("recruiter_outreach", "application_confirmation", "job_alert", "network_notification", name="emailcategory", create_type=False), nullable=False),
+        sa.Column("category", emailcategory, nullable=False),
         sa.Column("confidence", sa.Float(), nullable=False),
         sa.Column("raw_extracted_json", sa.JSON(), nullable=True),
         sa.Column("validation_attempts", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("escalation_reason", sa.Text(), nullable=True),
-        sa.Column("status", sa.Enum("pending", "processed", "needs_review", "discarded", name="emailstatus", create_type=False), nullable=False, server_default="pending"),
+        sa.Column("status", emailstatus, nullable=False, server_default="pending"),
         sa.Column("langfuse_trace_id", sa.Text(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.UniqueConstraint("user_id", "message_id", name="uq_inbox_user_message"),
@@ -59,7 +98,7 @@ def upgrade() -> None:
         sa.Column("action_required", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("possible_duplicate", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("matched_review_id", sa.Uuid(), sa.ForeignKey("user_job_reviews.id", ondelete="SET NULL"), nullable=True),
-        sa.Column("import_status", sa.Enum("pending", "imported", "dismissed", name="importstatus", create_type=False), nullable=False, server_default="pending"),
+        sa.Column("import_status", importstatus, nullable=False, server_default="pending"),
         sa.Column("imported_review_id", sa.Uuid(), sa.ForeignKey("user_job_reviews.id", ondelete="SET NULL"), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
@@ -74,8 +113,8 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Uuid(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("matched_review_id", sa.Uuid(), sa.ForeignKey("user_job_reviews.id", ondelete="SET NULL"), nullable=True),
         sa.Column("match_confidence", sa.Float(), nullable=False, server_default="0"),
-        sa.Column("previous_status", sa.Enum("new", "reviewed", "applied", "dismissed", "interviewing", "offer", "rejected", "expired", name="jobstatus", create_type=False), nullable=True),
-        sa.Column("new_status", sa.Enum("new", "reviewed", "applied", "dismissed", "interviewing", "offer", "rejected", "expired", name="jobstatus", create_type=False), nullable=True),
+        sa.Column("previous_status", jobstatus, nullable=True),
+        sa.Column("new_status", jobstatus, nullable=True),
         sa.Column("applied_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
@@ -101,7 +140,7 @@ def upgrade() -> None:
         "email_credentials",
         sa.Column("id", sa.Uuid(), primary_key=True),
         sa.Column("user_id", sa.Uuid(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True),
-        sa.Column("provider", sa.Enum("gmail", "imap", name="emailprovider", create_type=False), nullable=False),
+        sa.Column("provider", emailprovider, nullable=False),
         sa.Column("encrypted_blob", sa.Text(), nullable=False),
         sa.Column("folder_root", sa.Text(), nullable=True),
         sa.Column("folder_interaction", sa.Text(), nullable=True),
@@ -119,7 +158,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Uuid(), primary_key=True),
         sa.Column("user_id", sa.Uuid(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("hitl_id", sa.Text(), nullable=False, unique=True),
-        sa.Column("status", sa.Enum("pending", "resolved", "abandoned", name="hitlstatus", create_type=False), nullable=False, server_default="pending"),
+        sa.Column("status", hitlstatus, nullable=False, server_default="pending"),
         sa.Column("choice_review_id", sa.Uuid(), sa.ForeignKey("user_job_reviews.id", ondelete="SET NULL"), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("resolved_at", sa.DateTime(timezone=True), nullable=True),
@@ -132,9 +171,9 @@ def upgrade() -> None:
         "agent_runs",
         sa.Column("id", sa.Uuid(), primary_key=True),
         sa.Column("user_id", sa.Uuid(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("environment", sa.Enum("local", "cloud", name="agentenvironment", create_type=False), nullable=False),
+        sa.Column("environment", agentenvironment, nullable=False),
         sa.Column("agent_version", sa.Text(), nullable=False),
-        sa.Column("status", sa.Enum("success", "partial", "failed", name="agentrunstatus", create_type=False), nullable=False),
+        sa.Column("status", agentrunstatus, nullable=False),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("emails_processed", sa.Integer(), nullable=False, server_default="0"),
@@ -156,10 +195,6 @@ def downgrade() -> None:
     op.drop_table("inbox_postings")
     op.drop_table("inbox_emails")
 
-    op.execute("DROP TYPE IF EXISTS agentenvironment")
-    op.execute("DROP TYPE IF EXISTS agentrunstatus")
-    op.execute("DROP TYPE IF EXISTS hitlstatus")
-    op.execute("DROP TYPE IF EXISTS emailprovider")
-    op.execute("DROP TYPE IF EXISTS importstatus")
-    op.execute("DROP TYPE IF EXISTS emailstatus")
-    op.execute("DROP TYPE IF EXISTS emailcategory")
+    bind = op.get_bind()
+    for enum in _NEW_ENUMS:
+        enum.drop(bind, checkfirst=True)
