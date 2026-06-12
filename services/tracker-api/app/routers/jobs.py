@@ -74,47 +74,13 @@ def apply_status_change(
     review.status = new_status
 
 
-def _fan_out_review(job_id: str, db: Session):
-    """Create a UserJobReview row and enqueue an AI review task for every active approved user."""
-    job_uuid = UUID(job_id)
-    users = db.query(models.User).filter(models.User.is_approved == True).all()  # noqa: E712
-    for user in users:
-        exists = (
-            db.query(models.UserJobReview)
-            .filter(
-                models.UserJobReview.user_id == user.id,
-                models.UserJobReview.job_id == job_uuid,
-            )
-            .first()
-        )
-        if not exists:
-            review = models.UserJobReview(
-                user_id=user.id,
-                job_id=job_uuid,
-                status=models.JobStatus.NEW,
-            )
-            db.add(review)
-            db.flush()   # get review.id before commit
-            _add_timeline(db, review.id, "status_change", "Job added — awaiting AI review")
-
-    db.commit()
-
-    # Enqueue review tasks (after commit so rows are visible to workers)
-    for user in users:
-        _celery.send_task(
-            "app.tasks.review_job",
-            args=[job_id, str(user.id)],
-            queue="review",
-        )
-
-
 def _ensure_review_for_user(job_id: UUID, user_id: UUID, db: Session) -> bool:
     """Create a NEW review for one user (per-user scrape attribution) and enqueue
     its AI review. Idempotent — does nothing if the user already has a review for
     this job. Returns True if a review was created.
 
-    Used by the BYOK per-user scrape path so a job is attributed only to the user
-    whose criteria found it, not fanned out to everyone.
+    A job is attributed only to the user whose criteria found it (BYOK per-user
+    scraping); there is no fan-out to all users.
     """
     exists = (
         db.query(models.UserJobReview)
@@ -141,24 +107,22 @@ def _ensure_review_for_user(job_id: UUID, user_id: UUID, db: Session) -> bool:
     return True
 
 
-# ── Scraper-facing endpoint (no auth) ────────────────────────
+# ── Scraper-facing endpoint (no auth, in-cluster only) ───────
 
 @router.post("", response_model=schemas.JobOut, status_code=status.HTTP_201_CREATED)
 def create_job(
     payload: schemas.JobCreate,
     response: Response,
-    user_id: Optional[UUID] = Query(None, description="Per-user scrape attribution (BYOK)"),
+    user_id: UUID = Query(..., description="Per-user scrape attribution (BYOK)"),
     db: Session = Depends(get_db),
 ):
     """
-    Called by the scraper service. Deduplicates the shared Job by
-    (external_id, source).
+    Called by the per-user scraper. Deduplicates the shared Job by
+    (external_id, source), then attributes it to `user_id` only — creates that
+    user's review + enqueues their AI review. No fan-out to other users.
 
-    - With `user_id` (per-user BYOK scrape): attributes the job to that user only
-      — creates their review + enqueues their AI review. No fan-out.
-    - Without `user_id` (legacy union scrape): fans the job out to all users.
-
-    Returns 201 for a newly created Job, 200 if the Job already existed.
+    Returns 201 for a newly created Job, 200 if the Job already existed (the
+    user still gets their own review either way).
     """
     existing = None
     if payload.external_id:
@@ -181,14 +145,7 @@ def create_job(
         db.commit()
         db.refresh(job)
 
-    if user_id is not None:
-        # Per-user attribution — also covers existing jobs (another user may have
-        # surfaced the same posting first; this user still needs their own review).
-        _ensure_review_for_user(job.id, user_id, db)
-    elif not existing:
-        # Legacy union behaviour — fan a brand-new job out to everyone.
-        _fan_out_review(str(job.id), db)
-
+    _ensure_review_for_user(job.id, user_id, db)
     return job
 
 

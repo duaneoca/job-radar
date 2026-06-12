@@ -2,6 +2,7 @@
 Adzuna API client.
 
 Docs: https://developer.adzuna.com/docs/search
+BYOK — each user supplies their own app_id/app_key (passed in as `creds`).
 Free tier limits (per their ToS): 25/min, 250/day, 1,000/week, 2,500/month.
 Higher limits only on request for commercial partners. No credit card required.
 
@@ -14,7 +15,6 @@ from typing import List, Optional
 
 import httpx
 
-from app.config import settings
 from app.scrapers.base import BaseScraper, Creds, RawJob
 
 logger = logging.getLogger(__name__)
@@ -31,12 +31,11 @@ class AdzunaScraper(BaseScraper):
     source_name = "adzuna"
 
     async def scrape(self, keywords: List[str], location: str, creds: Creds = None) -> List[RawJob]:
-        # BYOK: use the per-user creds if given, else fall back to the global
-        # env key (legacy union mode).
-        app_id = (creds or {}).get("app_id") or settings.adzuna_app_id
-        app_key = (creds or {}).get("app_key") or settings.adzuna_app_key
+        # BYOK: per-user credentials are required (no shared/global key).
+        app_id = (creds or {}).get("app_id")
+        app_key = (creds or {}).get("app_key")
         if not (app_id and app_key):
-            logger.warning("Adzuna credentials not set — skipping Adzuna")
+            logger.warning("Adzuna called without credentials — skipping")
             return []
 
         all_jobs: List[RawJob] = []
