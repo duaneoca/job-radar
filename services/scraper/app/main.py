@@ -39,6 +39,10 @@ app.conf.beat_schedule = {
         "task": "app.tasks.scrape_all",
         "schedule": crontab(minute=0, hour="*/2"),  # every 2 hours
     },
+    "expire-old-jobs": {
+        "task": "app.tasks.expire_jobs",
+        "schedule": crontab(minute=45, hour=2),  # 2:45 AM UTC — before cleanup
+    },
     "cleanup-old-jobs": {
         "task": "app.tasks.cleanup_jobs",
         "schedule": crontab(minute=0, hour=3),  # 3 AM UTC daily
@@ -80,6 +84,26 @@ def cleanup_jobs():
         logger.exception("cleanup_jobs task failed")
 
 
+@app.task(name="app.tasks.expire_jobs")
+def expire_jobs():
+    """
+    Daily: soft-expire NEW/REVIEWED reviews unactioned for job_ttl_days, flipping
+    them to EXPIRED so the cleanup task sweeps them after terminal_ttl_days.
+    Runs before cleanup_jobs. Delegates to tracker-api which owns the DB.
+    """
+    url = f"{settings.tracker_api_url}/admin/internal/expire"
+    try:
+        resp = httpx.post(url, timeout=30)
+        resp.raise_for_status()
+        result = resp.json()
+        logger.info(
+            "expire_jobs complete — %d reviews soft-expired",
+            result.get("reviews_expired", 0),
+        )
+    except Exception:
+        logger.exception("expire_jobs task failed")
+
+
 @app.task(name="app.tasks.scrape_all")
 def scrape_all():
     """
@@ -94,6 +118,9 @@ def scrape_all():
 
     keywords: list[str] = criteria.get("job_titles") or []
     locations: list[str] = criteria.get("search_locations") or criteria.get("locations") or ["Remote"]
+    # Always include a remote pass so remote-only sources (Remotive) and remote
+    # Adzuna results actually run — concrete city locations alone never trigger them.
+    locations = _ensure_remote_pass(locations)
 
     if not keywords:
         logger.warning("Active criteria has no job_titles — skipping.")
@@ -130,6 +157,21 @@ def scrape_all():
 
 
 # ── Helpers ───────────────────────────────────────────────────
+
+_REMOTE_ALIASES = {"remote", "anywhere"}
+
+
+def _ensure_remote_pass(locations: list[str]) -> list[str]:
+    """Guarantee the scrape loop runs at least one remote pass.
+
+    Remote-only sources (Remotive) and remote Adzuna results only run when the
+    location is remote/anywhere. If the user only listed concrete cities, append
+    a "Remote" pass so those sources aren't silently skipped. Idempotent.
+    """
+    if any((loc or "").strip().lower() in _REMOTE_ALIASES for loc in locations):
+        return locations
+    return [*locations, "Remote"]
+
 
 def _clip(value: str | None, max_len: int) -> str | None:
     """Truncate overlong strings to fit tracker-api's DB column limits."""
