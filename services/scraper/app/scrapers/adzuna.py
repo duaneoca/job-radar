@@ -2,7 +2,8 @@
 Adzuna API client.
 
 Docs: https://developer.adzuna.com/docs/search
-Free tier: ~1000 calls/day, no credit card required.
+Free tier limits (per their ToS): 25/min, 250/day, 1,000/week, 2,500/month.
+Higher limits only on request for commercial partners. No credit card required.
 
 Adzuna returns structured job data (title, company, location, salary_min,
 salary_max, description, url) so we do no HTML parsing here.
