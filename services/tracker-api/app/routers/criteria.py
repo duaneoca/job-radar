@@ -2,6 +2,8 @@
 Criteria router — per-user job search criteria.
 """
 
+import json
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -10,6 +12,9 @@ from sqlalchemy.orm import Session
 from app import models, schemas
 from app.database import get_db
 from app.deps import get_current_user
+from app.security import decrypt_api_key
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/criteria", tags=["criteria"])
 
@@ -157,3 +162,58 @@ def scraper_union_criteria(db: Session = Depends(get_db)):
         for loc in (c.search_locations or c.locations or []):
             locations.add(loc)
     return {"job_titles": list(titles), "search_locations": list(locations)}
+
+
+@router.get(
+    "/scraper/user-configs",
+    response_model=list[schemas.ScraperUserConfig],
+    include_in_schema=False,
+)
+def scraper_user_configs(db: Session = Depends(get_db)):
+    """
+    Internal — used by the per-user scraper (BYOK). Returns each approved user's
+    active criteria plus their decrypted Adzuna credentials (or null if they
+    haven't provided a key).
+
+    Returns decrypted secrets, so this MUST stay in-cluster only — blocked from
+    external access by NetworkPolicy (same posture as /agent/config; JR-5).
+    """
+    active = (
+        db.query(models.Criteria)
+        .join(models.User)
+        .filter(models.Criteria.is_active == True, models.User.is_approved == True)  # noqa: E712
+        .all()
+    )
+
+    # Preload all Adzuna keys in one query, indexed by user.
+    adzuna_by_user = {
+        row.user_id: row
+        for row in db.query(models.UserAPIKey)
+        .filter(models.UserAPIKey.provider == models.LLMProvider.ADZUNA)
+        .all()
+    }
+
+    configs: list[schemas.ScraperUserConfig] = []
+    for c in active:
+        adzuna = None
+        key_row = adzuna_by_user.get(c.user_id)
+        if key_row:
+            try:
+                blob = json.loads(decrypt_api_key(key_row.encrypted_key))
+                if blob.get("app_id") and blob.get("app_key"):
+                    adzuna = schemas.ScraperAdzunaCreds(
+                        app_id=blob["app_id"], app_key=blob["app_key"]
+                    )
+            except Exception:
+                logger.warning("Could not decode Adzuna creds for user %s", c.user_id)
+
+        configs.append(
+            schemas.ScraperUserConfig(
+                user_id=c.user_id,
+                job_titles=c.job_titles or [],
+                search_locations=c.search_locations or c.locations or [],
+                work_style=c.work_style or "any",
+                adzuna=adzuna,
+            )
+        )
+    return configs

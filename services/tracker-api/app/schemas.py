@@ -337,6 +337,22 @@ class APIKeyOut(BaseModel):
         from_attributes = True
 
 
+# ── Scraper per-user config (internal, in-cluster only) ───────
+
+class ScraperAdzunaCreds(BaseModel):
+    app_id: str
+    app_key: str
+
+
+class ScraperUserConfig(BaseModel):
+    """One active user's scrape inputs: criteria + decrypted Adzuna creds."""
+    user_id: UUID
+    job_titles: List[str] = []
+    search_locations: List[str] = []
+    work_style: str = "any"
+    adzuna: Optional[ScraperAdzunaCreds] = None
+
+
 # ── LinkedIn connections ──────────────────────────────────────
 
 class LinkedInConnectionOut(BaseModel):
