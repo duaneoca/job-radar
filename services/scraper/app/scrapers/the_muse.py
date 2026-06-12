@@ -17,7 +17,7 @@ from typing import List, Optional
 
 import httpx
 
-from app.scrapers.base import BaseScraper, RawJob
+from app.scrapers.base import BaseScraper, Creds, RawJob
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ _CATEGORIES = [
 class TheMuseScraper(BaseScraper):
     source_name = "the_muse"
 
-    async def scrape(self, keywords: List[str], location: str) -> List[RawJob]:
+    async def scrape(self, keywords: List[str], location: str, creds: Creds = None) -> List[RawJob]:
         all_jobs: List[RawJob] = []
 
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:

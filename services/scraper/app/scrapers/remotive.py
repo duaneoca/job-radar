@@ -15,7 +15,7 @@ from typing import List, Optional
 
 import httpx
 
-from app.scrapers.base import BaseScraper, RawJob
+from app.scrapers.base import BaseScraper, Creds, RawJob
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ _TIMEOUT = 30.0
 class RemotiveScraper(BaseScraper):
     source_name = "remotive"
 
-    async def scrape(self, keywords: List[str], location: str) -> List[RawJob]:
+    async def scrape(self, keywords: List[str], location: str, creds: Creds = None) -> List[RawJob]:
         # Remotive is remote-only; if the caller asked for a concrete
         # non-remote location, we just return nothing (still cheaper than
         # not running at all because the "Remote" pass will hit this).
