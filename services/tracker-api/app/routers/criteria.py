@@ -164,30 +164,7 @@ def delete_criteria(
     db.commit()
 
 
-# ── Scraper-facing (no auth) — returns union of all active users' criteria ──
-
-@router.get("/scraper/union", include_in_schema=False)
-def scraper_union_criteria(db: Session = Depends(get_db)):
-    """
-    Used by the scraper to get a combined keyword list from all active users.
-    Returns merged job_titles and locations deduplicated.
-    """
-    all_criteria = (
-        db.query(models.Criteria)
-        .join(models.User)
-        .filter(models.Criteria.is_active == True, models.User.is_approved == True)  # noqa: E712
-        .all()
-    )
-    titles: set[str] = set()
-    locations: set[str] = set()
-    for c in all_criteria:
-        for t in (c.job_titles or []):
-            titles.add(t)
-        # search_locations is the new field; fall back to legacy locations column
-        for loc in (c.search_locations or c.locations or []):
-            locations.add(loc)
-    return {"job_titles": list(titles), "search_locations": list(locations)}
-
+# ── Scraper-facing (no auth, in-cluster only) ────────────────
 
 @router.get(
     "/scraper/user-configs",

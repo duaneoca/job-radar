@@ -106,33 +106,10 @@ def expire_jobs():
 
 @app.task(name="app.tasks.scrape_all")
 def scrape_all():
-    """Scheduled scrape. Per-user (BYOK) by default; union mode behind a toggle.
-
-    tracker-api owns review creation + AI-review enqueue (per-user via the
-    user_id attribution, or fan-out in union mode), so the scraper only POSTs.
+    """Scheduled per-user scrape. Each approved user's criteria is scraped with
+    their own Adzuna key; tracker-api attributes results to that user (review +
+    AI-review enqueue), so the scraper only POSTs.
     """
-    if settings.per_user_scraping:
-        _scrape_all_per_user()
-    else:
-        _scrape_all_union()
-
-
-@app.task(name="app.tasks.scrape_user")
-def scrape_user(user_id: str):
-    """Scrape a single user's criteria immediately (e.g. after they edit criteria)."""
-    if not settings.per_user_scraping:
-        logger.info("scrape_user ignored — per-user scraping disabled")
-        return
-    configs = _fetch_user_configs() or []
-    cfg = next((c for c in configs if str(c.get("user_id")) == str(user_id)), None)
-    if not cfg:
-        logger.warning("scrape_user: no active config for user %s", user_id)
-        return
-    seen, created = _scrape_for_config(cfg)
-    logger.info("scrape_user %s complete — %d seen, %d created", user_id, seen, created)
-
-
-def _scrape_all_per_user():
     configs = _fetch_user_configs()
     if not configs:
         logger.warning("No user configs found — skipping scrape run.")
@@ -148,9 +125,21 @@ def _scrape_all_per_user():
             logger.exception("scrape failed for user %s", cfg.get("user_id"))
 
     logger.info(
-        "scrape_all (per-user) complete — %d users, %d raw seen, %d newly created",
+        "scrape_all complete — %d users, %d raw seen, %d newly created",
         len(configs), total_seen, total_created,
     )
+
+
+@app.task(name="app.tasks.scrape_user")
+def scrape_user(user_id: str):
+    """Scrape a single user's criteria immediately (e.g. after they edit criteria)."""
+    configs = _fetch_user_configs() or []
+    cfg = next((c for c in configs if str(c.get("user_id")) == str(user_id)), None)
+    if not cfg:
+        logger.warning("scrape_user: no active config for user %s", user_id)
+        return
+    seen, created = _scrape_for_config(cfg)
+    logger.info("scrape_user %s complete — %d seen, %d created", user_id, seen, created)
 
 
 def _scrape_for_config(cfg: dict) -> tuple[int, int]:
@@ -181,40 +170,6 @@ def _scrape_for_config(cfg: dict) -> tuple[int, int]:
     return seen, created
 
 
-def _scrape_all_union():
-    """Legacy union scrape — one shared global Adzuna key, fanned out to all users."""
-    criteria = _fetch_active_criteria()
-    if not criteria:
-        logger.warning("No active criteria found — skipping scrape run.")
-        return
-
-    keywords: list[str] = criteria.get("job_titles") or []
-    locations: list[str] = criteria.get("search_locations") or criteria.get("locations") or ["Remote"]
-    locations = _ensure_remote_pass(locations)
-
-    if not keywords:
-        logger.warning("Active criteria has no job_titles — skipping.")
-        return
-
-    total_seen = total_created = 0
-    for scraper in SCRAPERS:
-        for location in locations:
-            try:
-                raw_jobs = asyncio.run(scraper.scrape(keywords, location))
-            except Exception:
-                logger.exception("scraper %s crashed", scraper.source_name)
-                continue
-            total_seen += len(raw_jobs)
-            for raw in raw_jobs:
-                if _post_job(raw):   # no user_id → server-side fan-out + enqueue
-                    total_created += 1
-
-    logger.info(
-        "scrape_all (union) complete — %d raw jobs seen, %d newly created",
-        total_seen, total_created,
-    )
-
-
 # ── Helpers ───────────────────────────────────────────────────
 
 _REMOTE_ALIASES = {"remote", "anywhere"}
@@ -241,20 +196,6 @@ def _clip(value: str | None, max_len: int) -> str | None:
     return value[: max_len - 1] + "…"
 
 
-def _fetch_active_criteria() -> dict | None:
-    """Return merged criteria from all approved users via the public union endpoint."""
-    url = f"{settings.tracker_api_url}/criteria/scraper/union"
-    try:
-        resp = httpx.get(url, timeout=10)
-        if resp.status_code == 404:
-            return None
-        resp.raise_for_status()
-        return resp.json()
-    except Exception:
-        logger.exception("Failed to fetch active criteria from %s", url)
-        return None
-
-
 def _fetch_user_configs() -> list[dict] | None:
     """Return per-user scrape configs (criteria + decrypted Adzuna creds)."""
     url = f"{settings.tracker_api_url}/criteria/scraper/user-configs"
@@ -267,12 +208,11 @@ def _fetch_user_configs() -> list[dict] | None:
         return None
 
 
-def _post_job(raw: RawJob, user_id: str | None = None) -> str | None:
+def _post_job(raw: RawJob, user_id: str) -> str | None:
     """
-    POST a RawJob to tracker-api as a JobCreate payload.
-
-    With `user_id`, the job is attributed to that user only (per-user BYOK);
-    without it, tracker-api fans the job out to all users (union mode).
+    POST a RawJob to tracker-api as a JobCreate payload, attributed to `user_id`
+    (per-user BYOK). tracker-api dedups the shared Job and creates this user's
+    review.
 
     Returns the job ID (str) if the Job was newly created (HTTP 201),
     or None if it already existed (HTTP 200) or on error.
@@ -294,7 +234,7 @@ def _post_job(raw: RawJob, user_id: str | None = None) -> str | None:
     payload = {k: v for k, v in payload.items() if v is not None}
 
     url = f"{settings.tracker_api_url}/jobs"
-    params = {"user_id": user_id} if user_id else None
+    params = {"user_id": user_id}
     try:
         resp = httpx.post(url, json=payload, params=params, timeout=15)
         resp.raise_for_status()

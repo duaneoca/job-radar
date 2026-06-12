@@ -55,11 +55,8 @@ def test_same_job_two_users_one_job_two_reviews(client, db, test_user):
     assert db.query(models.UserJobReview).filter_by(user_id=other.id).count() == 1
 
 
-def test_no_user_id_still_fans_out(client, db, test_user):
-    """Legacy union path (no user_id) fans out to all approved users."""
-    other = _make_user(db, "other3@example.com")
+def test_user_id_now_required(client, db, test_user):
+    """Union mode is retired — POST /jobs without user_id is rejected (422)."""
     with patch("app.routers.jobs._celery"):
         resp = client.post("/jobs", json=JOB)
-    assert resp.status_code == 201
-    assert db.query(models.UserJobReview).filter_by(user_id=TEST_USER_ID).count() == 1
-    assert db.query(models.UserJobReview).filter_by(user_id=other.id).count() == 1
+    assert resp.status_code == 422

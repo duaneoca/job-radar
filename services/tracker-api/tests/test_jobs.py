@@ -25,9 +25,9 @@ def test_health(client):
 # ── Scraper endpoint (no auth) ────────────────────────────────
 
 def test_create_job_scraper(client):
-    """Scraper POST /jobs creates a job; fans out a review to the test user."""
+    """Scraper POST /jobs?user_id= creates a job + a review for that user."""
     with patch("app.routers.jobs._celery"):
-        resp = client.post("/jobs", json=JOB_PAYLOAD)
+        resp = client.post(f"/jobs?user_id={TEST_USER_ID}", json=JOB_PAYLOAD)
     assert resp.status_code == 201
     data = resp.json()
     assert data["title"] == "Senior Python Engineer"
@@ -37,8 +37,8 @@ def test_dedup_by_external_id(client):
     """Scraper deduplicates jobs by external_id + source, returns 200 the second time."""
     payload = {**JOB_PAYLOAD, "external_id": "ext-001"}
     with patch("app.routers.jobs._celery"):
-        r1 = client.post("/jobs", json=payload)
-        r2 = client.post("/jobs", json=payload)
+        r1 = client.post(f"/jobs?user_id={TEST_USER_ID}", json=payload)
+        r2 = client.post(f"/jobs?user_id={TEST_USER_ID}", json=payload)
     assert r1.json()["id"] == r2.json()["id"]
 
 
@@ -54,7 +54,7 @@ def test_list_jobs_empty(client):
 def test_list_jobs_after_scrape(client):
     """After scraper creates job, user sees 1 review in their list."""
     with patch("app.routers.jobs._celery"):
-        client.post("/jobs", json=JOB_PAYLOAD)
+        client.post(f"/jobs?user_id={TEST_USER_ID}", json=JOB_PAYLOAD)
     resp = client.get("/jobs")
     assert resp.json()["total"] == 1
 
@@ -62,7 +62,7 @@ def test_list_jobs_after_scrape(client):
 def test_get_review(client):
     """GET /jobs/{review_id} returns the correct review."""
     with patch("app.routers.jobs._celery"):
-        client.post("/jobs", json=JOB_PAYLOAD)
+        client.post(f"/jobs?user_id={TEST_USER_ID}", json=JOB_PAYLOAD)
     review_id = client.get("/jobs").json()["items"][0]["id"]
 
     resp = client.get(f"/jobs/{review_id}")
@@ -73,7 +73,7 @@ def test_get_review(client):
 def test_update_review_status(client):
     """PATCH /jobs/{review_id} updates status and stamps date_applied."""
     with patch("app.routers.jobs._celery"):
-        client.post("/jobs", json=JOB_PAYLOAD)
+        client.post(f"/jobs?user_id={TEST_USER_ID}", json=JOB_PAYLOAD)
     review_id = client.get("/jobs").json()["items"][0]["id"]
 
     resp = client.patch(f"/jobs/{review_id}", json={"status": "applied"})
@@ -85,7 +85,7 @@ def test_update_review_status(client):
 def test_timeline_records_status_change(client):
     """Status change writes a timeline event."""
     with patch("app.routers.jobs._celery"):
-        client.post("/jobs", json=JOB_PAYLOAD)
+        client.post(f"/jobs?user_id={TEST_USER_ID}", json=JOB_PAYLOAD)
     review_id = client.get("/jobs").json()["items"][0]["id"]
     client.patch(f"/jobs/{review_id}", json={"status": "applied"})
 
@@ -98,8 +98,8 @@ def test_timeline_records_status_change(client):
 def test_filter_by_status(client):
     """?status= filter returns only matching reviews."""
     with patch("app.routers.jobs._celery"):
-        client.post("/jobs", json=JOB_PAYLOAD)
-        client.post("/jobs", json={**JOB_PAYLOAD, "url": "https://jobs.acme.com/456", "external_id": "ext-002"})
+        client.post(f"/jobs?user_id={TEST_USER_ID}", json=JOB_PAYLOAD)
+        client.post(f"/jobs?user_id={TEST_USER_ID}", json={**JOB_PAYLOAD, "url": "https://jobs.acme.com/456", "external_id": "ext-002"})
 
     items = client.get("/jobs?status=new").json()["items"]
     client.patch(f"/jobs/{items[0]['id']}", json={"status": "applied"})
@@ -133,7 +133,7 @@ def test_manual_job_dedup_by_url(client):
 def test_ai_review(client):
     """POST /jobs/{job_id}/ai-review?user_id= updates the review with AI scores."""
     with patch("app.routers.jobs._celery"):
-        client.post("/jobs", json=JOB_PAYLOAD)
+        client.post(f"/jobs?user_id={TEST_USER_ID}", json=JOB_PAYLOAD)
 
     items = client.get("/jobs").json()["items"]
     job_id = items[0]["job_id"]

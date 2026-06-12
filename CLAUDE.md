@@ -15,8 +15,8 @@ services/
   tracker-api/     FastAPI backend — SQLAlchemy, Alembic, Celery producer
   frontend/        React + Vite + shadcn/ui, served by nginx
   ai-reviewer/     Celery worker — scores jobs via LiteLLM
-  scraper/         Celery worker + Beat scheduler — scrapes every 2 hours
-  email-monitor/   Exists in CI matrix, not yet implemented
+  scraper/         Celery worker + Beat scheduler — per-user scrape every 6 hours
+  mcp-writer/      FastMCP service wrapping the email-agent /agent/* endpoints
 k8s/
   base/            Kustomize base manifests for all services
   overlays/
@@ -48,8 +48,9 @@ git tag vX.Y.Z && git push origin vX.Y.Z
 - SES sending from `noreply@job-radar.net` (domain identity, not email address identity)
 - IAM role on EC2 — no hardcoded AWS keys
 
-**Secrets not auto-applied by kustomize — must be created manually in both namespaces:**
-- `scraper-secrets` — Adzuna `app_id` and `app_key`
+**Adzuna is BYOK** — each user stores their own `app_id`/`app_key` (Settings → API Keys,
+encrypted in `user_api_keys`). No shared/global Adzuna key; the old manual
+`scraper-secrets` is retired.
 
 ---
 
@@ -105,10 +106,15 @@ Key routers:
 
 ### scraper (Celery + Beat)
 Beat schedule (UTC):
-- Every 2 hours — `scrape_all` (Adzuna, The Muse, Remotive)
-- 3 AM daily — `cleanup_jobs` (calls `POST /admin/internal/cleanup`)
+- Every 6 hours — `scrape_all`: per-user scrape. Fetches `/criteria/scraper/user-configs`
+  (each user's criteria + their decrypted Adzuna creds), scrapes each user with their
+  own key, and POSTs jobs to `/jobs?user_id=` (attributed to that user, no fan-out).
+- 2:45 AM — `expire_jobs`; 3 AM — `cleanup_jobs`.
+- Also triggered on demand: `scrape_user(user_id)` fires when a user saves criteria (debounced).
 
-Sources: Adzuna (requires secrets), The Muse (public, category-based), Remotive (public, remote-only). HTML scraping was abandoned — Cloudflare blocks datacenter IPs on LinkedIn/Indeed/Glassdoor.
+Sources: **Adzuna** (BYOK per-user key; skipped for users without one), **The Muse** (public,
+category mapped from the user's job titles), **Remotive** (public, remote-only). HTML scraping
+was abandoned — Cloudflare blocks datacenter IPs on LinkedIn/Indeed/Glassdoor.
 
 ---
 
@@ -150,7 +156,10 @@ Parse with `Math.round(parseFloat(match[1].replace(/,/g,'')) * (match[2].toUpper
 
 ## Pending / backlog ideas
 
-- Soft-expire NEW/REVIEWED jobs older than `job_ttl_days` (30) — config key exists, task not yet written
-- More The Muse categories (currently: Software Engineering, Data Science, Data and Analytics)
-- Email monitor service (`email-monitor/`) — exists in CI matrix, not implemented
+- More The Muse category mappings (`_CATEGORY_TRIGGERS` in `the_muse.py`)
 - Tavily enrichment could be extended beyond the research endpoint
+- Optional defense-in-depth: app-level `X-Internal-Token` on internal endpoints
+  (external surface is already blocked at nginx; see internal-endpoint memory)
+
+Done recently: soft-expire (`job_ttl_days`) shipped; `email-monitor` retired and
+replaced by `mcp-writer` (FastMCP); Adzuna moved to per-user BYOK.
