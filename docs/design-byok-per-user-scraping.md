@@ -275,7 +275,21 @@ gap proactively.
   cadence to 6h.
 - **Phase 5:** Scrape-on-criteria-change trigger (debounced) wired to
   `POST`/`PATCH /criteria`.
-- **Phase 6:** The Muse category mapping; retire the union endpoint + global fan-out
-  (removes the cross-user bleed for good).
+- **Phase 6:** The Muse category mapping; retire union mode entirely. Once per-user
+  scraping is validated, remove the rollback path and all its remnants:
+  - [ ] Delete the Adzuna `app_id`/`app_key` from the `scraper-secrets` k8s secret in
+        **both** namespaces (and drop them from the deployment's env if listed).
+  - [ ] Remove `adzuna_app_id` / `adzuna_app_key` from scraper `config.py` and the
+        global-key fallback in `AdzunaScraper.scrape` (creds become required).
+  - [ ] Remove the `per_user_scraping` toggle (becomes always-on) and the
+        `_scrape_all_union` / `_fetch_active_criteria` code paths.
+  - [ ] Remove `GET /criteria/scraper/union` (tracker-api) and `_fan_out_review`
+        in `jobs.py` (and the no-`user_id` branch of `POST /jobs`).
+  - [ ] Update CLAUDE.md: drop the "create `scraper-secrets` manually" note; the
+        Adzuna key is now per-user (BYOK), only The Muse/Remotive remain keyless.
+  - Implement The Muse criteria→category mapping (§4.7) in the same pass.
+  - Note: until this phase, the global key is dormant in per-user mode (a key-less
+    user gets **no** Adzuna, never the system key) and is retained only as the
+    union-mode rollback fallback.
 - **Phase 7:** Cleanup — optional one-off staging review prune, docs, remove the
   feature toggle once validated.
