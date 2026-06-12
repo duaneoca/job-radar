@@ -32,6 +32,12 @@ _TERMINAL_STATUSES = [
     models.JobStatus.EXPIRED,
 ]
 
+# Unactioned statuses that get soft-expired after job_ttl_days
+_EXPIRABLE_STATUSES = [
+    models.JobStatus.NEW,
+    models.JobStatus.REVIEWED,
+]
+
 
 def _do_cleanup(db: Session) -> dict:
     """
@@ -70,6 +76,40 @@ def _do_cleanup(db: Session) -> dict:
         reviews_deleted, jobs_deleted,
     )
     return {"reviews_deleted": reviews_deleted, "orphan_jobs_deleted": jobs_deleted}
+
+
+def _do_expire(db: Session) -> dict:
+    """
+    Soft-expire unactioned reviews: flip NEW / REVIEWED rows whose updated_at is
+    older than job_ttl_days to EXPIRED. They then enter the terminal-status grace
+    window and are hard-deleted by _do_cleanup after terminal_ttl_days.
+
+    updated_at is reset to now so the terminal grace period starts at expiry.
+    Applied / interviewing / offer and already-terminal statuses are untouched.
+
+    Returns a dict with the count of soft-expired reviews.
+    """
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=settings.job_ttl_days)
+
+    reviews_expired = (
+        db.query(models.UserJobReview)
+        .filter(
+            models.UserJobReview.status.in_(_EXPIRABLE_STATUSES),
+            models.UserJobReview.updated_at < cutoff,
+        )
+        .update(
+            {
+                models.UserJobReview.status: models.JobStatus.EXPIRED,
+                models.UserJobReview.updated_at: now,
+            },
+            synchronize_session=False,
+        )
+    )
+
+    db.commit()
+    logger.info("expire_jobs: %d unactioned reviews soft-expired", reviews_expired)
+    return {"reviews_expired": reviews_expired}
 
 
 @router.get("/users", response_model=schemas.PaginatedUsers)
@@ -198,6 +238,26 @@ def cleanup_jobs_endpoint(
 def cleanup_jobs_internal(db: Session = Depends(get_db)):
     """Called by the scraper's daily Celery Beat task — no user auth required."""
     return _do_cleanup(db)
+
+
+@router.post("/expire-jobs")
+def expire_jobs_endpoint(
+    db: Session = Depends(get_db),
+    _: models.User = Depends(get_current_admin),
+):
+    """
+    Soft-expire unactioned NEW/REVIEWED reviews older than job_ttl_days, flipping
+    them to EXPIRED. The nightly cleanup then hard-deletes them after
+    terminal_ttl_days. Also available as POST /admin/internal/expire for the
+    scheduled task.
+    """
+    return _do_expire(db)
+
+
+@router.post("/internal/expire", include_in_schema=False)
+def expire_jobs_internal(db: Session = Depends(get_db)):
+    """Called by the scraper's daily Celery Beat task — no user auth required."""
+    return _do_expire(db)
 
 
 @router.post("/trigger-evaluate", status_code=status.HTTP_202_ACCEPTED)
