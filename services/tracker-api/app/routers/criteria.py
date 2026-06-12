@@ -6,10 +6,13 @@ import json
 import logging
 from uuid import UUID
 
+import redis as _redis_lib
+from celery import Celery
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app import models, schemas
+from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
 from app.security import decrypt_api_key
@@ -17,6 +20,25 @@ from app.security import decrypt_api_key
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/criteria", tags=["criteria"])
+
+# Producer-only Celery + a Redis client for debouncing criteria-change scrapes.
+_celery = Celery(broker=settings.redis_url)
+_redis_client = _redis_lib.from_url(settings.redis_url, socket_connect_timeout=1)
+_SCRAPE_DEBOUNCE_SECONDS = 120
+
+
+def _maybe_enqueue_scrape(user_id: UUID) -> None:
+    """Fire a debounced per-user scrape after a criteria change.
+
+    Best-effort: never blocks or fails the request. A Redis SET NX EX gates it so
+    rapid successive saves coalesce into a single scrape within the debounce
+    window (avoids a burst of scrapes / Adzuna calls while the user edits).
+    """
+    try:
+        if _redis_client.set(f"scrape_debounce:{user_id}", "1", nx=True, ex=_SCRAPE_DEBOUNCE_SECONDS):
+            _celery.send_task("app.tasks.scrape_user", args=[str(user_id)])
+    except Exception:
+        logger.warning("Could not enqueue scrape for user %s", user_id, exc_info=True)
 
 
 def _get_or_404(criteria_id: UUID, user: models.User, db: Session) -> models.Criteria:
@@ -68,6 +90,7 @@ def upsert_criteria(
         db.add(obj)
     db.commit()
     db.refresh(obj)
+    _maybe_enqueue_scrape(current_user.id)
     return obj
 
 
@@ -108,6 +131,7 @@ def update_criteria(
         setattr(obj, field, value)
     db.commit()
     db.refresh(obj)
+    _maybe_enqueue_scrape(current_user.id)
     return obj
 
 
@@ -125,6 +149,7 @@ def activate_criteria(
     obj.is_active = True
     db.commit()
     db.refresh(obj)
+    _maybe_enqueue_scrape(current_user.id)
     return obj
 
 
