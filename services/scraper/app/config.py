@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     adzuna_app_id: Optional[str] = None
     adzuna_app_key: Optional[str] = None
 
+    # BYOK per-user scraping. When True (default), the scraper iterates each
+    # user's criteria + their own Adzuna key. Set False to fall back to the
+    # legacy union scrape (shared global Adzuna key) during validation.
+    per_user_scraping: bool = True
+
     class Config:
         env_file = ".env"
 

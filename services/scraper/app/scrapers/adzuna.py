@@ -15,7 +15,7 @@ from typing import List, Optional
 import httpx
 
 from app.config import settings
-from app.scrapers.base import BaseScraper, RawJob
+from app.scrapers.base import BaseScraper, Creds, RawJob
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +30,12 @@ _TIMEOUT = 20.0
 class AdzunaScraper(BaseScraper):
     source_name = "adzuna"
 
-    async def scrape(self, keywords: List[str], location: str) -> List[RawJob]:
-        if not (settings.adzuna_app_id and settings.adzuna_app_key):
+    async def scrape(self, keywords: List[str], location: str, creds: Creds = None) -> List[RawJob]:
+        # BYOK: use the per-user creds if given, else fall back to the global
+        # env key (legacy union mode).
+        app_id = (creds or {}).get("app_id") or settings.adzuna_app_id
+        app_key = (creds or {}).get("app_key") or settings.adzuna_app_key
+        if not (app_id and app_key):
             logger.warning("Adzuna credentials not set — skipping Adzuna")
             return []
 
@@ -41,7 +45,7 @@ class AdzunaScraper(BaseScraper):
             for keyword in keywords:
                 logger.info("Adzuna: '%s' in '%s'", keyword, location)
                 try:
-                    jobs = await self._scrape_keyword(client, keyword, location)
+                    jobs = await self._scrape_keyword(client, keyword, location, app_id, app_key)
                     logger.info("Adzuna '%s' → %d jobs", keyword, len(jobs))
                     all_jobs.extend(jobs)
                 except Exception:
@@ -59,15 +63,16 @@ class AdzunaScraper(BaseScraper):
         return unique
 
     async def _scrape_keyword(
-        self, client: httpx.AsyncClient, keyword: str, location: str
+        self, client: httpx.AsyncClient, keyword: str, location: str,
+        app_id: str, app_key: str,
     ) -> List[RawJob]:
         jobs: List[RawJob] = []
 
         for page in range(1, _MAX_PAGES + 1):
             url = f"{_BASE}/{_COUNTRY}/search/{page}"
             params = {
-                "app_id": settings.adzuna_app_id,
-                "app_key": settings.adzuna_app_key,
+                "app_id": app_id,
+                "app_key": app_key,
                 "what": keyword,
                 "results_per_page": _RESULTS_PER_PAGE,
                 "max_days_old": _MAX_DAYS_OLD,

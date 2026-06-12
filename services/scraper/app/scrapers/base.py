@@ -11,6 +11,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import List, Optional
 
+# Per-user Adzuna credentials, or None. Public sources ignore this.
+Creds = Optional[dict]
+
 
 @dataclass
 class RawJob:
@@ -32,6 +35,10 @@ class BaseScraper(ABC):
     source_name: str
 
     @abstractmethod
-    async def scrape(self, keywords: List[str], location: str) -> List[RawJob]:
-        """Scrape jobs for the given keywords + location and return raw results."""
+    async def scrape(self, keywords: List[str], location: str, creds: Creds = None) -> List[RawJob]:
+        """Scrape jobs for the given keywords + location and return raw results.
+
+        `creds` carries per-user Adzuna credentials in BYOK mode; public sources
+        ignore it.
+        """
         ...

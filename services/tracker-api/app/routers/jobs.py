@@ -108,18 +108,59 @@ def _fan_out_review(job_id: str, db: Session):
         )
 
 
+def _ensure_review_for_user(job_id: UUID, user_id: UUID, db: Session) -> bool:
+    """Create a NEW review for one user (per-user scrape attribution) and enqueue
+    its AI review. Idempotent — does nothing if the user already has a review for
+    this job. Returns True if a review was created.
+
+    Used by the BYOK per-user scrape path so a job is attributed only to the user
+    whose criteria found it, not fanned out to everyone.
+    """
+    exists = (
+        db.query(models.UserJobReview)
+        .filter(
+            models.UserJobReview.user_id == user_id,
+            models.UserJobReview.job_id == job_id,
+        )
+        .first()
+    )
+    if exists:
+        return False
+
+    review = models.UserJobReview(user_id=user_id, job_id=job_id, status=models.JobStatus.NEW)
+    db.add(review)
+    db.flush()
+    _add_timeline(db, review.id, "status_change", "Job added — awaiting AI review")
+    db.commit()
+
+    _celery.send_task(
+        "app.tasks.review_job",
+        args=[str(job_id), str(user_id)],
+        queue="review",
+    )
+    return True
+
+
 # ── Scraper-facing endpoint (no auth) ────────────────────────
 
 @router.post("", response_model=schemas.JobOut, status_code=status.HTTP_201_CREATED)
 def create_job(
     payload: schemas.JobCreate,
     response: Response,
+    user_id: Optional[UUID] = Query(None, description="Per-user scrape attribution (BYOK)"),
     db: Session = Depends(get_db),
 ):
     """
-    Called by the scraper service.  Returns 201 for a new job (and fans out
-    AI review tasks to all users), or 200 if the job already exists.
+    Called by the scraper service. Deduplicates the shared Job by
+    (external_id, source).
+
+    - With `user_id` (per-user BYOK scrape): attributes the job to that user only
+      — creates their review + enqueues their AI review. No fan-out.
+    - Without `user_id` (legacy union scrape): fans the job out to all users.
+
+    Returns 201 for a newly created Job, 200 if the Job already existed.
     """
+    existing = None
     if payload.external_id:
         existing = (
             db.query(models.Job)
@@ -129,19 +170,24 @@ def create_job(
             )
             .first()
         )
-        if existing:
-            response.status_code = status.HTTP_200_OK
-            return existing
 
-    job = models.Job(**payload.model_dump())
-    db.add(job)
-    db.flush()
-    job_id = str(job.id)
-    db.commit()
-    db.refresh(job)
+    if existing:
+        response.status_code = status.HTTP_200_OK
+        job = existing
+    else:
+        job = models.Job(**payload.model_dump())
+        db.add(job)
+        db.flush()
+        db.commit()
+        db.refresh(job)
 
-    # Fan out to all current users
-    _fan_out_review(job_id, db)
+    if user_id is not None:
+        # Per-user attribution — also covers existing jobs (another user may have
+        # surfaced the same posting first; this user still needs their own review).
+        _ensure_review_for_user(job.id, user_id, db)
+    elif not existing:
+        # Legacy union behaviour — fan a brand-new job out to everyone.
+        _fan_out_review(str(job.id), db)
 
     return job
 
