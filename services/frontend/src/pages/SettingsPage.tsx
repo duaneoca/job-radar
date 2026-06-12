@@ -255,6 +255,77 @@ function KeyInput({
   );
 }
 
+function AdzunaKeyInput({
+  existing, onSave, onDelete,
+}: {
+  existing?: APIKey;
+  onSave: (appId: string, appKey: string) => Promise<void>;
+  onDelete: () => Promise<void>;
+}) {
+  const [appId, setAppId] = useState("");
+  const [appKey, setAppKey] = useState("");
+  const [show, setShow] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    if (!appId || !appKey) return;
+    setSaving(true);
+    try {
+      await onSave(appId, appKey);
+      setAppId("");
+      setAppKey("");
+    } catch {
+      // onSave shows its own toast
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-2 space-y-2">
+      {existing && (
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">
+            Saved key: <span className="font-mono">••••{existing.key_hint}</span>
+          </span>
+          <Button variant="ghost" size="sm" className="h-7 text-destructive hover:bg-destructive/10 px-2" onClick={onDelete}>
+            <Trash2 className="h-3.5 w-3.5 mr-1" />
+            Remove
+          </Button>
+        </div>
+      )}
+      <Input
+        placeholder={existing ? "Replace App ID" : "App ID"}
+        value={appId}
+        onChange={(e) => setAppId(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && handleSave()}
+      />
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Input
+            type={show ? "text" : "password"}
+            placeholder={existing ? "Replace App Key" : "App Key"}
+            value={appKey}
+            onChange={(e) => setAppKey(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSave()}
+            className="pr-9"
+          />
+          <button
+            type="button"
+            className="absolute right-2 top-2.5 text-muted-foreground hover:text-foreground"
+            onClick={() => setShow((s) => !s)}
+          >
+            {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </div>
+        <Button size="sm" disabled={!appId || !appKey || saving} onClick={handleSave}>
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function KeysTab() {
   const qc = useQueryClient();
   const { data: keys = [] } = useQuery<APIKey[]>({
@@ -289,6 +360,17 @@ function KeysTab() {
     }
   }
 
+  async function saveAdzuna(app_id: string, app_key: string) {
+    try {
+      await keysApi.put("/keys", { provider: "adzuna", app_id, app_key });
+      qc.invalidateQueries({ queryKey: ["keys"] });
+      toast({ title: "Adzuna credentials saved" });
+    } catch (err: any) {
+      toast({ title: "Failed to save key", description: err?.response?.data?.detail, variant: "destructive" });
+      throw err;
+    }
+  }
+
   async function deleteKey(provider: LLMProvider) {
     try {
       await keysApi.delete(`/keys/${provider}`);
@@ -305,12 +387,34 @@ function KeysTab() {
   }
 
   const tavilyKey = keyMap["tavily"];
+  const adzunaKey = keyMap["adzuna"];
 
   return (
     <div className="max-w-lg space-y-6">
       <p className="text-sm text-muted-foreground">
         Keys are encrypted at rest. Only the last 4 characters are shown after saving.
       </p>
+
+      <div className="space-y-3">
+        <div>
+          <h3 className="font-medium">Job source — Adzuna</h3>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Your own Adzuna API credentials search job boards against your criteria.
+            Without them you only get jobs from the public sources. Register a free app at{" "}
+            <a href="https://developer.adzuna.com/" target="_blank" rel="noreferrer" className="underline">
+              developer.adzuna.com
+            </a>{" "}
+            to get an App ID and App Key.
+          </p>
+        </div>
+        <AdzunaKeyInput
+          existing={adzunaKey}
+          onSave={(id, key) => saveAdzuna(id, key)}
+          onDelete={() => deleteKey("adzuna")}
+        />
+      </div>
+
+      <Separator />
 
       <div className="space-y-3">
         <div>

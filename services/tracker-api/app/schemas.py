@@ -316,8 +316,11 @@ class ProfileOut(ProfileBase):
 
 class APIKeyUpsert(BaseModel):
     provider: LLMProvider
-    api_key: str                         # plaintext — encrypted before storage
+    api_key: Optional[str] = None        # plaintext — encrypted before storage (LLM/Tavily)
     preferred_model: Optional[str] = None  # LiteLLM model string
+    # Adzuna uses a two-part credential instead of a single api_key.
+    app_id: Optional[str] = None
+    app_key: Optional[str] = None
 
 
 class APIKeyModelUpdate(BaseModel):

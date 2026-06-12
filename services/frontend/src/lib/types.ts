@@ -6,7 +6,7 @@ export type JobSource =
   | "adzuna" | "the_muse" | "remotive" | "linkedin"
   | "indeed" | "glassdoor" | "dice" | "manual";
 
-export type LLMProvider = "anthropic" | "openai" | "google" | "groq" | "tavily";
+export type LLMProvider = "anthropic" | "openai" | "google" | "groq" | "tavily" | "adzuna";
 
 export interface User {
   id: string;

@@ -62,6 +62,18 @@ class LLMProvider(str, enum.Enum):
     GOOGLE    = "google"
     GROQ      = "groq"
     TAVILY    = "tavily"   # web search, not LLM — stored here for convenience
+    ADZUNA    = "adzuna"   # job-board API (BYOK) — stored as {app_id, app_key} JSON
+
+
+# Providers that are actual chat/generation LLMs. TAVILY (web search) and
+# ADZUNA (job source) live in the same user_api_keys table but must never be
+# selected as the user's LLM key.
+LLM_PROVIDERS = [
+    LLMProvider.ANTHROPIC,
+    LLMProvider.OPENAI,
+    LLMProvider.GOOGLE,
+    LLMProvider.GROQ,
+]
 
 
 # ── Users ────────────────────────────────────────────────────
