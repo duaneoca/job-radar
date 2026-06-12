@@ -103,7 +103,7 @@ async def register_hitl(hitl_id: str, candidates: list[str]) -> dict:
 async def report_run(record: dict) -> dict:
     """
     record shape (mirrors POST /agent/runs):
-      environment (local|staging|production), agent_version, status (success|partial|failed),
+      environment (local|cloud), agent_version, status (success|partial|failed),
       started_at (ISO-8601), finished_at?, emails_processed, postings_created,
       interactions_recorded, escalations, retries, error_summary?
     """
