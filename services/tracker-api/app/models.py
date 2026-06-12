@@ -333,6 +333,22 @@ class AgentEnvironment(str, enum.Enum):
     CLOUD = "cloud"
 
 
+def value_enum(py_enum):
+    """SQLAlchemy Enum that persists each member's ``.value`` (lowercase) rather
+    than its ``.name`` (uppercase, SQLAlchemy's default).
+
+    The native PG enum types created in migration 0011 use the lowercase values
+    (e.g. ``'cloud'``), so the default name-based persistence sends ``'CLOUD'``
+    and Postgres rejects it (InvalidTextRepresentation). ``values_callable``
+    aligns both the write and read paths with the native type's values.
+
+    Only used for the email-agent tables, whose native enum types this matches.
+    JobStatus / LLMProvider columns are VARCHAR-backed and intentionally keep the
+    default name-based behaviour to preserve existing data.
+    """
+    return Enum(py_enum, values_callable=lambda obj: [m.value for m in obj])
+
+
 # ── Email agent — tables ─────────────────────────────────────
 
 class InboxEmail(Base):
@@ -346,12 +362,12 @@ class InboxEmail(Base):
     subject            = Column(Text, nullable=False)
     sender             = Column(Text, nullable=False)
     received_at        = Column(DateTime(timezone=True), nullable=False)
-    category           = Column(Enum(EmailCategory), nullable=False)
+    category           = Column(value_enum(EmailCategory), nullable=False)
     confidence         = Column(Float, nullable=False)
     raw_extracted_json = Column(JSON, nullable=True)
     validation_attempts = Column(Integer, nullable=False, default=0)
     escalation_reason  = Column(Text, nullable=True)
-    status             = Column(Enum(EmailStatus), nullable=False, default=EmailStatus.PENDING)
+    status             = Column(value_enum(EmailStatus), nullable=False, default=EmailStatus.PENDING)
     langfuse_trace_id  = Column(Text, nullable=True)
     created_at         = Column(DateTime(timezone=True), default=utcnow)
 
@@ -373,7 +389,7 @@ class InboxPosting(Base):
     action_required    = Column(Boolean, nullable=False, default=False)
     possible_duplicate = Column(Boolean, nullable=False, default=False)
     matched_review_id  = Column(Uuid(), ForeignKey("user_job_reviews.id", ondelete="SET NULL"), nullable=True)
-    import_status      = Column(Enum(ImportStatus), nullable=False, default=ImportStatus.PENDING)
+    import_status      = Column(value_enum(ImportStatus), nullable=False, default=ImportStatus.PENDING)
     imported_review_id = Column(Uuid(), ForeignKey("user_job_reviews.id", ondelete="SET NULL"), nullable=True)
     created_at         = Column(DateTime(timezone=True), default=utcnow)
 
@@ -420,7 +436,7 @@ class EmailCredential(Base):
 
     id             = Column(Uuid(), primary_key=True, default=uuid.uuid4)
     user_id        = Column(Uuid(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
-    provider       = Column(Enum(EmailProvider), nullable=False)
+    provider       = Column(value_enum(EmailProvider), nullable=False)
     encrypted_blob = Column(Text, nullable=False)   # Fernet via ENCRYPTION_KEY, never SECRET_KEY
     folder_root          = Column(Text, nullable=True)
     folder_interaction   = Column(Text, nullable=True)
@@ -440,7 +456,7 @@ class HitlDecision(Base):
     id               = Column(Uuid(), primary_key=True, default=uuid.uuid4)
     user_id          = Column(Uuid(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     hitl_id          = Column(Text, nullable=False, unique=True, index=True)  # agent checkpoint correlator
-    status           = Column(Enum(HitlStatus), nullable=False, default=HitlStatus.PENDING)
+    status           = Column(value_enum(HitlStatus), nullable=False, default=HitlStatus.PENDING)
     choice_review_id = Column(Uuid(), ForeignKey("user_job_reviews.id", ondelete="SET NULL"), nullable=True)
     created_at       = Column(DateTime(timezone=True), default=utcnow)
     resolved_at      = Column(DateTime(timezone=True), nullable=True)
@@ -454,9 +470,9 @@ class AgentRun(Base):
 
     id                    = Column(Uuid(), primary_key=True, default=uuid.uuid4)
     user_id               = Column(Uuid(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    environment           = Column(Enum(AgentEnvironment), nullable=False)
+    environment           = Column(value_enum(AgentEnvironment), nullable=False)
     agent_version         = Column(Text, nullable=False)
-    status                = Column(Enum(AgentRunStatus), nullable=False)
+    status                = Column(value_enum(AgentRunStatus), nullable=False)
     started_at            = Column(DateTime(timezone=True), nullable=False)
     finished_at           = Column(DateTime(timezone=True), nullable=True)
     emails_processed      = Column(Integer, nullable=False, default=0)
