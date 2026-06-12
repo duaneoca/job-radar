@@ -6,9 +6,10 @@ Public API, no auth required.
 
 The Muse does not support free-form keyword search — it filters by
 `category` (broad vertical like "Software Engineering"), `level`, and
-`location`. We map our criteria's keywords onto the Software Engineering
-category and return everything; downstream stage-1 rules + stage-2 AI
-review do the real filtering.
+`location`. We map the user's job titles onto the relevant Muse categories and
+request only those; downstream stage-1 rules + stage-2 AI review do the real
+filtering. If nothing maps, we return no Muse results (rather than defaulting to
+software/data) so a non-tech searcher doesn't get irrelevant jobs.
 """
 
 import logging
@@ -24,25 +25,56 @@ logger = logging.getLogger(__name__)
 _BASE = "https://www.themuse.com/api/public/jobs"
 _MAX_PAGES = 3           # ~60 jobs per category per run
 _TIMEOUT = 20.0
+_MAX_CATEGORIES = 5      # cap API fan-out per run
 
-# The Muse returns very broad categories. We pull the ones that could
-# contain software engineering roles; duplicates across categories are
-# deduped by external_id at the top of `scrape()`.
-_CATEGORIES = [
-    "Software Engineering",
-    "Data Science",
-    "Data and Analytics",
+# Best-effort map of job-title trigger substrings → a Muse category. A user's
+# keywords are matched against these; matched categories are requested. Wrong or
+# unknown categories degrade gracefully (the API returns nothing, we skip).
+_CATEGORY_TRIGGERS: List[tuple] = [
+    (("software", "developer", "full stack", "fullstack", "backend", "back end",
+      "frontend", "front end", "devops", "sre", "architect", "engineer"), "Software Engineering"),
+    (("data scien", "machine learning", "ml engineer", "ai engineer", "deep learning"), "Data Science"),
+    (("data analyst", "analytics", "business intelligence", "bi analyst"), "Data and Analytics"),
+    (("designer", "ux", "ui/ux", "product design", "graphic design"), "Design and UX"),
+    (("product manager", "product management", "product owner"), "Product Management"),
+    (("project manager", "program manager", "scrum master", "delivery manager"), "Project Management"),
+    (("sales", "account executive", "business development", "sdr"), "Sales"),
+    (("marketing", "growth marketing", "seo", "demand gen"), "Marketing"),
+    (("accountant", "accounting", "finance", "financial", "fp&a", "controller"), "Accounting and Finance"),
+    (("recruiter", "recruiting", "human resources", "people ops", "talent acquisition"), "Human Resources"),
+    (("customer success", "customer service", "support specialist", "customer support"), "Customer Service"),
+    (("operations", "supply chain", "logistics"), "Operations"),
+    (("legal", "counsel", "attorney", "paralegal"), "Legal"),
+    (("writer", "editor", "content", "copywriter"), "Writing and Editing"),
 ]
+
+
+def _categories_for_keywords(keywords: List[str]) -> List[str]:
+    """Map a user's job titles to the Muse categories to request. Empty list
+    means "no Muse pass" (no software/data default for non-tech searchers)."""
+    joined = " ".join(keywords).lower()
+    cats: List[str] = []
+    for triggers, category in _CATEGORY_TRIGGERS:
+        if category in cats:
+            continue
+        if any(t in joined for t in triggers):
+            cats.append(category)
+    return cats[:_MAX_CATEGORIES]
 
 
 class TheMuseScraper(BaseScraper):
     source_name = "the_muse"
 
     async def scrape(self, keywords: List[str], location: str, creds: Creds = None) -> List[RawJob]:
+        categories = _categories_for_keywords(keywords)
+        if not categories:
+            logger.info("The Muse: no category matched keywords %s — skipping", keywords)
+            return []
+
         all_jobs: List[RawJob] = []
 
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            for category in _CATEGORIES:
+            for category in categories:
                 logger.info("The Muse: category '%s'", category)
                 try:
                     jobs = await self._scrape_category(client, category, location)
