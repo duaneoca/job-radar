@@ -83,15 +83,17 @@ function JobPipelineTab() {
   return (
     <div className="max-w-2xl space-y-4">
       <H2>How jobs get in</H2>
-      <P>The scraper runs automatically every 2 hours and queries three sources:</P>
+      <P>Once you've added your Adzuna key and set your criteria, Job Radar scrapes for you
+        automatically every 6 hours — and right away whenever you save your criteria. It
+        searches against <em>your</em> job titles and locations, and the jobs it finds are
+        yours alone (not shared with other users). Three sources:</P>
       <ul className="list-disc list-inside space-y-1 ml-2">
-        <Li><strong>Adzuna</strong> — broad job board with salary data</Li>
-        <Li><strong>The Muse</strong> — tech and creative roles</Li>
+        <Li><strong>Adzuna</strong> — the main job board; searched with your own Adzuna key. No key, no Adzuna results.</Li>
+        <Li><strong>The Muse</strong> — matched to the categories your job titles fall into</Li>
         <Li><strong>Remotive</strong> — remote-only roles</Li>
       </ul>
-      <P>The scraper uses the union of all approved users' job titles and locations as search
-        keywords, so everyone benefits from each other's criteria.</P>
-      <P>You can also capture jobs directly from job sites using the bookmarklet
+      <P>Each job is scored against your resume and criteria using your AI key, then sorted by
+        match. You can also capture jobs directly from job sites using the bookmarklet
         (see below).</P>
 
       <Separator />
@@ -224,8 +226,8 @@ function ApplicationToolsTab() {
   return (
     <div className="max-w-2xl space-y-4">
       <P>Open any job and use the tabs to generate AI-assisted content. All generation
-        uses your Anthropic API key and draws from your resume, career stories, and
-        voice guidelines.</P>
+        uses your own AI API key (Anthropic, OpenAI, Google, or Groq) and draws from your
+        resume, career stories, and voice guidelines.</P>
 
       <Separator />
 
