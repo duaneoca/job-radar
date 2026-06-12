@@ -6,6 +6,7 @@ import { Separator } from "../ui/separator";
 import { useDarkMode, type ThemeMode } from "../../hooks/useDarkMode";
 import { useAuthStore } from "../../store/auth";
 import { authApi } from "../../lib/api";
+import { MissingKeysBanner, useApiKeyStatus } from "../ApiKeyWarning";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -26,6 +27,7 @@ const themeOptions: { value: ThemeMode; label: string; icon: typeof Sun }[] = [
 export function Layout({ children }: LayoutProps) {
   const { mode, setMode } = useDarkMode();
   const { user, setUser } = useAuthStore();
+  const { missingRequired } = useApiKeyStatus();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 
@@ -118,6 +120,13 @@ export function Layout({ children }: LayoutProps) {
             >
               <Icon className="h-4 w-4 shrink-0" />
               {label}
+              {to === "/settings" && missingRequired && (
+                <span
+                  className="ml-auto h-2 w-2 rounded-full bg-amber-500"
+                  aria-label="API keys missing"
+                  title="API keys missing"
+                />
+              )}
             </NavLink>
           ))}
 
@@ -178,6 +187,9 @@ export function Layout({ children }: LayoutProps) {
           </button>
         </div>
       </aside>
+
+      {/* Missing-key warning (shown until required keys are added) */}
+      <MissingKeysBanner />
 
       {/* Page content */}
       <main className="flex-1 container px-4 py-6">{children}</main>

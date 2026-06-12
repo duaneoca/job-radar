@@ -55,17 +55,20 @@ function GettingStartedTab() {
 
       <Separator />
 
-      <H2>Step 3 — Add your API key</H2>
-      <P>Go to <strong>Settings → API Keys</strong> and add your Anthropic key. All AI features
-        (scoring, generation, research) run on your own key — Job Radar never stores it in
-        plaintext.</P>
+      <H2>Step 3 — Add your API keys</H2>
+      <P>Go to <strong>Settings → API Keys</strong> and add, at a minimum, an{" "}
+        <strong>Adzuna</strong> key (the job source) and an <strong>AI</strong> key
+        (for scoring &amp; generation). A <strong>Tavily</strong> key is recommended for
+        company research. Everything runs on your own keys — Job Radar never stores them in
+        plaintext. See the <strong>API keys</strong> tab for what each one does and where to
+        get it.</P>
 
       <Separator />
 
       <H2>Step 4 — Get jobs</H2>
-      <P>Jobs are scraped automatically every 2 hours and appear in your Jobs list shortly
-        after. You can also add jobs manually from any job site using the bookmarklet
-        in <strong>Settings → Bookmarklet</strong>.</P>
+      <P>Once your Adzuna key is in, jobs are scraped automatically and appear in your Jobs
+        list shortly after. You can also add jobs manually from any job site using the
+        bookmarklet in <strong>Settings → Bookmarklet</strong>.</P>
 
       <Separator />
 
@@ -323,6 +326,51 @@ function PromptsTab() {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+function ApiKeysTab() {
+  return (
+    <div className="max-w-2xl space-y-4">
+      <Callout>
+        Job Radar is <strong>bring-your-own-key</strong>. You provide API keys for the
+        services it uses — they run on <em>your</em> accounts and quotas, and Job Radar
+        encrypts them at rest (only the last 4 characters are ever shown). Add them under{" "}
+        <strong>Settings → API Keys</strong>.
+      </Callout>
+
+      <H2>Required to find &amp; score jobs</H2>
+
+      <H3>Adzuna — job source</H3>
+      <P>Adzuna is the main job board Job Radar searches against your criteria. It uses a
+        two-part credential: an <strong>App ID</strong> and an <strong>App Key</strong>.
+        Without it you'll only get jobs from the public sources (The Muse, Remotive).</P>
+      <P>Register a free app at{" "}
+        <a href="https://developer.adzuna.com/" target="_blank" rel="noreferrer" className="underline">developer.adzuna.com</a>{" "}
+        — sign up, create an application, and copy the App ID + App Key into Settings.</P>
+
+      <H3>An AI key — scoring &amp; generation</H3>
+      <P>All AI features (job scoring, cover letters, research, interview prep) run on your
+        own LLM key. Any <strong>one</strong> of these works:</P>
+      <ul className="list-disc list-inside space-y-1 ml-2">
+        <Li><strong>Anthropic</strong> (Claude) —{" "}
+          <a href="https://console.anthropic.com/" target="_blank" rel="noreferrer" className="underline">console.anthropic.com</a></Li>
+        <Li><strong>OpenAI</strong> (GPT) —{" "}
+          <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" className="underline">platform.openai.com/api-keys</a></Li>
+        <Li><strong>Google</strong> (Gemini) —{" "}
+          <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="underline">aistudio.google.com</a></Li>
+        <Li><strong>Groq</strong> —{" "}
+          <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" className="underline">console.groq.com/keys</a></Li>
+      </ul>
+
+      <Separator />
+
+      <H2>Recommended</H2>
+      <H3>Tavily — company research</H3>
+      <P>Tavily gives the AI up-to-date web info about companies and roles, improving research
+        summaries and interview prep. Optional, but worth it. Get a free key at{" "}
+        <a href="https://tavily.com/" target="_blank" rel="noreferrer" className="underline">tavily.com</a>.</P>
+    </div>
+  );
+}
+
 export function HelpPage() {
   const [searchParams] = useSearchParams();
   const defaultTab = searchParams.get("tab") ?? "start";
@@ -338,12 +386,14 @@ export function HelpPage() {
       <Tabs defaultValue={defaultTab}>
         <TabsList className="flex-wrap h-auto gap-1">
           <TabsTrigger value="start">Getting started</TabsTrigger>
+          <TabsTrigger value="keys">API keys</TabsTrigger>
           <TabsTrigger value="pipeline">Job pipeline</TabsTrigger>
           <TabsTrigger value="scoring">Scoring</TabsTrigger>
           <TabsTrigger value="tools">Application tools</TabsTrigger>
           <TabsTrigger value="prompts">Prompts</TabsTrigger>
         </TabsList>
         <TabsContent value="start"    className="mt-6"><GettingStartedTab /></TabsContent>
+        <TabsContent value="keys"     className="mt-6"><ApiKeysTab /></TabsContent>
         <TabsContent value="pipeline" className="mt-6"><JobPipelineTab /></TabsContent>
         <TabsContent value="scoring"  className="mt-6"><ScoringTab /></TabsContent>
         <TabsContent value="tools"    className="mt-6"><ApplicationToolsTab /></TabsContent>
