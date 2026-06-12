@@ -2,6 +2,8 @@
 API keys router — store encrypted provider keys per user.
 """
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -11,6 +13,35 @@ from app.deps import get_current_user
 from app.security import decrypt_api_key, encrypt_api_key
 
 router = APIRouter(prefix="/keys", tags=["api-keys"])
+
+
+def _pack_secret(payload: schemas.APIKeyUpsert) -> str:
+    """Return the plaintext secret to encrypt for this provider.
+
+    Adzuna uses a two-part credential packed as JSON; everyone else uses the
+    single api_key string. Raises 400 if required fields are missing.
+    """
+    if payload.provider == models.LLMProvider.ADZUNA:
+        app_id = (payload.app_id or "").strip()
+        app_key = (payload.app_key or "").strip()
+        if not (app_id and app_key):
+            raise HTTPException(status_code=400, detail="Adzuna requires both app_id and app_key")
+        return json.dumps({"app_id": app_id, "app_key": app_key})
+    secret = (payload.api_key or "").strip()
+    if not secret:
+        raise HTTPException(status_code=400, detail="API key cannot be empty")
+    return secret
+
+
+def _hint_for(provider: models.LLMProvider, plaintext: str) -> str:
+    """Display hint — last 4 chars of the secret (the app_key for Adzuna)."""
+    src = plaintext
+    if provider == models.LLMProvider.ADZUNA:
+        try:
+            src = json.loads(plaintext).get("app_key", "")
+        except Exception:
+            src = ""
+    return f"…{src[-4:]}" if len(src) >= 4 else "…"
 
 
 @router.get("", response_model=list[schemas.APIKeyOut])
@@ -27,7 +58,7 @@ def list_keys(
     for k in keys:
         try:
             plain = decrypt_api_key(k.encrypted_key)
-            hint = f"…{plain[-4:]}" if len(plain) >= 4 else "…"
+            hint = _hint_for(k.provider, plain)
         except Exception:
             hint = "…?????"
         result.append(schemas.APIKeyOut(
@@ -46,10 +77,8 @@ def upsert_key(
     current_user: models.User = Depends(get_current_user),
 ):
     """Add or replace a provider API key. The plaintext is encrypted immediately."""
-    if not payload.api_key.strip():
-        raise HTTPException(status_code=400, detail="API key cannot be empty")
-
-    encrypted = encrypt_api_key(payload.api_key.strip())
+    secret = _pack_secret(payload)
+    encrypted = encrypt_api_key(secret)
     existing = (
         db.query(models.UserAPIKey)
         .filter(
@@ -75,11 +104,9 @@ def upsert_key(
         db.commit()
         db.refresh(key_obj)
 
-    plain = payload.api_key.strip()
-    hint = f"…{plain[-4:]}" if len(plain) >= 4 else "…"
     return schemas.APIKeyOut(
         provider=key_obj.provider,
-        key_hint=hint,
+        key_hint=_hint_for(key_obj.provider, secret),
         preferred_model=key_obj.preferred_model,
         updated_at=key_obj.updated_at,
     )

@@ -110,7 +110,10 @@ def get_agent_config(
     llm_config = None
     key_row = (
         db.query(models.UserAPIKey)
-        .filter(models.UserAPIKey.user_id == user.id)
+        .filter(
+            models.UserAPIKey.user_id == user.id,
+            models.UserAPIKey.provider.in_(models.LLM_PROVIDERS),  # exclude tavily/adzuna
+        )
         .order_by(models.UserAPIKey.updated_at.desc())
         .first()
     )
