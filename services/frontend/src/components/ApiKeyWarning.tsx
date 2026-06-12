@@ -65,7 +65,7 @@ export function MissingKeysBanner() {
               A Tavily key is also recommended for company research.{" "}
             </span>
           )}
-          <Link to="/settings" className="font-medium underline">
+          <Link to="/settings?tab=keys" className="font-medium underline">
             Add keys
           </Link>
           {" · "}
