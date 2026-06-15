@@ -58,15 +58,31 @@ function StatusBadge({ status }: { status: EmailStatus }) {
 
 function PostingRow({ p }: { p: InboxPosting }) {
   const href = safeHref(p.link);   // [C2] only http/https becomes a link
+  // The title is the click target: a link opening the source in a new tab when
+  // there's a safe URL, otherwise plain (inert) text. {text} is React-escaped.
+  const title = (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="font-medium text-sm">{p.company}</span>
+      <span className="text-muted-foreground text-sm">·</span>
+      <span className="text-sm">{p.role}</span>
+      {href && <ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground" />}
+    </span>
+  );
   return (
     <div className="flex items-start gap-2 py-2 border-t first:border-t-0">
       <Building2 className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          {/* {text} — React escapes, so agent-derived strings are inert */}
-          <span className="font-medium text-sm">{p.company}</span>
-          <span className="text-muted-foreground text-sm">·</span>
-          <span className="text-sm">{p.role}</span>
+          {href ? (
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:underline decoration-primary/60 underline-offset-2"
+            >
+              {title}
+            </a>
+          ) : title}
           {p.action_required && (
             <Badge variant="outline" className="text-[10px] border-blue-500/30 text-blue-600 dark:text-blue-400">
               action
@@ -83,19 +99,10 @@ function PostingRow({ p }: { p: InboxPosting }) {
             </Badge>
           )}
         </div>
-        {href ? (
-          <a
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-xs text-primary underline mt-0.5 break-all"
-          >
-            View posting <ExternalLink className="h-3 w-3 shrink-0" />
-          </a>
-        ) : p.link ? (
-          // Non-http(s) link from the agent — render inert, never as href
+        {/* Non-http(s) link from the agent — show inert, never as an href */}
+        {!href && p.link && (
           <span className="text-xs text-muted-foreground break-all mt-0.5 block">{p.link}</span>
-        ) : null}
+        )}
       </div>
     </div>
   );
