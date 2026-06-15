@@ -8,6 +8,56 @@ export type JobSource =
 
 export type LLMProvider = "anthropic" | "openai" | "google" | "groq" | "tavily" | "adzuna";
 
+// ─── Email agent inbox ────────────────────────────────────────
+export type EmailCategory =
+  | "recruiter_outreach" | "application_confirmation" | "job_alert" | "network_notification";
+export type EmailStatus = "pending" | "processed" | "needs_review" | "discarded";
+export type ImportStatus = "pending" | "imported" | "dismissed";
+
+export interface InboxPosting {
+  id: string;
+  company: string;
+  role: string;
+  link: string | null;
+  action_required: boolean;
+  possible_duplicate: boolean;
+  matched_review_id: string | null;
+  import_status: ImportStatus;
+  imported_review_id: string | null;
+  created_at: string;
+}
+
+export interface InboxInteraction {
+  id: string;
+  matched_review_id: string | null;
+  match_confidence: number;
+  previous_status: JobStatus | null;
+  new_status: JobStatus | null;
+  applied_at: string | null;
+  created_at: string;
+}
+
+export interface InboxEmail {
+  id: string;
+  message_id: string;
+  subject: string;
+  sender: string;
+  received_at: string;
+  category: EmailCategory;
+  confidence: number;
+  status: EmailStatus;
+  escalation_reason: string | null;
+  langfuse_trace_id: string | null;
+  created_at: string;
+  postings: InboxPosting[];
+  interactions: InboxInteraction[];
+}
+
+export interface PaginatedInbox {
+  total: number;
+  items: InboxEmail[];
+}
+
 export interface User {
   id: string;
   email: string;

@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { NavLink, useNavigate, Link } from "react-router-dom";
-import { Menu, Briefcase, Radar, Settings, Settings2, Users, LogOut, X, Sun, Moon, Monitor, User, CircleHelp } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Menu, Briefcase, Radar, Settings, Settings2, Users, LogOut, X, Sun, Moon, Monitor, User, CircleHelp, Inbox } from "lucide-react";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 import { useDarkMode, type ThemeMode } from "../../hooks/useDarkMode";
 import { useAuthStore } from "../../store/auth";
-import { authApi } from "../../lib/api";
+import { authApi, agentApi } from "../../lib/api";
+import { cn } from "../../lib/utils";
 import { MissingKeysBanner, useApiKeyStatus } from "../ApiKeyWarning";
+import type { PaginatedInbox } from "../../lib/types";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -31,6 +34,14 @@ export function Layout({ children }: LayoutProps) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 
+  // Inbox "needs review" count for the header tab badge.
+  const { data: inboxNeeds } = useQuery<PaginatedInbox>({
+    queryKey: ["inbox-needs-review"],
+    queryFn: () => agentApi.get("/agent/inbox", { params: { status: "needs_review", limit: 1 } }).then((r) => r.data),
+    enabled: !!user,
+  });
+  const needsCount = inboxNeeds?.total ?? 0;
+
   async function handleLogout() {
     setOpen(false);
     try { await authApi.post("/auth/logout"); } catch { /* ignore */ }
@@ -46,10 +57,34 @@ export function Layout({ children }: LayoutProps) {
           <Button variant="ghost" size="icon" onClick={() => setOpen(true)} aria-label="Open menu">
             <Menu className="h-5 w-5" />
           </Button>
-          <NavLink to="/jobs" className="flex items-center gap-2 font-bold text-primary flex-1 hover:opacity-80 transition-opacity">
+          <NavLink to="/jobs" className="flex items-center gap-2 font-bold text-primary hover:opacity-80 transition-opacity">
             <Radar className="h-5 w-5" />
             <span>Job Radar</span>
           </NavLink>
+
+          {/* Inbox tab — to the right of the brand */}
+          <NavLink
+            to="/inbox"
+            className={({ isActive }) =>
+              cn(
+                "relative flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium transition-colors",
+                isActive ? "bg-accent text-accent-foreground"
+                         : "text-muted-foreground hover:text-foreground hover:bg-accent/50",
+              )
+            }
+          >
+            <Inbox className="h-4 w-4" />
+            <span className="hidden sm:inline">Inbox</span>
+            {needsCount > 0 && (
+              <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold text-white">
+                {needsCount}
+              </span>
+            )}
+          </NavLink>
+
+          {/* Spacer pushes the rest to the right */}
+          <div className="flex-1" />
+
           {/* Help link */}
           <Link to="/help" aria-label="Help" className="text-muted-foreground hover:text-foreground transition-colors">
             <CircleHelp className="h-5 w-5" />

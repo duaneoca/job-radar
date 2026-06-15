@@ -6,6 +6,21 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/**
+ * [C2] Render-time URL guard for agent-derived links (attacker-controlled).
+ * Returns the URL only if it parses as http/https; otherwise null so the caller
+ * renders inert text instead of an anchor (blocks javascript:/data: etc.).
+ */
+export function safeHref(url?: string | null): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);   // no base → only absolute URLs with a scheme parse
+    return u.protocol === "http:" || u.protocol === "https:" ? url : null;
+  } catch {
+    return null;
+  }
+}
+
 export function formatSalary(min?: number | null, max?: number | null, currency = "USD"): string {
   if (!min && !max) return "—";
   const fmt = (n: number) =>

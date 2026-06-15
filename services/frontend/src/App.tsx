@@ -7,6 +7,7 @@ import { Toaster } from "./components/ui/toaster";
 import { LoginPage } from "./pages/LoginPage";
 import { SignupPage } from "./pages/SignupPage";
 import { JobsPage } from "./pages/JobsPage";
+import { InboxPage } from "./pages/InboxPage";
 import { JobDetailPage } from "./pages/JobDetailPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { ProfilePage } from "./pages/ProfilePage";
@@ -66,6 +67,16 @@ export default function App() {
             <RequireAuth>
               <Layout>
                 <JobsPage />
+              </Layout>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/inbox"
+          element={
+            <RequireAuth>
+              <Layout>
+                <InboxPage />
               </Layout>
             </RequireAuth>
           }
