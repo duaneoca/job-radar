@@ -39,6 +39,22 @@ export interface AgentStats {
   last_run: AgentLastRun | null;
 }
 
+// ─── Cloud mailbox connection (Gmail OAuth — JR-5) ────────────
+export interface AgentFolderConfig {
+  root: string | null;
+  interaction: string | null;
+  postings: string | null;
+  social: string | null;
+  unprocessed: string | null;
+}
+export interface EmailCredentialStatus {
+  provider: "gmail" | "imap" | null;
+  connected: boolean;
+  enabled: boolean;
+  folders: AgentFolderConfig;
+  updated_at: string | null;
+}
+
 // ─── Email agent inbox ────────────────────────────────────────
 export type EmailCategory =
   | "recruiter_outreach" | "application_confirmation" | "job_alert" | "network_notification";

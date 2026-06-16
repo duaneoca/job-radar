@@ -579,6 +579,22 @@ class AgentConfigOut(BaseModel):
     folders: AgentFolderConfig
     llm: Optional[AgentLLMConfig]
     email_credentials: Optional[dict]  # decrypted blob — in-cluster only
+    enabled: bool = False    # per-user pause; agent skips this user when False
+
+
+# Email-credential management (cloud Gmail users — JR-5).
+# The refresh_token is never returned to the frontend; only connection status.
+class EmailCredentialStatusOut(BaseModel):
+    provider: Optional[str]            # gmail | imap | None
+    connected: bool                    # a usable refresh_token is stored
+    enabled: bool
+    folders: AgentFolderConfig
+    updated_at: Optional[datetime]
+
+
+class EmailCredentialUpdateIn(BaseModel):
+    folders: AgentFolderConfig
+    enabled: bool
 
 
 # Agent API key management

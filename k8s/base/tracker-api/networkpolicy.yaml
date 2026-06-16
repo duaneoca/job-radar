@@ -1,0 +1,34 @@
+# Defense-in-depth (JR-5 / H3): tracker-api must only be reachable from inside
+# the namespace. External traffic always arrives via the frontend (nginx) pod,
+# which proxies /api/ — nothing outside the cluster talks to tracker-api
+# directly, and /agent/config is additionally 404'd at nginx. This policy makes
+# that topology explicit and blocks any cross-namespace or direct-pod-IP access.
+#
+# Allowed senders (all in-namespace): frontend nginx, mcp-writer, scraper,
+# ai-reviewer, and the in-cluster cloud agent. kubelet liveness/readiness probes
+# originate from the node and are not subject to this rule under k3s's network
+# policy controller (kube-router permits host-local traffic).
+#
+# NOTE: applied via kustomize on deploy. Staging auto-deploys first — confirm
+# tracker-api pods stay Ready before tagging production.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tracker-api-allow-namespace
+  namespace: jobradar
+  labels:
+    app: tracker-api
+    project: jobradar
+spec:
+  podSelector:
+    matchLabels:
+      app: tracker-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        # Empty podSelector = any pod in this same namespace.
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8000

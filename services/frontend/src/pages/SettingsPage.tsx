@@ -15,7 +15,7 @@ import { toast } from "../hooks/useToast";
 import { useConfirmLinks } from "../hooks/useConfirmLinks";
 import { formatDate } from "../lib/utils";
 import { AgentStatsView } from "../components/AgentStatsView";
-import type { APIKey, LLMProvider, AgentApiKey, AgentApiKeyCreated } from "../lib/types";
+import type { APIKey, LLMProvider, AgentApiKey, AgentApiKeyCreated, AgentFolderConfig, EmailCredentialStatus } from "../lib/types";
 
 // ─── Account Details tab ──────────────────────────────────────────────────────
 
@@ -907,10 +907,163 @@ function AgentKeySection() {
   );
 }
 
+const LABEL_FIELDS: { key: keyof AgentFolderConfig; label: string; hint: string }[] = [
+  { key: "root",        label: "Root label",  hint: "parent label, e.g. Hire Duane" },
+  { key: "interaction", label: "Interaction", hint: "recruiter replies, scheduling" },
+  { key: "postings",    label: "Postings",    hint: "job-posting emails" },
+  { key: "social",      label: "Social",      hint: "LinkedIn / network noise" },
+  { key: "unprocessed", label: "Unprocessed", hint: "not yet handled" },
+];
+
+const EMPTY_FOLDERS: AgentFolderConfig = {
+  root: "", interaction: "", postings: "", social: "", unprocessed: "",
+};
+
+// Cloud Gmail mailbox connection (JR-5). Local self-host users configure their
+// mailbox via the agent's own .env and don't use this section.
+function MailboxConnectionSection() {
+  const qc = useQueryClient();
+  const { data: status, isLoading } = useQuery<EmailCredentialStatus>({
+    queryKey: ["agent-email-credentials"],
+    queryFn: () => agentApi.get("/agent/email-credentials").then((r) => r.data),
+  });
+
+  const [folders, setFolders] = useState<AgentFolderConfig>(EMPTY_FOLDERS);
+  const [enabled, setEnabled] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+
+  useEffect(() => {
+    if (!status) return;
+    setFolders({
+      root: status.folders.root ?? "",
+      interaction: status.folders.interaction ?? "",
+      postings: status.folders.postings ?? "",
+      social: status.folders.social ?? "",
+      unprocessed: status.folders.unprocessed ?? "",
+    });
+    setEnabled(status.enabled);
+  }, [status]);
+
+  async function connect() {
+    setConnecting(true);
+    try {
+      const { data } = await agentApi.get("/agent/oauth/start");
+      window.location.href = data.authorization_url;
+    } catch (err: any) {
+      toast({ title: "Couldn't start Gmail connect", description: err?.response?.data?.detail, variant: "destructive" });
+      setConnecting(false);
+    }
+  }
+
+  async function save() {
+    setSaving(true);
+    try {
+      const norm = (s: string | null) => (!s || s.trim() === "" ? null : s.trim());
+      await agentApi.put("/agent/email-credentials", {
+        folders: {
+          root: norm(folders.root), interaction: norm(folders.interaction),
+          postings: norm(folders.postings), social: norm(folders.social),
+          unprocessed: norm(folders.unprocessed),
+        },
+        enabled,
+      });
+      qc.invalidateQueries({ queryKey: ["agent-email-credentials"] });
+      toast({ title: "Mailbox settings saved" });
+    } catch (err: any) {
+      toast({ title: "Failed to save", description: err?.response?.data?.detail, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function disconnect() {
+    try {
+      await agentApi.delete("/agent/email-credentials");
+      qc.invalidateQueries({ queryKey: ["agent-email-credentials"] });
+      toast({ title: "Mailbox disconnected" });
+    } catch (err: any) {
+      toast({ title: "Failed to disconnect", description: err?.response?.data?.detail, variant: "destructive" });
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <h3 className="font-medium">Mailbox connection</h3>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Cloud users connect a Gmail mailbox so Job Radar's hosted agent can read and label it.
+          (Self-hosting locally? Configure your mailbox in the agent's own environment instead.)
+        </p>
+      </div>
+
+      {isLoading ? (
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      ) : !status?.connected ? (
+        <Button size="sm" disabled={connecting} onClick={connect}>
+          {connecting ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : <><Chrome className="h-4 w-4 mr-1" /> Connect Gmail</>}
+        </Button>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-2 border rounded-md px-3 py-2">
+            <span className="text-sm flex items-center gap-2">
+              <Badge variant="secondary">Gmail connected</Badge>
+            </span>
+            <Button
+              size="sm" variant="ghost"
+              className="h-7 shrink-0 text-destructive hover:bg-destructive/10 px-2"
+              onClick={disconnect}
+            >
+              <Trash2 className="h-3.5 w-3.5 mr-1" /> Disconnect
+            </Button>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <h4 className="text-sm font-medium">Labels</h4>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                The agent files mail under these Gmail labels.{" "}
+                <strong>Create the labels in Gmail yourself first</strong> — the agent never
+                creates labels. Use the full nested path (e.g. <code>Hire Duane/Interaction</code>).
+              </p>
+            </div>
+            {LABEL_FIELDS.map((f) => (
+              <div key={f.key} className="space-y-1">
+                <Label htmlFor={`folder-${f.key}`} className="text-xs">{f.label}</Label>
+                <Input
+                  id={`folder-${f.key}`}
+                  value={folders[f.key] ?? ""}
+                  placeholder={f.hint}
+                  onChange={(e) => setFolders((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                />
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between border rounded-md px-3 py-2">
+            <div>
+              <p className="text-sm font-medium">Agent enabled</p>
+              <p className="text-xs text-muted-foreground">Pause to stop the agent processing this mailbox.</p>
+            </div>
+            <Switch checked={enabled} onCheckedChange={setEnabled} aria-label="Agent enabled" />
+          </div>
+
+          <Button size="sm" disabled={saving} onClick={save}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save mailbox settings"}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EmailAgentTab() {
   return (
     <div className="max-w-lg space-y-8">
       <AgentKeySection />
+      <Separator />
+      <MailboxConnectionSection />
       <Separator />
       <div className="space-y-3">
         <div>
@@ -921,11 +1074,6 @@ function EmailAgentTab() {
         </div>
         <AgentStatsView scope="me" />
       </div>
-      <Separator />
-      <p className="text-xs text-muted-foreground">
-        Email connection, folder configuration, notifications, and enable/disable arrive with the
-        cloud multi-user agent. The local agent is configured via its own environment.
-      </p>
     </div>
   );
 }
@@ -934,7 +1082,23 @@ function EmailAgentTab() {
 
 export function SettingsPage() {
   const [searchParams] = useSearchParams();
-  const defaultTab = searchParams.get("tab") ?? "account";
+  const gmail = searchParams.get("gmail");
+  const defaultTab = gmail ? "agent" : (searchParams.get("tab") ?? "account");
+
+  useEffect(() => {
+    if (!gmail) return;
+    if (gmail === "connected") {
+      toast({ title: "Gmail connected", description: "Your mailbox is linked — set your labels below." });
+    } else if (gmail === "norefresh") {
+      toast({
+        title: "Gmail didn't return a refresh token",
+        description: "Remove Job Radar under myaccount.google.com → Security → Third-party access, then reconnect.",
+        variant: "destructive",
+      });
+    } else {
+      toast({ title: "Gmail connection failed", description: "Please try connecting again.", variant: "destructive" });
+    }
+  }, [gmail]);
 
   return (
     <div className="space-y-4">
