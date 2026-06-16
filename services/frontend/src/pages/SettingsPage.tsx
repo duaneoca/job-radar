@@ -8,9 +8,11 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Separator } from "../components/ui/separator";
 import { Badge } from "../components/ui/badge";
+import { Switch } from "../components/ui/switch";
 import { keysApi, authApi } from "../lib/api";
 import { useAuthStore } from "../store/auth";
 import { toast } from "../hooks/useToast";
+import { useConfirmLinks } from "../hooks/useConfirmLinks";
 import type { APIKey, LLMProvider } from "../lib/types";
 
 // ─── Account Details tab ──────────────────────────────────────────────────────
@@ -19,6 +21,7 @@ function AccountTab() {
   const { user, setUser } = useAuthStore();
   const [searchParams] = useSearchParams();
   const forced = searchParams.get("force") === "1";
+  const [confirmLinks, setConfirmLinksPref] = useConfirmLinks();
 
   const [nameVal, setNameVal] = useState(user?.full_name ?? "");
   const [savingName, setSavingName] = useState(false);
@@ -69,6 +72,17 @@ function AccountTab() {
           Please change your temporary password before continuing.
         </div>
       )}
+
+      <div className="flex items-center justify-between gap-4 rounded-lg border px-4 py-3">
+        <div>
+          <p className="text-sm font-medium">Confirm before opening links</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Show the full URL and ask for confirmation before opening a link from an email in a new
+            tab. Recommended — email links can be unsafe.
+          </p>
+        </div>
+        <Switch checked={confirmLinks} onCheckedChange={setConfirmLinksPref} aria-label="Confirm before opening links" />
+      </div>
 
       <form onSubmit={handleSaveName} className="space-y-4">
         <h3 className="font-medium">Account details</h3>
