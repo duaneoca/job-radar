@@ -560,6 +560,16 @@ def _compute_stats(user_id: Optional[UUID], db: Session) -> schemas.AgentStatsOu
     if user_id:
         runs_q = runs_q.filter(models.AgentRun.user_id == user_id)
     last_run = runs_q.order_by(models.AgentRun.finished_at.desc().nullslast()).first()
+    last_run_out = (
+        schemas.AgentLastRunOut(
+            run_id=last_run.id,   # model PK is `id`; schema field is `run_id`
+            status=last_run.status,
+            finished_at=last_run.finished_at,
+            emails_processed=last_run.emails_processed,
+            environment=last_run.environment,
+        )
+        if last_run else None
+    )
 
     return schemas.AgentStatsOut(
         emails_today=emails_today,
@@ -567,7 +577,7 @@ def _compute_stats(user_id: Optional[UUID], db: Session) -> schemas.AgentStatsOu
         category_breakdown=breakdown,
         escalation_rate=round(escalation_rate, 4),
         jobs_imported=jobs_imported,
-        last_run=last_run,
+        last_run=last_run_out,
     )
 
 
