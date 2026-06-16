@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, BookmarkIcon, Chrome, Eye, EyeOff, Loader2, Trash2 } from "lucide-react";
+import { AlertTriangle, BookmarkIcon, Chrome, Eye, EyeOff, Loader2, Trash2, Copy, Plus } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -9,11 +9,13 @@ import { Label } from "../components/ui/label";
 import { Separator } from "../components/ui/separator";
 import { Badge } from "../components/ui/badge";
 import { Switch } from "../components/ui/switch";
-import { keysApi, authApi } from "../lib/api";
+import { keysApi, authApi, agentApi } from "../lib/api";
 import { useAuthStore } from "../store/auth";
 import { toast } from "../hooks/useToast";
 import { useConfirmLinks } from "../hooks/useConfirmLinks";
-import type { APIKey, LLMProvider } from "../lib/types";
+import { formatDate } from "../lib/utils";
+import { AgentStatsView } from "../components/AgentStatsView";
+import type { APIKey, LLMProvider, AgentApiKey, AgentApiKeyCreated } from "../lib/types";
 
 // ─── Account Details tab ──────────────────────────────────────────────────────
 
@@ -805,6 +807,129 @@ function BookmarkletTab() {
   );
 }
 
+// ─── Email Agent tab ──────────────────────────────────────────────────────────
+
+function AgentKeySection() {
+  const qc = useQueryClient();
+  const { data: keys = [], isLoading } = useQuery<AgentApiKey[]>({
+    queryKey: ["agent-keys"],
+    queryFn: () => agentApi.get("/agent/keys").then((r) => r.data),
+  });
+  const [newKey, setNewKey] = useState<AgentApiKeyCreated | null>(null);
+  const [generating, setGenerating] = useState(false);
+
+  async function generate() {
+    setGenerating(true);
+    try {
+      const { data } = await agentApi.post("/agent/keys");
+      setNewKey(data);
+      qc.invalidateQueries({ queryKey: ["agent-keys"] });
+    } catch (err: any) {
+      toast({ title: "Failed to generate key", description: err?.response?.data?.detail, variant: "destructive" });
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function revoke(id: string) {
+    try {
+      await agentApi.delete(`/agent/keys/${id}`);
+      qc.invalidateQueries({ queryKey: ["agent-keys"] });
+      toast({ title: "Key revoked" });
+    } catch (err: any) {
+      toast({ title: "Failed to revoke", description: err?.response?.data?.detail, variant: "destructive" });
+    }
+  }
+
+  async function copyKey(k: string) {
+    try { await navigator.clipboard.writeText(k); toast({ title: "Copied to clipboard" }); }
+    catch { /* clipboard may be unavailable */ }
+  }
+
+  const active = keys.filter((k) => !k.revoked);
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <h3 className="font-medium">Agent key</h3>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          The Email Agent authenticates to Job Radar with this key (sent as <code>X-Agent-Key</code>).
+          Generate one and paste it into your agent's config. Treat it like a password.
+        </p>
+      </div>
+
+      {newKey && (
+        <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+          <p className="text-sm font-medium">Copy your new key now — it won't be shown again:</p>
+          <div className="flex gap-2">
+            <code className="flex-1 text-xs font-mono bg-background border rounded px-2 py-1.5 break-all select-all">
+              {newKey.raw_key}
+            </code>
+            <Button size="sm" variant="outline" onClick={() => copyKey(newKey.raw_key)} aria-label="Copy key">
+              <Copy className="h-4 w-4" />
+            </Button>
+          </div>
+          <Button size="sm" variant="ghost" onClick={() => setNewKey(null)}>Done</Button>
+        </div>
+      )}
+
+      {isLoading ? (
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      ) : active.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No active keys.</p>
+      ) : (
+        <div className="space-y-2">
+          {active.map((k) => (
+            <div key={k.id} className="flex items-center justify-between gap-2 text-sm border rounded-md px-3 py-2">
+              <div className="min-w-0">
+                <span className="font-mono">••••{k.key_hint}</span>
+                <span className="text-xs text-muted-foreground ml-2">
+                  created {formatDate(k.created_at)} · {k.last_used_at ? `last used ${formatDate(k.last_used_at)}` : "never used"}
+                </span>
+              </div>
+              <Button
+                size="sm" variant="ghost"
+                className="h-7 shrink-0 text-destructive hover:bg-destructive/10 px-2"
+                onClick={() => revoke(k.id)}
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1" /> Revoke
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Button size="sm" disabled={generating} onClick={generate}>
+        {generating ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <><Plus className="h-4 w-4 mr-1" /> Generate key</>}
+      </Button>
+    </div>
+  );
+}
+
+function EmailAgentTab() {
+  return (
+    <div className="max-w-lg space-y-8">
+      <AgentKeySection />
+      <Separator />
+      <div className="space-y-3">
+        <div>
+          <h3 className="font-medium">Status &amp; stats</h3>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Your agent's recent activity. Detailed LLM traces live in Langfuse.
+          </p>
+        </div>
+        <AgentStatsView scope="me" />
+      </div>
+      <Separator />
+      <p className="text-xs text-muted-foreground">
+        Email connection, folder configuration, notifications, and enable/disable arrive with the
+        cloud multi-user agent. The local agent is configured via its own environment.
+      </p>
+    </div>
+  );
+}
+
 // ─── Main Settings page ───────────────────────────────────────────────────────
 
 export function SettingsPage() {
@@ -818,10 +943,12 @@ export function SettingsPage() {
         <TabsList className="flex-wrap h-auto gap-1">
           <TabsTrigger value="account">Account Details</TabsTrigger>
           <TabsTrigger value="keys">API Keys</TabsTrigger>
+          <TabsTrigger value="agent">Email Agent</TabsTrigger>
           <TabsTrigger value="bookmarklet">Bookmarklet</TabsTrigger>
         </TabsList>
         <TabsContent value="account"     className="mt-6"><AccountTab /></TabsContent>
         <TabsContent value="keys"        className="mt-6"><KeysTab /></TabsContent>
+        <TabsContent value="agent"       className="mt-6"><EmailAgentTab /></TabsContent>
         <TabsContent value="bookmarklet" className="mt-6"><BookmarkletTab /></TabsContent>
       </Tabs>
     </div>

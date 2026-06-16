@@ -8,6 +8,37 @@ export type JobSource =
 
 export type LLMProvider = "anthropic" | "openai" | "google" | "groq" | "tavily" | "adzuna";
 
+// ─── Email agent — keys & stats ───────────────────────────────
+export type AgentRunStatus = "success" | "partial" | "failed";
+export type AgentEnvironment = "local" | "cloud";
+
+export interface AgentApiKey {
+  id: string;
+  key_hint: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked: boolean;
+}
+export interface AgentApiKeyCreated extends AgentApiKey {
+  raw_key: string;
+}
+
+export interface AgentLastRun {
+  run_id: string;
+  status: AgentRunStatus;
+  finished_at: string | null;
+  emails_processed: number;
+  environment: AgentEnvironment;
+}
+export interface AgentStats {
+  emails_today: number;
+  emails_this_week: number;
+  category_breakdown: Record<string, number>;
+  escalation_rate: number;
+  jobs_imported: number;
+  last_run: AgentLastRun | null;
+}
+
 // ─── Email agent inbox ────────────────────────────────────────
 export type EmailCategory =
   | "recruiter_outreach" | "application_confirmation" | "job_alert" | "network_notification";

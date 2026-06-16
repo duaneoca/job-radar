@@ -11,6 +11,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs"
 import { adminApi } from "../lib/api";
 import { formatDate } from "../lib/utils";
 import { toast } from "../hooks/useToast";
+import { AgentStatsView } from "../components/AgentStatsView";
 import type { PaginatedUsers, AdminUser } from "../lib/types";
 
 // ─── Inline password reset form ──────────────────────────────────────────────
@@ -335,6 +336,7 @@ export function AdminPage() {
         <TabsList>
           <TabsTrigger value="pending">Pending approval</TabsTrigger>
           <TabsTrigger value="approved">Approved users</TabsTrigger>
+          <TabsTrigger value="agent">Email Agent</TabsTrigger>
           <TabsTrigger value="system">System</TabsTrigger>
         </TabsList>
         <TabsContent value="pending" className="mt-6">
@@ -342,6 +344,17 @@ export function AdminPage() {
         </TabsContent>
         <TabsContent value="approved" className="mt-6">
           <UserTable approved={true} />
+        </TabsContent>
+        <TabsContent value="agent" className="mt-6">
+          <div className="max-w-lg space-y-3">
+            <div>
+              <h3 className="font-medium">Email Agent — all users</h3>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Global agent activity across every user. Detailed LLM traces live in Langfuse.
+              </p>
+            </div>
+            <AgentStatsView scope="global" />
+          </div>
         </TabsContent>
         <TabsContent value="system" className="mt-6">
           <SystemTab />
