@@ -13,6 +13,8 @@ import {
 import { agentApi } from "../lib/api";
 import { cn, safeHref } from "../lib/utils";
 import { toast } from "../hooks/useToast";
+import { getConfirmLinks, setConfirmLinks } from "../hooks/useConfirmLinks";
+import { ExternalLinkConfirmDialog } from "../components/ExternalLinkConfirmDialog";
 import type {
   EmailCategory, EmailStatus, InboxEmail, InboxPosting, InboxInteraction, PaginatedInbox,
 } from "../lib/types";
@@ -56,7 +58,7 @@ function StatusBadge({ status }: { status: EmailStatus }) {
 
 // ─── Posting / interaction detail ─────────────────────────────
 
-function PostingRow({ p }: { p: InboxPosting }) {
+function PostingRow({ p, onOpen }: { p: InboxPosting; onOpen: (url: string) => void }) {
   const href = safeHref(p.link);   // [C2] only http/https becomes a link
   // The title is the click target: a link opening the source in a new tab when
   // there's a safe URL, otherwise plain (inert) text. {text} is React-escaped.
@@ -74,11 +76,12 @@ function PostingRow({ p }: { p: InboxPosting }) {
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           {href ? (
+            // Keep href so the real URL shows on hover; intercept the click to
+            // run the confirmation guard (opens via window.open after confirm).
             <a
               href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:underline decoration-primary/60 underline-offset-2"
+              onClick={(e) => { e.preventDefault(); onOpen(href); }}
+              className="cursor-pointer hover:underline decoration-primary/60 underline-offset-2"
             >
               {title}
             </a>
@@ -127,13 +130,14 @@ function InteractionRow({ i }: { i: InboxInteraction }) {
 // ─── Email row (expandable) ───────────────────────────────────
 
 function EmailRow({
-  email, expanded, onToggle, onPatch, onDelete, busy,
+  email, expanded, onToggle, onPatch, onDelete, onOpen, busy,
 }: {
   email: InboxEmail;
   expanded: boolean;
   onToggle: () => void;
   onPatch: (status: EmailStatus) => void;
   onDelete: () => void;
+  onOpen: (url: string) => void;
   busy: boolean;
 }) {
   const needs = email.status === "needs_review";
@@ -181,7 +185,7 @@ function EmailRow({
 
           {email.postings.length > 0 && (
             <div className="mb-1">
-              {email.postings.map((p) => <PostingRow key={p.id} p={p} />)}
+              {email.postings.map((p) => <PostingRow key={p.id} p={p} onOpen={onOpen} />)}
             </div>
           )}
           {email.interactions.map((i) => <InteractionRow key={i.id} i={i} />)}
@@ -228,6 +232,14 @@ export function InboxPage() {
   const [page, setPage] = useState(0);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<InboxEmail | null>(null);
+  const [pendingUrl, setPendingUrl] = useState<string | null>(null);
+
+  // Open an agent-derived link: confirm first (showing the full URL) unless the
+  // user turned that off. window.open(noopener) so the new tab can't reach us.
+  function openExternal(url: string) {
+    if (getConfirmLinks()) setPendingUrl(url);
+    else window.open(url, "_blank", "noopener,noreferrer");
+  }
 
   const params: Record<string, string | number> = { skip: page * PAGE_SIZE, limit: PAGE_SIZE };
   if (status !== "all") params.status = status;
@@ -337,6 +349,7 @@ export function InboxPage() {
               onToggle={() => setExpandedId(expandedId === email.id ? null : email.id)}
               onPatch={(s) => patchMut.mutate({ id: email.id, status: s })}
               onDelete={() => setDeleteTarget(email)}
+              onOpen={openExternal}
               busy={busy}
             />
           ))}
@@ -374,6 +387,17 @@ export function InboxPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Proton-style link confirmation */}
+      <ExternalLinkConfirmDialog
+        url={pendingUrl}
+        onCancel={() => setPendingUrl(null)}
+        onConfirm={(dontAskAgain) => {
+          if (dontAskAgain) setConfirmLinks(false);
+          if (pendingUrl) window.open(pendingUrl, "_blank", "noopener,noreferrer");
+          setPendingUrl(null);
+        }}
+      />
     </div>
   );
 }
