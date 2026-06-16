@@ -13,6 +13,7 @@ resources:
   - tracker-api/deployment.yaml
   - tracker-api/service.yaml
   - tracker-api/configmap.yaml
+  - tracker-api/networkpolicy.yaml
   # AI worker
   - ai-reviewer/deployment.yaml
   # Scraper (Celery worker + Beat scheduler in one pod)

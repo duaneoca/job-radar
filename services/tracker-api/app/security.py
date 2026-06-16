@@ -55,6 +55,28 @@ def decode_access_token(token: str) -> Optional[str]:
         return None
 
 
+# ── OAuth state (CSRF + user binding for Gmail connect, JR-5) ──
+
+def create_oauth_state(user_id: str, minutes: int = 15) -> str:
+    """Short-lived signed state binding the consent redirect to a user."""
+    expire = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+    payload = {"sub": user_id, "scope": "gmail-oauth", "exp": expire}
+    return jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
+
+
+def decode_oauth_state(state: str) -> Optional[str]:
+    """Return user_id from a valid, unexpired gmail-oauth state token, else None."""
+    try:
+        payload = jwt.decode(
+            state, settings.secret_key, algorithms=[settings.jwt_algorithm]
+        )
+    except JWTError:
+        return None
+    if payload.get("scope") != "gmail-oauth":
+        return None
+    return payload.get("sub")
+
+
 # ── API key encryption ────────────────────────────────────────
 
 def _legacy_fernet_key() -> bytes:

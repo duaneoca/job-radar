@@ -13,10 +13,12 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 from uuid import UUID
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session, joinedload
 
 from app import models, schemas
@@ -24,7 +26,19 @@ from app.config import settings
 from app.database import get_db
 from app.deps import get_current_admin, get_current_user, get_user_from_agent_key
 from app.routers.jobs import apply_status_change
-from app.security import decrypt_api_key, generate_agent_key, verify_slack_signature
+from app.security import (
+    create_oauth_state,
+    decode_oauth_state,
+    decrypt_api_key,
+    encrypt_api_key,
+    generate_agent_key,
+    verify_slack_signature,
+)
+
+# Google OAuth endpoints (Gmail cloud mailbox connect — JR-5)
+GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 
 logger = logging.getLogger(__name__)
 
@@ -146,11 +160,27 @@ def get_agent_config(
                 status_code=503,
                 detail="ENCRYPTION_KEY not configured — cannot decrypt email credentials",
             )
+        stored = None
         try:
-            email_credentials_blob = json.loads(decrypt_api_key(cred.encrypted_blob))
+            stored = json.loads(decrypt_api_key(cred.encrypted_blob))
         except Exception:
             logger.error("AUDIT /agent/config email cred decrypt failed user=%s", user.id)
         email_provider = cred.provider.value
+        if stored is not None:
+            if cred.provider == models.EmailProvider.GMAIL:
+                # Stored blob holds only the per-user refresh_token (+scopes);
+                # inject the shared Web-app client creds so the agent can build a
+                # Google "authorized user" credential (from_authorized_user_info).
+                email_credentials_blob = {
+                    "provider": "gmail",
+                    "refresh_token": stored.get("refresh_token"),
+                    "client_id": settings.google_oauth_client_id,
+                    "client_secret": settings.google_oauth_client_secret,
+                    "token_uri": GOOGLE_TOKEN_URL,
+                    "scopes": stored.get("scopes") or settings.gmail_oauth_scopes.split(),
+                }
+            else:
+                email_credentials_blob = stored
         folders = schemas.AgentFolderConfig(
             root=cred.folder_root,
             interaction=cred.folder_interaction,
@@ -164,7 +194,203 @@ def get_agent_config(
         folders=folders,
         llm=llm_config,
         email_credentials=email_credentials_blob,
+        enabled=bool(cred and cred.enabled),
     )
+
+
+# ── Gmail OAuth connect (cloud mailbox users — JR-5) ──────────────
+
+@router.get("/oauth/start")
+def gmail_oauth_start(user: models.User = Depends(get_current_user)):
+    """Return the Google consent URL. The frontend redirects the browser to it.
+
+    State is a short-lived signed token binding the redirect to this user (CSRF +
+    user binding); the callback trusts it instead of a JWT cookie.
+    """
+    if not (settings.google_oauth_client_id and settings.google_oauth_redirect_uri):
+        raise HTTPException(status_code=503, detail="Gmail OAuth is not configured on this server")
+    params = {
+        "client_id": settings.google_oauth_client_id,
+        "redirect_uri": settings.google_oauth_redirect_uri,
+        "response_type": "code",
+        "scope": settings.gmail_oauth_scopes,
+        "access_type": "offline",   # required to receive a refresh_token
+        "prompt": "consent",        # force a refresh_token even on re-consent
+        "include_granted_scopes": "true",
+        "state": create_oauth_state(str(user.id)),
+    }
+    return {"authorization_url": f"{GOOGLE_AUTH_URL}?{urlencode(params)}"}
+
+
+@router.get("/oauth/callback")
+def gmail_oauth_callback(
+    code: Optional[str] = Query(default=None),
+    state: Optional[str] = Query(default=None),
+    error: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """Google redirects the browser here after consent. Exchange the code for a
+    refresh_token, store it (encrypted), then bounce back to the Settings UI.
+
+    No JWT cookie is guaranteed on this top-level navigation, so auth is the
+    signed `state`. We only ever store the refresh_token + granted scopes; the
+    shared client_id/secret are injected at /agent/config read time.
+    """
+    def _back(result: str) -> RedirectResponse:
+        return RedirectResponse(url=f"/settings?gmail={result}", status_code=303)
+
+    if error or not code or not state:
+        return _back("error")
+    user_id = decode_oauth_state(state)
+    if not user_id:
+        return _back("error")
+    try:
+        user_uuid = UUID(user_id)
+    except (ValueError, TypeError):
+        return _back("error")
+    user = db.query(models.User).filter(models.User.id == user_uuid).first()
+    if not user or not user.is_approved:
+        return _back("error")
+    if not (settings.google_oauth_client_id and settings.google_oauth_client_secret
+            and settings.google_oauth_redirect_uri):
+        return _back("error")
+
+    try:
+        resp = httpx.post(GOOGLE_TOKEN_URL, data={
+            "code": code,
+            "client_id": settings.google_oauth_client_id,
+            "client_secret": settings.google_oauth_client_secret,
+            "redirect_uri": settings.google_oauth_redirect_uri,
+            "grant_type": "authorization_code",
+        }, timeout=15)
+        resp.raise_for_status()
+        token = resp.json()
+    except Exception:
+        logger.error("Gmail OAuth token exchange failed user=%s", user_id)
+        return _back("error")
+
+    refresh_token = token.get("refresh_token")
+    if not refresh_token:
+        # prompt=consent should always return one; if Google didn't, the user
+        # must revoke prior access at myaccount.google.com and retry.
+        logger.warning("Gmail OAuth returned no refresh_token user=%s", user_id)
+        return _back("norefresh")
+
+    scopes = (token.get("scope") or settings.gmail_oauth_scopes).split()
+    blob = encrypt_api_key(json.dumps({"refresh_token": refresh_token, "scopes": scopes}))
+
+    cred = (
+        db.query(models.EmailCredential)
+        .filter(models.EmailCredential.user_id == user_uuid)
+        .first()
+    )
+    if cred:
+        cred.provider = models.EmailProvider.GMAIL
+        cred.encrypted_blob = blob
+    else:
+        db.add(models.EmailCredential(
+            user_id=user_uuid,
+            provider=models.EmailProvider.GMAIL,
+            encrypted_blob=blob,
+            enabled=True,
+        ))
+    db.commit()
+    return _back("connected")
+
+
+# ── Email-credential status / folders / disconnect (cloud — JR-5) ──
+
+def _credential_status(cred: Optional[models.EmailCredential]) -> schemas.EmailCredentialStatusOut:
+    empty_folders = schemas.AgentFolderConfig(
+        root=None, interaction=None, postings=None, social=None, unprocessed=None
+    )
+    if not cred:
+        return schemas.EmailCredentialStatusOut(
+            provider=None, connected=False, enabled=False,
+            folders=empty_folders, updated_at=None,
+        )
+    connected = False
+    try:
+        connected = bool(json.loads(decrypt_api_key(cred.encrypted_blob)).get("refresh_token"))
+    except Exception:
+        connected = False
+    return schemas.EmailCredentialStatusOut(
+        provider=cred.provider.value,
+        connected=connected,
+        enabled=cred.enabled,
+        folders=schemas.AgentFolderConfig(
+            root=cred.folder_root,
+            interaction=cred.folder_interaction,
+            postings=cred.folder_postings,
+            social=cred.folder_social,
+            unprocessed=cred.folder_unprocessed,
+        ),
+        updated_at=cred.updated_at,
+    )
+
+
+@router.get("/email-credentials", response_model=schemas.EmailCredentialStatusOut)
+def get_email_credentials(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Masked mailbox connection status for the Settings UI. Never returns secrets."""
+    cred = (
+        db.query(models.EmailCredential)
+        .filter(models.EmailCredential.user_id == user.id)
+        .first()
+    )
+    return _credential_status(cred)
+
+
+@router.put("/email-credentials", response_model=schemas.EmailCredentialStatusOut)
+def update_email_credentials(
+    payload: schemas.EmailCredentialUpdateIn,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Set folder/label config and the enable flag. Requires a connected mailbox
+    (the row is created by the OAuth callback, which supplies the secret blob)."""
+    cred = (
+        db.query(models.EmailCredential)
+        .filter(models.EmailCredential.user_id == user.id)
+        .first()
+    )
+    if not cred:
+        raise HTTPException(status_code=404, detail="No mailbox connected")
+    f = payload.folders
+    cred.folder_root = f.root
+    cred.folder_interaction = f.interaction
+    cred.folder_postings = f.postings
+    cred.folder_social = f.social
+    cred.folder_unprocessed = f.unprocessed
+    cred.enabled = payload.enabled
+    db.commit()
+    db.refresh(cred)
+    return _credential_status(cred)
+
+
+@router.delete("/email-credentials", status_code=status.HTTP_204_NO_CONTENT)
+def disconnect_email_credentials(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Disconnect the mailbox: best-effort revoke at Google, then delete the row."""
+    cred = (
+        db.query(models.EmailCredential)
+        .filter(models.EmailCredential.user_id == user.id)
+        .first()
+    )
+    if cred:
+        try:
+            rt = json.loads(decrypt_api_key(cred.encrypted_blob)).get("refresh_token")
+            if rt:
+                httpx.post(GOOGLE_REVOKE_URL, params={"token": rt}, timeout=10)
+        except Exception:
+            pass  # revoke is best-effort; deletion is what matters
+        db.delete(cred)
+        db.commit()
+    return None
 
 
 @router.get("/reviews", response_model=list[schemas.AgentReviewOut])

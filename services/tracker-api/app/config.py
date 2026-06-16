@@ -43,6 +43,16 @@ class Settings(BaseSettings):
     slack_signing_secret: str = ""  # Slack app signing secret for HITL callbacks (C4)
     hitl_abandon_minutes: int = 30  # abandon pending HITL decisions older than this
 
+    # Gmail OAuth — cloud mailbox users (JR-5). One shared Web-application client;
+    # only the per-user refresh_token (+scopes) is stored in email_credentials.
+    # client_id/secret/token_uri are injected into /agent/config at read time and
+    # are never persisted per-user. The Desktop client used by the local
+    # self-host path (gmail_auth.py) is separate from this Web client.
+    google_oauth_client_id: str = ""
+    google_oauth_client_secret: str = ""
+    google_oauth_redirect_uri: str = ""  # e.g. https://job-radar.net/api/agent/oauth/callback
+    gmail_oauth_scopes: str = "https://www.googleapis.com/auth/gmail.modify"
+
     class Config:
         env_file = ".env"
 

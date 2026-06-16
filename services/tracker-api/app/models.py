@@ -455,6 +455,7 @@ class EmailCredential(Base):
     folder_postings      = Column(Text, nullable=True)
     folder_social        = Column(Text, nullable=True)
     folder_unprocessed   = Column(Text, nullable=True)
+    enabled        = Column(Boolean, nullable=False, server_default="true")  # per-user pause (JR-5)
     created_at     = Column(DateTime(timezone=True), default=utcnow)
     updated_at     = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
