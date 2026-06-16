@@ -15,12 +15,13 @@ function RunStatusDot({ status }: { status: AgentRunStatus }) {
 /** Agent business stats — per-user (`me`) or global/admin (`global`). */
 export function AgentStatsView({ scope }: { scope: "me" | "global" }) {
   const path = scope === "global" ? "/agent/stats/global" : "/agent/stats";
-  const { data: stats, isLoading } = useQuery<AgentStats>({
+  const { data: stats, isLoading, isError } = useQuery<AgentStats>({
     queryKey: ["agent-stats", scope],
     queryFn: () => agentApi.get(path).then((r) => r.data),
   });
 
   if (isLoading) return <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />;
+  if (isError) return <p className="text-sm text-muted-foreground">Couldn't load agent stats right now.</p>;
   if (!stats) return null;
 
   const lastRun = stats.last_run;
