@@ -579,12 +579,36 @@ class AgentFolderConfig(BaseModel):
     unprocessed: Optional[str]
 
 
+class AgentSlackConfig(BaseModel):
+    bot_token: str          # decrypted, workspace-scoped xoxb- — in-cluster only
+    channel_id: str
+
+
 class AgentConfigOut(BaseModel):
     provider: Optional[str]  # email provider: gmail | imap
     folders: AgentFolderConfig
     llm: Optional[AgentLLMConfig]
     email_credentials: Optional[dict]  # decrypted blob — in-cluster only
     enabled: bool = False    # per-user pause; agent skips this user when False
+    slack: Optional[AgentSlackConfig] = None  # per-user notifier; None until connected + channel set
+
+
+# Slack notifications (per-user OAuth install — JR-6). Status is masked; never the token.
+class SlackStatusOut(BaseModel):
+    connected: bool
+    team_name: Optional[str] = None
+    channel_id: Optional[str] = None
+    channel_name: Optional[str] = None
+
+
+class SlackChannelOut(BaseModel):
+    id: str
+    name: str
+
+
+class SlackChannelUpdate(BaseModel):
+    channel_id: str
+    channel_name: Optional[str] = None
 
 
 # Cloud enumeration (internal-token, in-cluster only — JR-5 §2.1b).

@@ -62,7 +62,7 @@ PostgreSQL in-cluster with PVC. Alembic migrations in `services/tracker-api/alem
 - `jobs` — shared pool; scraped once, visible to all users
 - `user_job_reviews` — per-user AI scores, status, notes; FK → `jobs` with `ondelete=CASCADE`
 - `timeline_events` — FK → `user_job_reviews` with `ondelete=CASCADE`
-- `criteria`, `profiles`, `user_api_keys`, `linkedin_connections` — all cascade on user delete
+- `criteria`, `profiles`, `user_api_keys`, `linkedin_connections`, `email_credentials`, `slack_connections` — all cascade on user delete
 
 **Cascade rule:** deleting a `User` cascades to all their rows. Deleting a `UserJobReview` cascades to `TimelineEvent`. The shared `jobs` row is only deleted when zero reviews reference it (handled in code, not DB FK).
 
@@ -139,6 +139,12 @@ time, processes, and writes back with `AGENT_INTERNAL_TOKEN` + `user_id`. The **
 self-host agent (Proton Bridge on Duane's machine) is separate: REST + its own `.env`, no
 CronJob, mailbox creds never touch Job Radar. Cloud is Gmail-only until the agent ships a
 cloud-IMAP provider.
+
+**Local vs cloud config/credential model** (the "why is config in two places?" question,
+incl. how a self-host/Proton user sets up Slack via `.env` vs the cloud OAuth flow):
+fully documented in [`docs/agent-topologies-and-credentials.md`](docs/agent-topologies-and-credentials.md).
+The rule: decrypted secrets never leave the cluster (H6a), so external/local agents
+self-configure from `.env`; only in-cluster (cloud) agents fetch decrypted config.
 
 ---
 
