@@ -110,7 +110,7 @@ def test_reviews_accepts_internal_token(client, monkeypatch):
     """Per the §2.1b invariant: per-user operational endpoints take either auth mode."""
     monkeypatch.setattr(settings, "agent_internal_token", TOKEN)
     r = client.get("/agent/reviews",
-                   headers={"X-Internal-Token": TOKEN, "X-Agent-User-Id": str(TEST_USER_ID)})
+                   headers={"X-Internal-Token": TOKEN, "X-User-Id": str(TEST_USER_ID)})
     assert r.status_code == 200
     assert r.json() == []  # test_user has no reviews
 
@@ -126,21 +126,21 @@ def test_writer_agent_key_path(db, test_user):
     db.add(models.AgentAPIKey(id=uuid.uuid4(), user_id=TEST_USER_ID,
                               key_hash=key_hash, key_hint=hint, revoked=False))
     db.commit()
-    u = get_agent_writer(x_agent_key=raw, x_internal_token=None, x_agent_user_id=None, db=db)
+    u = get_agent_writer(x_agent_key=raw, x_internal_token=None, x_user_id=None, db=db)
     assert u.id == TEST_USER_ID
 
 
 def test_writer_internal_path(db, test_user, monkeypatch):
     monkeypatch.setattr(settings, "agent_internal_token", TOKEN)
     u = get_agent_writer(x_agent_key=None, x_internal_token=TOKEN,
-                         x_agent_user_id=str(TEST_USER_ID), db=db)
+                         x_user_id=str(TEST_USER_ID), db=db)
     assert u.id == TEST_USER_ID
 
 
 def test_writer_internal_without_user_id_400(db, monkeypatch):
     monkeypatch.setattr(settings, "agent_internal_token", TOKEN)
     with pytest.raises(HTTPException) as e:
-        get_agent_writer(x_agent_key=None, x_internal_token=TOKEN, x_agent_user_id=None, db=db)
+        get_agent_writer(x_agent_key=None, x_internal_token=TOKEN, x_user_id=None, db=db)
     assert e.value.status_code == 400
 
 
@@ -148,11 +148,11 @@ def test_writer_internal_bad_token_401(db, monkeypatch):
     monkeypatch.setattr(settings, "agent_internal_token", TOKEN)
     with pytest.raises(HTTPException) as e:
         get_agent_writer(x_agent_key=None, x_internal_token="wrong",
-                         x_agent_user_id=str(TEST_USER_ID), db=db)
+                         x_user_id=str(TEST_USER_ID), db=db)
     assert e.value.status_code == 401
 
 
 def test_writer_no_auth_401(db):
     with pytest.raises(HTTPException) as e:
-        get_agent_writer(x_agent_key=None, x_internal_token=None, x_agent_user_id=None, db=db)
+        get_agent_writer(x_agent_key=None, x_internal_token=None, x_user_id=None, db=db)
     assert e.value.status_code == 401

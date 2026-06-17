@@ -113,14 +113,15 @@ def require_internal_token(
 def get_agent_writer(
     x_agent_key: str = Header(default=None, alias="X-Agent-Key"),
     x_internal_token: str = Header(default=None, alias="X-Internal-Token"),
-    x_agent_user_id: str = Header(default=None, alias="X-Agent-User-Id"),
+    x_user_id: str = Header(default=None, alias="X-User-Id"),
     db: Session = Depends(get_db),
 ) -> User:
-    """Dual-mode auth for the agent write/poll endpoints (JR-5 §2.1b):
-      • X-Agent-Key                       → local self-host path; user derived from key.
-      • X-Internal-Token + X-Agent-User-Id → cloud path; the single CronJob writes on
-        behalf of each user. user_id is trustworthy *because* the caller holds the
-        internal token behind the NetworkPolicy.
+    """Dual-mode auth for the per-user agent endpoints (JR-5 §2.1b):
+      • X-Agent-Key                  → local self-host path; user derived from key.
+      • X-Internal-Token + X-User-Id → cloud path; the single CronJob acts per user.
+        user_id is trustworthy *because* the caller holds the internal token behind
+        the NetworkPolicy, and nginx strips X-Internal-Token/X-User-Id from public
+        requests so the cloud path is unreachable externally.
     """
     if x_agent_key:
         return _user_from_agent_key(x_agent_key, db)
@@ -128,15 +129,15 @@ def get_agent_writer(
     if x_internal_token is not None:
         if not _valid_internal_token(x_internal_token):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid internal token")
-        if not x_agent_user_id:
+        if not x_user_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="X-Agent-User-Id required with X-Internal-Token",
+                detail="X-User-Id required with X-Internal-Token",
             )
         try:
-            user_uuid = UUID(x_agent_user_id)
+            user_uuid = UUID(x_user_id)
         except (ValueError, TypeError):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Malformed X-Agent-User-Id")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Malformed X-User-Id")
         user = db.query(User).filter(User.id == user_uuid).first()
         if not user or not user.is_approved:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User not approved")

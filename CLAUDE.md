@@ -95,7 +95,7 @@ Key routers:
 
 **Email agent auth — the invariant:** every **per-user operational** endpoint accepts
 **either** `X-Agent-Key` (local self-host → user from key) **or** `X-Internal-Token` +
-`X-Agent-User-Id` (cloud CronJob, per-user) — see `get_agent_writer`. That set is
+`X-User-Id` (cloud CronJob, per-user) — see `get_agent_writer`. That set is
 `GET /agent/reviews` + `POST /agent/{inbox, interactions, runs, hitl/register, hitl/pending,
 hitl/consume}`. Enumeration/bootstrap (`/agent/cloud/*`) is the cloud-internal surface
 (`X-Internal-Token` only). `/agent/config` stays key-only (the cloud path uses
