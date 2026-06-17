@@ -47,6 +47,12 @@ GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 
+# Slack OAuth v2 endpoints (per-user "Add to Slack" notifications — JR-6)
+SLACK_AUTHORIZE_URL = "https://slack.com/oauth/v2/authorize"
+SLACK_ACCESS_URL = "https://slack.com/api/oauth.v2.access"
+SLACK_CONV_LIST_URL = "https://slack.com/api/conversations.list"
+SLACK_REVOKE_URL = "https://slack.com/api/auth.revoke"
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/agent", tags=["agent"])
@@ -175,12 +181,29 @@ def _build_agent_config(user: models.User, db: Session) -> schemas.AgentConfigOu
             unprocessed=cred.folder_unprocessed,
         )
 
+    # Per-user Slack notifier — only when connected AND a channel is chosen (JR-6).
+    slack_config = None
+    sc = (
+        db.query(models.SlackConnection)
+        .filter(models.SlackConnection.user_id == user.id)
+        .first()
+    )
+    if sc and sc.channel_id:
+        try:
+            slack_config = schemas.AgentSlackConfig(
+                bot_token=decrypt_api_key(sc.encrypted_bot_token),
+                channel_id=sc.channel_id,
+            )
+        except Exception:
+            logger.error("AUDIT /agent/config slack token decrypt failed user=%s", user.id)
+
     return schemas.AgentConfigOut(
         provider=email_provider,
         folders=folders,
         llm=llm_config,
         email_credentials=email_credentials_blob,
         enabled=bool(cred and cred.enabled),
+        slack=slack_config,
     )
 
 
@@ -437,6 +460,170 @@ def disconnect_email_credentials(
         except Exception:
             pass  # revoke is best-effort; deletion is what matters
         db.delete(cred)
+        db.commit()
+    return None
+
+
+# ── Slack notifications: per-user OAuth install + channel (JR-6) ──
+
+@router.get("/slack/oauth/start")
+def slack_oauth_start(user: models.User = Depends(get_current_user)):
+    """Return the Slack "Add to Slack" install URL (the frontend redirects to it).
+    The install grants a bot token scoped to the user's own workspace."""
+    if not (settings.slack_client_id and settings.slack_oauth_redirect_uri):
+        raise HTTPException(status_code=503, detail="Slack OAuth is not configured on this server")
+    params = {
+        "client_id": settings.slack_client_id,
+        "scope": settings.slack_bot_scopes,
+        "redirect_uri": settings.slack_oauth_redirect_uri,
+        "state": create_oauth_state(str(user.id), purpose="slack-oauth"),
+    }
+    return {"authorization_url": f"{SLACK_AUTHORIZE_URL}?{urlencode(params)}"}
+
+
+@router.get("/slack/oauth/callback")
+def slack_oauth_callback(
+    code: Optional[str] = Query(default=None),
+    state: Optional[str] = Query(default=None),
+    error: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """Slack redirects here after install. Exchange the code for the workspace bot
+    token, store it (encrypted), bounce back to Settings. Auth = signed `state`."""
+    def _back(result: str) -> RedirectResponse:
+        return RedirectResponse(url=f"/settings?slack={result}", status_code=303)
+
+    if error or not code or not state:
+        return _back("error")
+    user_id = decode_oauth_state(state, purpose="slack-oauth")
+    if not user_id:
+        return _back("error")
+    try:
+        user_uuid = UUID(user_id)
+    except (ValueError, TypeError):
+        return _back("error")
+    user = db.query(models.User).filter(models.User.id == user_uuid).first()
+    if not user or not user.is_approved:
+        return _back("error")
+    if not (settings.slack_client_id and settings.slack_client_secret and settings.slack_oauth_redirect_uri):
+        return _back("error")
+
+    try:
+        resp = httpx.post(SLACK_ACCESS_URL, data={
+            "client_id": settings.slack_client_id,
+            "client_secret": settings.slack_client_secret,
+            "code": code,
+            "redirect_uri": settings.slack_oauth_redirect_uri,
+        }, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception:
+        logger.error("Slack OAuth token exchange failed user=%s", user_id)
+        return _back("error")
+
+    if not data.get("ok") or not data.get("access_token"):
+        logger.warning("Slack OAuth not ok user=%s err=%s", user_id, data.get("error"))
+        return _back("error")
+
+    team = data.get("team") or {}
+    enc = encrypt_api_key(data["access_token"])
+    conn = (
+        db.query(models.SlackConnection)
+        .filter(models.SlackConnection.user_id == user_uuid)
+        .first()
+    )
+    if conn:
+        conn.encrypted_bot_token = enc
+        conn.team_id = team.get("id")
+        conn.team_name = team.get("name")
+        conn.bot_user_id = data.get("bot_user_id")
+        conn.scopes = data.get("scope")
+        # keep the existing channel selection across a re-install
+    else:
+        db.add(models.SlackConnection(
+            user_id=user_uuid, encrypted_bot_token=enc,
+            team_id=team.get("id"), team_name=team.get("name"),
+            bot_user_id=data.get("bot_user_id"), scopes=data.get("scope"),
+        ))
+    db.commit()
+    return _back("connected")
+
+
+def _slack_status(conn: Optional[models.SlackConnection]) -> schemas.SlackStatusOut:
+    if not conn:
+        return schemas.SlackStatusOut(connected=False)
+    return schemas.SlackStatusOut(
+        connected=True, team_name=conn.team_name,
+        channel_id=conn.channel_id, channel_name=conn.channel_name,
+    )
+
+
+@router.get("/slack/status", response_model=schemas.SlackStatusOut)
+def slack_status(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Masked Slack connection status for the Settings UI. Never returns the token."""
+    conn = db.query(models.SlackConnection).filter(models.SlackConnection.user_id == user.id).first()
+    return _slack_status(conn)
+
+
+@router.get("/slack/channels", response_model=list[schemas.SlackChannelOut])
+def slack_channels(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """List the workspace's public channels (for the picker), via the user's bot token."""
+    conn = db.query(models.SlackConnection).filter(models.SlackConnection.user_id == user.id).first()
+    if not conn:
+        raise HTTPException(status_code=404, detail="Slack not connected")
+    token = decrypt_api_key(conn.encrypted_bot_token)
+    try:
+        resp = httpx.get(SLACK_CONV_LIST_URL, params={
+            "types": "public_channel", "limit": 1000, "exclude_archived": "true",
+        }, headers={"Authorization": f"Bearer {token}"}, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception:
+        raise HTTPException(status_code=502, detail="Couldn't reach Slack")
+    if not data.get("ok"):
+        raise HTTPException(status_code=502, detail=f"Slack error: {data.get('error')}")
+    return [
+        schemas.SlackChannelOut(id=c["id"], name=c["name"])
+        for c in data.get("channels", [])
+    ]
+
+
+@router.put("/slack/channel", response_model=schemas.SlackStatusOut)
+def slack_set_channel(
+    payload: schemas.SlackChannelUpdate,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Choose which channel the agent posts to. Requires a connected workspace."""
+    conn = db.query(models.SlackConnection).filter(models.SlackConnection.user_id == user.id).first()
+    if not conn:
+        raise HTTPException(status_code=404, detail="Slack not connected")
+    conn.channel_id = payload.channel_id
+    conn.channel_name = payload.channel_name
+    db.commit()
+    db.refresh(conn)
+    return _slack_status(conn)
+
+
+@router.delete("/slack", status_code=status.HTTP_204_NO_CONTENT)
+def slack_disconnect(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Disconnect Slack: best-effort token revoke, then delete the connection."""
+    conn = db.query(models.SlackConnection).filter(models.SlackConnection.user_id == user.id).first()
+    if conn:
+        try:
+            httpx.post(SLACK_REVOKE_URL, data={"token": decrypt_api_key(conn.encrypted_bot_token)}, timeout=10)
+        except Exception:
+            pass  # revoke is best-effort; deletion is what matters
+        db.delete(conn)
         db.commit()
     return None
 

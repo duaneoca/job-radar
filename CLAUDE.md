@@ -62,7 +62,7 @@ PostgreSQL in-cluster with PVC. Alembic migrations in `services/tracker-api/alem
 - `jobs` — shared pool; scraped once, visible to all users
 - `user_job_reviews` — per-user AI scores, status, notes; FK → `jobs` with `ondelete=CASCADE`
 - `timeline_events` — FK → `user_job_reviews` with `ondelete=CASCADE`
-- `criteria`, `profiles`, `user_api_keys`, `linkedin_connections` — all cascade on user delete
+- `criteria`, `profiles`, `user_api_keys`, `linkedin_connections`, `email_credentials`, `slack_connections` — all cascade on user delete
 
 **Cascade rule:** deleting a `User` cascades to all their rows. Deleting a `UserJobReview` cascades to `TimelineEvent`. The shared `jobs` row is only deleted when zero reviews reference it (handled in code, not DB FK).
 

@@ -60,6 +60,15 @@ class Settings(BaseSettings):
     google_oauth_redirect_uri: str = ""  # e.g. https://job-radar.net/api/agent/oauth/callback
     gmail_oauth_scopes: str = "https://www.googleapis.com/auth/gmail.modify"
 
+    # Slack OAuth — per-user, per-workspace notifications. One shared Slack app
+    # (public distribution); the "Add to Slack" install returns a bot token scoped
+    # to each user's own workspace, stored encrypted in slack_connections. The
+    # decrypted token + channel are injected into /agent/config at read time.
+    slack_client_id: str = ""
+    slack_client_secret: str = ""
+    slack_oauth_redirect_uri: str = ""  # e.g. https://job-radar.net/api/agent/slack/oauth/callback
+    slack_bot_scopes: str = "chat:write,chat:write.public,channels:read"
+
     class Config:
         env_file = ".env"
 

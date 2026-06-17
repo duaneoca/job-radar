@@ -106,6 +106,7 @@ class User(Base):
     inbox_interactions = relationship("InboxInteraction", back_populates="user", cascade="all, delete-orphan")
     agent_api_keys    = relationship("AgentAPIKey", back_populates="user", cascade="all, delete-orphan")
     email_credential  = relationship("EmailCredential", back_populates="user", cascade="all, delete-orphan", uselist=False)
+    slack_connection  = relationship("SlackConnection", back_populates="user", cascade="all, delete-orphan", uselist=False)
     hitl_decisions    = relationship("HitlDecision", back_populates="user", cascade="all, delete-orphan")
     agent_runs        = relationship("AgentRun", back_populates="user", cascade="all, delete-orphan")
 
@@ -463,6 +464,26 @@ class EmailCredential(Base):
     updated_at     = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     user = relationship("User", back_populates="email_credential", uselist=False)
+
+
+class SlackConnection(Base):
+    """Per-user Slack workspace install (OAuth v2). The bot token is workspace-scoped
+    and encrypted with ENCRYPTION_KEY; the channel is where the agent posts (JR-6)."""
+    __tablename__ = "slack_connections"
+
+    id                   = Column(Uuid(), primary_key=True, default=uuid.uuid4)
+    user_id              = Column(Uuid(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    encrypted_bot_token  = Column(Text, nullable=False)   # xoxb-… Fernet via ENCRYPTION_KEY
+    team_id              = Column(String(64), nullable=True)
+    team_name            = Column(String(255), nullable=True)
+    bot_user_id          = Column(String(64), nullable=True)
+    scopes               = Column(Text, nullable=True)
+    channel_id           = Column(String(64), nullable=True)   # chosen post target
+    channel_name         = Column(String(255), nullable=True)
+    created_at           = Column(DateTime(timezone=True), default=utcnow)
+    updated_at           = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    user = relationship("User", back_populates="slack_connection", uselist=False)
 
 
 class HitlDecision(Base):
