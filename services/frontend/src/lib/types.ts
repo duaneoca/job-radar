@@ -55,6 +55,18 @@ export interface EmailCredentialStatus {
   updated_at: string | null;
 }
 
+// ─── Slack notifications (per-user OAuth install — JR-6) ──────
+export interface SlackStatus {
+  connected: boolean;
+  team_name?: string | null;
+  channel_id?: string | null;
+  channel_name?: string | null;
+}
+export interface SlackChannel {
+  id: string;
+  name: string;
+}
+
 // ─── Email agent inbox ────────────────────────────────────────
 export type EmailCategory =
   | "recruiter_outreach" | "application_confirmation" | "job_alert" | "network_notification";

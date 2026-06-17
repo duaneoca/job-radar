@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, BookmarkIcon, Chrome, Eye, EyeOff, Loader2, Trash2, Copy, Plus } from "lucide-react";
+import { AlertTriangle, BookmarkIcon, Chrome, Eye, EyeOff, Loader2, MessageSquare, Trash2, Copy, Plus } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -9,13 +9,14 @@ import { Label } from "../components/ui/label";
 import { Separator } from "../components/ui/separator";
 import { Badge } from "../components/ui/badge";
 import { Switch } from "../components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { keysApi, authApi, agentApi } from "../lib/api";
 import { useAuthStore } from "../store/auth";
 import { toast } from "../hooks/useToast";
 import { useConfirmLinks } from "../hooks/useConfirmLinks";
 import { formatDate } from "../lib/utils";
 import { AgentStatsView } from "../components/AgentStatsView";
-import type { APIKey, LLMProvider, AgentApiKey, AgentApiKeyCreated, AgentFolderConfig, EmailCredentialStatus } from "../lib/types";
+import type { APIKey, LLMProvider, AgentApiKey, AgentApiKeyCreated, AgentFolderConfig, EmailCredentialStatus, SlackStatus, SlackChannel } from "../lib/types";
 
 // ─── Account Details tab ──────────────────────────────────────────────────────
 
@@ -1081,12 +1082,119 @@ function MailboxConnectionSection() {
   );
 }
 
+// Per-user Slack notifications (JR-6). "Add to Slack" installs the app into the
+// user's own workspace; they pick a public channel the agent posts to.
+function SlackNotificationsSection() {
+  const qc = useQueryClient();
+  const { data: status, isLoading } = useQuery<SlackStatus>({
+    queryKey: ["agent-slack-status"],
+    queryFn: () => agentApi.get("/agent/slack/status").then((r) => r.data),
+  });
+  const { data: channels = [], isLoading: channelsLoading, isError: channelsError } = useQuery<SlackChannel[]>({
+    queryKey: ["agent-slack-channels"],
+    queryFn: () => agentApi.get("/agent/slack/channels").then((r) => r.data),
+    enabled: !!status?.connected,
+  });
+  const [connecting, setConnecting] = useState(false);
+
+  async function connect() {
+    setConnecting(true);
+    try {
+      const { data } = await agentApi.get("/agent/slack/oauth/start");
+      window.location.href = data.authorization_url;
+    } catch (err: any) {
+      toast({ title: "Couldn't start Slack connect", description: err?.response?.data?.detail, variant: "destructive" });
+      setConnecting(false);
+    }
+  }
+
+  async function pickChannel(channelId: string) {
+    const ch = channels.find((c) => c.id === channelId);
+    try {
+      await agentApi.put("/agent/slack/channel", { channel_id: channelId, channel_name: ch?.name ?? null });
+      qc.invalidateQueries({ queryKey: ["agent-slack-status"] });
+      toast({ title: "Notification channel set" });
+    } catch (err: any) {
+      toast({ title: "Failed to set channel", description: err?.response?.data?.detail, variant: "destructive" });
+    }
+  }
+
+  async function disconnect() {
+    try {
+      await agentApi.delete("/agent/slack");
+      qc.invalidateQueries({ queryKey: ["agent-slack-status"] });
+      qc.invalidateQueries({ queryKey: ["agent-slack-channels"] });
+      toast({ title: "Slack disconnected" });
+    } catch (err: any) {
+      toast({ title: "Failed to disconnect", description: err?.response?.data?.detail, variant: "destructive" });
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <h3 className="font-medium">Notifications</h3>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Connect Slack so the agent can post job updates to a channel in your own workspace.
+        </p>
+      </div>
+
+      {isLoading ? (
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      ) : !status?.connected ? (
+        <Button size="sm" disabled={connecting} onClick={connect}>
+          {connecting ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : <><MessageSquare className="h-4 w-4 mr-1" /> Add to Slack</>}
+        </Button>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-2 border rounded-md px-3 py-2">
+            <Badge variant="secondary">Connected{status.team_name ? `: ${status.team_name}` : ""}</Badge>
+            <Button
+              size="sm" variant="ghost"
+              className="h-7 shrink-0 text-destructive hover:bg-destructive/10 px-2"
+              onClick={disconnect}
+            >
+              <Trash2 className="h-3.5 w-3.5 mr-1" /> Disconnect
+            </Button>
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs">Post notifications to</Label>
+            {channelsError ? (
+              <p className="text-sm text-muted-foreground">
+                Couldn't load channels — the bot may need re-installing (try Disconnect, then Add to Slack again).
+              </p>
+            ) : (
+              <Select value={status.channel_id ?? undefined} onValueChange={pickChannel} disabled={channelsLoading}>
+                <SelectTrigger>
+                  <SelectValue placeholder={channelsLoading ? "Loading channels…" : "Choose a channel"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {channels.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>#{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Public channels only. The agent posts using your workspace's own bot — no shared token.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EmailAgentTab() {
   return (
     <div className="max-w-lg space-y-8">
       <AgentKeySection />
       <Separator />
       <MailboxConnectionSection />
+      <Separator />
+      <SlackNotificationsSection />
       <Separator />
       <div className="space-y-3">
         <div>
@@ -1106,7 +1214,8 @@ function EmailAgentTab() {
 export function SettingsPage() {
   const [searchParams] = useSearchParams();
   const gmail = searchParams.get("gmail");
-  const defaultTab = gmail ? "agent" : (searchParams.get("tab") ?? "account");
+  const slack = searchParams.get("slack");
+  const defaultTab = (gmail || slack) ? "agent" : (searchParams.get("tab") ?? "account");
 
   useEffect(() => {
     if (!gmail) return;
@@ -1122,6 +1231,15 @@ export function SettingsPage() {
       toast({ title: "Gmail connection failed", description: "Please try connecting again.", variant: "destructive" });
     }
   }, [gmail]);
+
+  useEffect(() => {
+    if (!slack) return;
+    if (slack === "connected") {
+      toast({ title: "Slack connected", description: "Now pick a channel below for notifications." });
+    } else {
+      toast({ title: "Slack connection failed", description: "Please try Add to Slack again.", variant: "destructive" });
+    }
+  }, [slack]);
 
   return (
     <div className="space-y-4">
