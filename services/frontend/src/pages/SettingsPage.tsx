@@ -1090,12 +1090,17 @@ function SlackNotificationsSection() {
     queryKey: ["agent-slack-status"],
     queryFn: () => agentApi.get("/agent/slack/status").then((r) => r.data),
   });
-  const { data: channels = [], isLoading: channelsLoading, isError: channelsError } = useQuery<SlackChannel[]>({
+  const { data: channels = [], isLoading: channelsLoading, isError: channelsError, refetch: refetchChannels } = useQuery<SlackChannel[]>({
     queryKey: ["agent-slack-channels"],
     queryFn: () => agentApi.get("/agent/slack/channels").then((r) => r.data),
     enabled: !!status?.connected,
   });
   const [connecting, setConnecting] = useState(false);
+  const [pendingChannel, setPendingChannel] = useState<string | undefined>(undefined);
+  const [savingChannel, setSavingChannel] = useState(false);
+
+  // Keep the dropdown in sync with what's actually saved.
+  useEffect(() => { setPendingChannel(status?.channel_id ?? undefined); }, [status?.channel_id]);
 
   async function connect() {
     setConnecting(true);
@@ -1108,14 +1113,18 @@ function SlackNotificationsSection() {
     }
   }
 
-  async function pickChannel(channelId: string) {
-    const ch = channels.find((c) => c.id === channelId);
+  async function saveChannel() {
+    if (!pendingChannel) return;
+    const ch = channels.find((c) => c.id === pendingChannel);
+    setSavingChannel(true);
     try {
-      await agentApi.put("/agent/slack/channel", { channel_id: channelId, channel_name: ch?.name ?? null });
+      await agentApi.put("/agent/slack/channel", { channel_id: pendingChannel, channel_name: ch?.name ?? null });
       qc.invalidateQueries({ queryKey: ["agent-slack-status"] });
-      toast({ title: "Notification channel set" });
+      toast({ title: `Notifications will post to #${ch?.name ?? pendingChannel}` });
     } catch (err: any) {
       toast({ title: "Failed to set channel", description: err?.response?.data?.detail, variant: "destructive" });
+    } finally {
+      setSavingChannel(false);
     }
   }
 
@@ -1166,19 +1175,34 @@ function SlackNotificationsSection() {
                 Couldn't load channels — the bot may need re-installing (try Disconnect, then Add to Slack again).
               </p>
             ) : (
-              <Select value={status.channel_id ?? undefined} onValueChange={pickChannel} disabled={channelsLoading}>
-                <SelectTrigger>
-                  <SelectValue placeholder={channelsLoading ? "Loading channels…" : "Choose a channel"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {channels.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>#{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                <Select
+                  value={pendingChannel}
+                  onValueChange={setPendingChannel}
+                  onOpenChange={(open) => { if (open) refetchChannels(); }}
+                  disabled={channelsLoading}
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder={channelsLoading ? "Loading channels…" : "Choose a channel"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {channels.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>#{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  size="sm"
+                  disabled={savingChannel || !pendingChannel || pendingChannel === status.channel_id}
+                  onClick={saveChannel}
+                >
+                  {savingChannel ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+                </Button>
+              </div>
             )}
             <p className="text-xs text-muted-foreground">
-              Public channels only. The agent posts using your workspace's own bot — no shared token.
+              {status.channel_name && <>Currently posting to <span className="font-medium">#{status.channel_name}</span>. </>}
+              Public channels only — pick one and hit <span className="font-medium">Save</span>. The agent uses your workspace's own bot.
             </p>
           </div>
         </div>
