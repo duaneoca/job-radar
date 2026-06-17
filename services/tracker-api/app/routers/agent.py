@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session, joinedload
 from app import models, schemas
 from app.config import settings
 from app.database import get_db
+from app.llm import get_active_llm_key
 from app.deps import (
     get_agent_writer,
     get_current_admin,
@@ -113,17 +114,9 @@ def _build_agent_config(user: models.User, db: Session) -> schemas.AgentConfigOu
     """Assemble a user's decrypted agent config (LLM key + email creds + folders).
     Shared by /agent/config (X-Agent-Key) and /agent/cloud/config/{user_id}
     (internal token). Returns DECRYPTED secrets — callers must be in-cluster only."""
-    # LLM key — reuse existing user_api_keys (§1.9: do not build new)
+    # LLM key — the user's *active* key (selection → priority), same as scoring/research.
     llm_config = None
-    key_row = (
-        db.query(models.UserAPIKey)
-        .filter(
-            models.UserAPIKey.user_id == user.id,
-            models.UserAPIKey.provider.in_(models.LLM_PROVIDERS),  # exclude tavily/adzuna
-        )
-        .order_by(models.UserAPIKey.updated_at.desc())
-        .first()
-    )
+    key_row = get_active_llm_key(user.id, db)
     if key_row:
         try:
             plaintext_key = decrypt_api_key(key_row.encrypted_key)

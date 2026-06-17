@@ -185,12 +185,33 @@ def _fetch_groq_models(api_key: str) -> list[dict]:
 
 # ── Core helpers ──────────────────────────────────────────────────────────────
 
-def get_llm_provider(user_id: UUID, db: Session) -> tuple[str, str]:
+def model_for_key(key: models.UserAPIKey) -> str:
+    """LiteLLM model string for a key — the user's preferred_model, else provider default."""
+    return key.preferred_model or PROVIDER_MODELS.get(key.provider, "")
+
+
+def get_active_llm_key(user_id: UUID, db: Session):
+    """The user's *active* LLM key — single source of truth for which key every
+    consumer (scoring, research, email agent) uses.
+
+    1. The explicitly-selected provider (`users.selected_llm_provider`), if a key exists.
+    2. Otherwise best available by priority order (Anthropic → OpenAI → Google → Groq).
+    Returns the UserAPIKey row, or None if the user has no LLM key.
     """
-    Return (api_key, litellm_model) for the user's best available provider.
-    Tries providers in priority order; raises 400 if none are configured.
-    """
-    for provider, model in PROVIDER_MODELS.items():
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if user is not None and user.selected_llm_provider is not None:
+        chosen = (
+            db.query(models.UserAPIKey)
+            .filter(
+                models.UserAPIKey.user_id == user_id,
+                models.UserAPIKey.provider == user.selected_llm_provider,
+            )
+            .first()
+        )
+        if chosen:
+            return chosen
+
+    for provider in PROVIDER_MODELS:  # priority order
         key_obj = (
             db.query(models.UserAPIKey)
             .filter(
@@ -200,7 +221,18 @@ def get_llm_provider(user_id: UUID, db: Session) -> tuple[str, str]:
             .first()
         )
         if key_obj:
-            return decrypt_api_key(key_obj.encrypted_key), key_obj.preferred_model or model
+            return key_obj
+    return None
+
+
+def get_llm_provider(user_id: UUID, db: Session) -> tuple[str, str]:
+    """
+    Return (api_key, litellm_model) for the user's active LLM key.
+    Raises 400 if none are configured.
+    """
+    key_obj = get_active_llm_key(user_id, db)
+    if key_obj:
+        return decrypt_api_key(key_obj.encrypted_key), model_for_key(key_obj)
 
     raise HTTPException(
         status_code=400,

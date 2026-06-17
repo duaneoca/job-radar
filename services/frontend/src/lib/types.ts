@@ -239,6 +239,7 @@ export interface APIKey {
   key_hint: string;
   preferred_model?: string;
   updated_at: string;
+  active?: boolean;   // the LLM key currently used (explicit selection, else priority)
 }
 
 export interface LinkedInConnection {
