@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     # Email agent
     slack_signing_secret: str = ""  # Slack app signing secret for HITL callbacks (C4)
     hitl_abandon_minutes: int = 30  # abandon pending HITL decisions older than this
+    # Reap agent_runs left with finished_at NULL this many minutes after start
+    # (§1.6b). The agent finalizes on crash/SIGTERM; only a hard SIGKILL/OOM can
+    # dangle, so this is the safety net. Well beyond the CronJob's ~10-min deadline.
+    agent_run_reap_minutes: int = 30
 
     # Cloud agent internal token (JR-5). The single in-cluster CronJob authenticates
     # as *itself* (not a user) to the /agent/cloud/* enumeration endpoints, and uses
