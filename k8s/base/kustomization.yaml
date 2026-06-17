@@ -25,5 +25,8 @@ resources:
   - mcp-writer/deployment.yaml
   - mcp-writer/service.yaml
   - mcp-writer/configmap.yaml
+  # Cloud email agent (CronJob — multi-user; JR-5)
+  - email-agent/configmap.yaml
+  - email-agent/cronjob.yaml
   # Routing
   - ingress.yaml

@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: email-agent-config
+  namespace: jobradar
+data:
+  # In-cluster tracker-api. The agent enumerates users via /agent/cloud/users,
+  # fetches one config at a time, and writes back with the internal token.
+  JOBRADAR_API_URL: "http://jobradar-tracker-api"
+  # Ops notifications (per-user notification routing is a later refinement).
+  NOTIFIER: "slack"
+  LANGFUSE_HOST: "https://cloud.langfuse.com"
+  # Run caps — keep a single 15-min run bounded.
+  MAX_EMAILS_PER_RUN: "50"
+  MAX_EMAIL_AGE_DAYS: "7"
+  DAILY_SPEND_CEILING_USD: "5"
+  # SLACK_ADMIN_CHANNEL is set per-env via overlay/secret if it differs; default here.
+  SLACK_ADMIN_CHANNEL: "#job-radar-ops"

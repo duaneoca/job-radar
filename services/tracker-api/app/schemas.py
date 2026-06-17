@@ -582,6 +582,14 @@ class AgentConfigOut(BaseModel):
     enabled: bool = False    # per-user pause; agent skips this user when False
 
 
+# Cloud enumeration (internal-token, in-cluster only — JR-5 §2.1b).
+# No secrets: the runner uses this to discover users, then fetches one config at a time.
+class CloudUserOut(BaseModel):
+    user_id: UUID
+    provider: Optional[str]
+    enabled: bool
+
+
 # Email-credential management (cloud Gmail users — JR-5).
 # The refresh_token is never returned to the frontend; only connection status.
 class EmailCredentialStatusOut(BaseModel):

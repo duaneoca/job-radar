@@ -43,6 +43,13 @@ class Settings(BaseSettings):
     slack_signing_secret: str = ""  # Slack app signing secret for HITL callbacks (C4)
     hitl_abandon_minutes: int = 30  # abandon pending HITL decisions older than this
 
+    # Cloud agent internal token (JR-5). The single in-cluster CronJob authenticates
+    # as *itself* (not a user) to the /agent/cloud/* enumeration endpoints, and uses
+    # this token + an explicit user_id to write back on behalf of each user. Must
+    # match AGENT_INTERNAL_TOKEN in email-agent-secrets. Unset = cloud path disabled
+    # (fail-closed). Never reachable externally (nginx 404 + NetworkPolicy).
+    agent_internal_token: str = ""
+
     # Gmail OAuth — cloud mailbox users (JR-5). One shared Web-application client;
     # only the per-user refresh_token (+scopes) is stored in email_credentials.
     # client_id/secret/token_uri are injected into /agent/config at read time and
