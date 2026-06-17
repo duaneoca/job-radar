@@ -140,6 +140,12 @@ self-host agent (Proton Bridge on Duane's machine) is separate: REST + its own `
 CronJob, mailbox creds never touch Job Radar. Cloud is Gmail-only until the agent ships a
 cloud-IMAP provider.
 
+**Local vs cloud config/credential model** (the "why is config in two places?" question,
+incl. how a self-host/Proton user sets up Slack via `.env` vs the cloud OAuth flow):
+fully documented in [`docs/agent-topologies-and-credentials.md`](docs/agent-topologies-and-credentials.md).
+The rule: decrypted secrets never leave the cluster (H6a), so external/local agents
+self-configure from `.env`; only in-cluster (cloud) agents fetch decrypted config.
+
 ---
 
 ## Data retention
