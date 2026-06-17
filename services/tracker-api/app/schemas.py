@@ -332,9 +332,14 @@ class APIKeyOut(BaseModel):
     key_hint: str                        # last 4 chars only, e.g. "…xYZ9"
     preferred_model: Optional[str] = None
     updated_at: datetime
+    active: bool = False                 # the LLM key currently used (selected, else priority)
 
     class Config:
         from_attributes = True
+
+
+class ActiveKeyUpdate(BaseModel):
+    provider: Optional[LLMProvider] = None  # null clears the selection (back to priority order)
 
 
 # ── Scraper per-user config (internal, in-cluster only) ───────

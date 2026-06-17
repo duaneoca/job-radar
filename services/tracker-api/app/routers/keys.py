@@ -49,11 +49,17 @@ def list_keys(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    from app.llm import get_active_llm_key
     keys = (
         db.query(models.UserAPIKey)
         .filter(models.UserAPIKey.user_id == current_user.id)
         .all()
     )
+    # Mark the effective active LLM key (explicit selection, else priority) so the
+    # UI radio always reflects what scoring/research/the agent actually use.
+    active = get_active_llm_key(current_user.id, db)
+    active_provider = active.provider if active else None
+
     result = []
     for k in keys:
         try:
@@ -66,8 +72,35 @@ def list_keys(
             key_hint=hint,
             preferred_model=k.preferred_model,
             updated_at=k.updated_at,
+            active=(k.provider == active_provider),
         ))
     return result
+
+
+@router.put("/active", response_model=list[schemas.APIKeyOut])
+def set_active_llm(
+    payload: schemas.ActiveKeyUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Set the active LLM key (radio button). `provider=null` clears the selection
+    and reverts to priority order. Registered before /{provider} (route-ordering)."""
+    if payload.provider is not None:
+        if payload.provider not in models.LLM_PROVIDERS:
+            raise HTTPException(status_code=400, detail="Not an LLM provider")
+        has_key = (
+            db.query(models.UserAPIKey)
+            .filter(
+                models.UserAPIKey.user_id == current_user.id,
+                models.UserAPIKey.provider == payload.provider,
+            )
+            .first()
+        )
+        if not has_key:
+            raise HTTPException(status_code=404, detail="No key configured for that provider")
+    current_user.selected_llm_provider = payload.provider
+    db.commit()
+    return list_keys(db=db, current_user=current_user)
 
 
 @router.put("", response_model=schemas.APIKeyOut)
@@ -198,27 +231,18 @@ def delete_key(
 @router.get("/internal/{user_id}/llm", include_in_schema=False)
 def get_best_llm_key(user_id: str, db: Session = Depends(get_db)):
     """
-    Returns the decrypted API key and LiteLLM model string for the user's
-    best available provider (Anthropic → OpenAI → Google → Groq).
-    Called by the ai-reviewer service.
+    Returns the decrypted API key and LiteLLM model string for the user's *active*
+    LLM key — the explicit selection, else priority order. Called by ai-reviewer.
     """
-    from app.llm import PROVIDER_MODELS
-    for provider, model in PROVIDER_MODELS.items():
-        key_obj = (
-            db.query(models.UserAPIKey)
-            .filter(
-                models.UserAPIKey.user_id == user_id,
-                models.UserAPIKey.provider == provider,
-            )
-            .first()
-        )
-        if key_obj:
-            return {
-                "api_key": decrypt_api_key(key_obj.encrypted_key),
-                "model": key_obj.preferred_model or model,
-                "provider": provider.value,
-            }
-    raise HTTPException(status_code=404, detail="No AI key configured")
+    from app.llm import get_active_llm_key, model_for_key
+    key_obj = get_active_llm_key(user_id, db)
+    if not key_obj:
+        raise HTTPException(status_code=404, detail="No AI key configured")
+    return {
+        "api_key": decrypt_api_key(key_obj.encrypted_key),
+        "model": model_for_key(key_obj),
+        "provider": key_obj.provider.value,
+    }
 
 
 @router.get("/internal/{user_id}/{provider}", include_in_schema=False)

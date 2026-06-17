@@ -397,6 +397,16 @@ function KeysTab() {
     }
   }
 
+  async function setActive(provider: LLMProvider) {
+    try {
+      await keysApi.put("/keys/active", { provider });
+      qc.invalidateQueries({ queryKey: ["keys"] });
+      toast({ title: "Active model updated" });
+    } catch (err: any) {
+      toast({ title: "Couldn't set active model", description: err?.response?.data?.detail, variant: "destructive" });
+    }
+  }
+
   function pickProvider(p: LLMProvider) {
     setPreferred(p);
     localStorage.setItem(PREFERRED_PROVIDER_KEY, p);
@@ -436,31 +446,44 @@ function KeysTab() {
         <div>
           <h3 className="font-medium">AI model provider</h3>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Choose one — this is the model that scores your job matches.
+            The <span className="font-medium">active</span> key is used by job scoring, research,
+            and the email agent. Click the dot to switch. If you don't pick one, it falls back to
+            Anthropic → OpenAI → Google → Groq. Click a row to add or edit its key.
           </p>
         </div>
         <div className="space-y-2">
           {AI_PROVIDERS.map(({ value, label, description, placeholder }) => {
-            const isSelected = preferred === value;
+            const isExpanded = preferred === value;
             const existing = keyMap[value];
+            const isActive = existing?.active ?? false;
             return (
               <div
                 key={value}
                 className={`rounded-lg border p-3 cursor-pointer transition-colors ${
-                  isSelected ? "border-primary bg-primary/5" : "hover:border-muted-foreground/50 hover:bg-muted/30"
+                  isActive ? "border-primary bg-primary/5"
+                  : isExpanded ? "border-muted-foreground/50"
+                  : "hover:border-muted-foreground/50 hover:bg-muted/30"
                 }`}
                 onClick={() => pickProvider(value)}
               >
                 <div className="flex items-center gap-3">
-                  <div className={`h-4 w-4 rounded-full border-2 shrink-0 flex items-center justify-center ${
-                    isSelected ? "border-primary" : "border-muted-foreground/40"
-                  }`}>
-                    {isSelected && <div className="h-2 w-2 rounded-full bg-primary" />}
-                  </div>
+                  <button
+                    type="button"
+                    aria-label={isActive ? `${label} is the active model` : `Set ${label} as active`}
+                    title={existing ? "Use this key for scoring, research, and the email agent" : "Add a key first"}
+                    disabled={!existing}
+                    onClick={(e) => { e.stopPropagation(); if (existing) setActive(value); }}
+                    className={`h-4 w-4 rounded-full border-2 shrink-0 flex items-center justify-center ${
+                      isActive ? "border-primary" : "border-muted-foreground/40"
+                    } ${existing ? "cursor-pointer" : "cursor-not-allowed opacity-40"}`}
+                  >
+                    {isActive && <div className="h-2 w-2 rounded-full bg-primary" />}
+                  </button>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium">{label}</span>
                       <span className="text-xs text-muted-foreground">{description}</span>
+                      {isActive && <Badge className="text-xs">Active</Badge>}
                       {existing && (
                         <Badge variant="outline" className="font-mono text-xs ml-auto">
                           ••••{existing.key_hint}
@@ -469,7 +492,7 @@ function KeysTab() {
                     </div>
                   </div>
                 </div>
-                {isSelected && (
+                {isExpanded && (
                   <div onClick={(e) => e.stopPropagation()}>
                     <KeyInput
                       provider={value} placeholder={placeholder} existing={existing}
