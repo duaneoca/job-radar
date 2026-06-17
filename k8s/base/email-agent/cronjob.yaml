@@ -1,0 +1,49 @@
+# Cloud email agent (JR-5). A single in-cluster run every 15 min: enumerate
+# enabled users (/agent/cloud/users), process each mailbox one at a time, write
+# back with AGENT_INTERNAL_TOKEN + user_id. No per-user secrets in env — those
+# come from /agent/cloud/config/{user_id} at runtime.
+#
+# Image is published from the job-radar-agent repo on every main push. The GHCR
+# package must be public (no imagePullSecret). Pin to a :vX.Y.Z or :sha- tag for
+# prod once it's proven; :latest is fine for staging.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: jobradar-email-agent
+  namespace: jobradar
+  labels:
+    app: email-agent
+    project: jobradar
+spec:
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: Forbid        # never overlap runs
+  startingDeadlineSeconds: 120     # skip (don't pile up) if the node was busy
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 600    # a slow run is killed before the next fires
+      backoffLimit: 0              # no retries within a window; next run retries
+      template:
+        metadata:
+          labels:
+            app: email-agent
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: email-agent
+              image: ghcr.io/duaneoca/job-radar-agent:latest
+              imagePullPolicy: Always
+              command: ["python", "scripts/run_loop.py", "--once"]
+              envFrom:
+                - configMapRef:
+                    name: email-agent-config
+                - secretRef:
+                    name: email-agent-secrets
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "128Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "512Mi"

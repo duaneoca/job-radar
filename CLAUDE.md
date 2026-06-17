@@ -93,6 +93,20 @@ Key routers:
 
 **Internal no-auth endpoints** use `include_in_schema=False`. Do not add user-facing auth to these; they are only called by other services inside the cluster.
 
+**Email agent auth — the invariant:** every **per-user operational** endpoint accepts
+**either** `X-Agent-Key` (local self-host → user from key) **or** `X-Internal-Token` +
+`X-Agent-User-Id` (cloud CronJob, per-user) — see `get_agent_writer`. That set is
+`GET /agent/reviews` + `POST /agent/{inbox, interactions, runs, hitl/register, hitl/pending,
+hitl/consume}`. Enumeration/bootstrap (`/agent/cloud/*`) is the cloud-internal surface
+(`X-Internal-Token` only). `/agent/config` stays key-only (the cloud path uses
+`/agent/cloud/config/{user_id}` instead). `/agent/config` + `/agent/cloud/*` return DECRYPTED
+per-user secrets and
+are **in-cluster only**: blocked at nginx (`/agent/config` exact, `^~ /api/agent/cloud/`) and
+behind the tracker-api NetworkPolicy. `/agent/cloud/users` (no secrets, enumerate) is split
+from `/agent/cloud/config/{user_id}` (one user's creds) on purpose — runner holds one user at
+a time (H6). The shared `AGENT_INTERNAL_TOKEN` must match in `tracker-api-secrets` and
+`email-agent-secrets`.
+
 ### frontend (React + Vite)
 - shadcn/ui components in `src/components/ui/`
 - nginx proxies `/api/` → tracker-api
@@ -115,6 +129,16 @@ Beat schedule (UTC):
 Sources: **Adzuna** (BYOK per-user key; skipped for users without one), **The Muse** (public,
 category mapped from the user's job titles), **Remotive** (public, remote-only). HTML scraping
 was abandoned — Cloudflare blocks datacenter IPs on LinkedIn/Indeed/Glassdoor.
+
+### email-agent (CronJob — cloud multi-user)
+`k8s/base/email-agent/` — a `*/15 * * * *` CronJob running
+`ghcr.io/duaneoca/job-radar-agent:latest` (image built by the **separate
+`job-radar-agent` repo**, NOT this repo's CI — do not add it to the `kubectl set image`
+loop). One run enumerates enabled users via `/agent/cloud/users`, fetches one config at a
+time, processes, and writes back with `AGENT_INTERNAL_TOKEN` + `user_id`. The **local**
+self-host agent (Proton Bridge on Duane's machine) is separate: REST + its own `.env`, no
+CronJob, mailbox creds never touch Job Radar. Cloud is Gmail-only until the agent ships a
+cloud-IMAP provider.
 
 ---
 

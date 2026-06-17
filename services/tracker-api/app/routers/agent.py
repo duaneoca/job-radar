@@ -24,7 +24,13 @@ from sqlalchemy.orm import Session, joinedload
 from app import models, schemas
 from app.config import settings
 from app.database import get_db
-from app.deps import get_current_admin, get_current_user, get_user_from_agent_key
+from app.deps import (
+    get_agent_writer,
+    get_current_admin,
+    get_current_user,
+    get_user_from_agent_key,
+    require_internal_token,
+)
 from app.routers.jobs import apply_status_change
 from app.security import (
     create_oauth_state,
@@ -103,23 +109,10 @@ def _get_review_owned(review_id: UUID, user: models.User, db: Session) -> models
 
 # ── Agent-facing endpoints (X-Agent-Key) ─────────────────────
 
-@router.get("/config")
-def get_agent_config(
-    request: Request,
-    db: Session = Depends(get_db),
-    user: models.User = Depends(get_user_from_agent_key),
-):
-    """
-    Return decrypted LLM key + email credentials for the agent (H6/H6a).
-    MUST be called in-cluster only — NetworkPolicy blocks external access (JR-5).
-    Every call is audit-logged here as defense-in-depth.
-    """
-    logger.warning(
-        "AUDIT /agent/config user=%s ip=%s",
-        user.id,
-        request.client.host if request.client else "unknown",
-    )
-
+def _build_agent_config(user: models.User, db: Session) -> schemas.AgentConfigOut:
+    """Assemble a user's decrypted agent config (LLM key + email creds + folders).
+    Shared by /agent/config (X-Agent-Key) and /agent/cloud/config/{user_id}
+    (internal token). Returns DECRYPTED secrets — callers must be in-cluster only."""
     # LLM key — reuse existing user_api_keys (§1.9: do not build new)
     llm_config = None
     key_row = (
@@ -196,6 +189,68 @@ def get_agent_config(
         email_credentials=email_credentials_blob,
         enabled=bool(cred and cred.enabled),
     )
+
+
+@router.get("/config", response_model=schemas.AgentConfigOut)
+def get_agent_config(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_user_from_agent_key),
+):
+    """Decrypted LLM key + email credentials for the single-user agent (H6/H6a).
+    MUST be called in-cluster only — nginx 404s it and the NetworkPolicy blocks
+    external access. Every call is audit-logged as defense-in-depth."""
+    logger.warning(
+        "AUDIT /agent/config user=%s ip=%s",
+        user.id,
+        request.client.host if request.client else "unknown",
+    )
+    return _build_agent_config(user, db)
+
+
+# ── Cloud enumeration (internal-token, in-cluster only — JR-5 §2.1b) ──
+
+@router.get("/cloud/users", response_model=list[schemas.CloudUserOut])
+def cloud_list_users(
+    request: Request,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_internal_token),
+):
+    """Enabled cloud users that have stored mailbox credentials. NO secrets — the
+    runner uses this to discover users, then fetches one config at a time (H6)."""
+    logger.warning(
+        "AUDIT /agent/cloud/users ip=%s",
+        request.client.host if request.client else "unknown",
+    )
+    rows = (
+        db.query(models.EmailCredential)
+        .filter(models.EmailCredential.enabled == True)  # noqa: E712
+        .all()
+    )
+    return [
+        schemas.CloudUserOut(user_id=c.user_id, provider=c.provider.value, enabled=c.enabled)
+        for c in rows
+    ]
+
+
+@router.get("/cloud/config/{user_id}", response_model=schemas.AgentConfigOut)
+def cloud_get_config(
+    user_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_internal_token),
+):
+    """One user's decrypted config (same shape as /agent/config). The runner fetches
+    this per user, processes, then discards — blast radius of one user (H6)."""
+    logger.warning(
+        "AUDIT /agent/cloud/config user=%s ip=%s",
+        user_id,
+        request.client.host if request.client else "unknown",
+    )
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user or not user.is_approved:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return _build_agent_config(user, db)
 
 
 # ── Gmail OAuth connect (cloud mailbox users — JR-5) ──────────────
@@ -396,7 +451,7 @@ def disconnect_email_credentials(
 @router.get("/reviews", response_model=list[schemas.AgentReviewOut])
 def get_agent_reviews(
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_user_from_agent_key),
+    user: models.User = Depends(get_agent_writer),
 ):
     """Return the user's job reviews for duplicate-detection / matching."""
     rows = (
@@ -421,7 +476,7 @@ def get_agent_reviews(
 def create_inbox_entry(
     payload: schemas.AgentInboxIn,
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_user_from_agent_key),
+    user: models.User = Depends(get_agent_writer),
 ):
     """Create an inbox_email + its postings. Idempotent on (user_id, message_id)."""
     if len(payload.postings) > 30:
@@ -486,7 +541,7 @@ def create_inbox_entry(
 def record_interaction(
     payload: schemas.AgentInteractionIn,
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_user_from_agent_key),
+    user: models.User = Depends(get_agent_writer),
 ):
     """
     Record an application-status email. If matched_review_id is present and
@@ -550,7 +605,7 @@ def record_interaction(
 def register_hitl(
     payload: schemas.AgentHitlRegisterIn,
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_user_from_agent_key),
+    user: models.User = Depends(get_agent_writer),
 ):
     """Agent registers a pending HITL decision before posting the Slack prompt."""
     # Validate all candidate review_ids belong to this user (H1)
@@ -576,7 +631,7 @@ def register_hitl(
 @router.get("/hitl/pending", response_model=list[schemas.HitlDecisionOut])
 def get_pending_hitl(
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_user_from_agent_key),
+    user: models.User = Depends(get_agent_writer),
 ):
     """Return resolved (but not yet consumed) decisions for the polling agent."""
     abandon_cutoff = datetime.now(timezone.utc) - timedelta(minutes=settings.hitl_abandon_minutes)
@@ -603,7 +658,7 @@ def get_pending_hitl(
 def consume_hitl(
     payload: schemas.AgentHitlConsumeIn,
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_user_from_agent_key),
+    user: models.User = Depends(get_agent_writer),
 ):
     """Mark a resolved decision as consumed after the agent resumes."""
     decision = db.query(models.HitlDecision).filter(
@@ -684,7 +739,7 @@ async def slack_hitl_callback(request: Request, db: Session = Depends(get_db)):
 def report_run(
     payload: schemas.AgentRunIn,
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_user_from_agent_key),
+    user: models.User = Depends(get_agent_writer),
 ):
     """Operational heartbeat — counts only, no email content (H2)."""
     run = models.AgentRun(
