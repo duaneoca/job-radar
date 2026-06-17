@@ -104,6 +104,21 @@ def test_cloud_config_unknown_user_404(client, monkeypatch):
     assert r.status_code == 404
 
 
+# ── GET /agent/reviews is per-user operational → dual-auth ────
+
+def test_reviews_accepts_internal_token(client, monkeypatch):
+    """Per the §2.1b invariant: per-user operational endpoints take either auth mode."""
+    monkeypatch.setattr(settings, "agent_internal_token", TOKEN)
+    r = client.get("/agent/reviews",
+                   headers={"X-Internal-Token": TOKEN, "X-Agent-User-Id": str(TEST_USER_ID)})
+    assert r.status_code == 200
+    assert r.json() == []  # test_user has no reviews
+
+
+def test_reviews_rejects_no_auth(client):
+    assert client.get("/agent/reviews").status_code == 401
+
+
 # ── get_agent_writer dual-mode ────────────────────────────────
 
 def test_writer_agent_key_path(db, test_user):

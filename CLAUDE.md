@@ -93,10 +93,14 @@ Key routers:
 
 **Internal no-auth endpoints** use `include_in_schema=False`. Do not add user-facing auth to these; they are only called by other services inside the cluster.
 
-**Email agent auth (3 modes):** `/agent/*` write/poll endpoints (`inbox`, `interactions`,
-`runs`, `hitl/*`) accept **either** `X-Agent-Key` (local self-host → user derived from key)
-**or** `X-Internal-Token` + `X-Agent-User-Id` (cloud CronJob writing per-user) — see
-`get_agent_writer`. `/agent/config` + `/agent/cloud/*` return DECRYPTED per-user secrets and
+**Email agent auth — the invariant:** every **per-user operational** endpoint accepts
+**either** `X-Agent-Key` (local self-host → user from key) **or** `X-Internal-Token` +
+`X-Agent-User-Id` (cloud CronJob, per-user) — see `get_agent_writer`. That set is
+`GET /agent/reviews` + `POST /agent/{inbox, interactions, runs, hitl/register, hitl/pending,
+hitl/consume}`. Enumeration/bootstrap (`/agent/cloud/*`) is the cloud-internal surface
+(`X-Internal-Token` only). `/agent/config` stays key-only (the cloud path uses
+`/agent/cloud/config/{user_id}` instead). `/agent/config` + `/agent/cloud/*` return DECRYPTED
+per-user secrets and
 are **in-cluster only**: blocked at nginx (`/agent/config` exact, `^~ /api/agent/cloud/`) and
 behind the tracker-api NetworkPolicy. `/agent/cloud/users` (no secrets, enumerate) is split
 from `/agent/cloud/config/{user_id}` (one user's creds) on purpose — runner holds one user at

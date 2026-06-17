@@ -451,7 +451,7 @@ def disconnect_email_credentials(
 @router.get("/reviews", response_model=list[schemas.AgentReviewOut])
 def get_agent_reviews(
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_user_from_agent_key),
+    user: models.User = Depends(get_agent_writer),
 ):
     """Return the user's job reviews for duplicate-detection / matching."""
     rows = (
