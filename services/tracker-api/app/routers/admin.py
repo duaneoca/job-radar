@@ -70,12 +70,37 @@ def _do_cleanup(db: Session) -> dict:
         .delete(synchronize_session=False)
     )
 
+    # Reap dangling agent runs (§1.6b). The agent posts a terminal record even on
+    # crash/SIGTERM; only a hard SIGKILL/OOM can leave finished_at NULL. Anything
+    # still unfinished well past the run deadline is dead — mark it failed and
+    # anchor finished_at to started_at so the dashboard shows it as an old failure.
+    reap_cutoff = datetime.now(timezone.utc) - timedelta(minutes=settings.agent_run_reap_minutes)
+    runs_reaped = (
+        db.query(models.AgentRun)
+        .filter(
+            models.AgentRun.finished_at.is_(None),
+            models.AgentRun.started_at < reap_cutoff,
+        )
+        .update(
+            {
+                models.AgentRun.status: models.AgentRunStatus.FAILED,
+                models.AgentRun.finished_at: models.AgentRun.started_at,
+                models.AgentRun.error_summary: "reaped: no terminal record (SIGKILL/OOM)",
+            },
+            synchronize_session=False,
+        )
+    )
+
     db.commit()
     logger.info(
-        "cleanup_jobs: %d terminal reviews deleted, %d orphan jobs deleted",
-        reviews_deleted, jobs_deleted,
+        "cleanup_jobs: %d terminal reviews deleted, %d orphan jobs deleted, %d agent runs reaped",
+        reviews_deleted, jobs_deleted, runs_reaped,
     )
-    return {"reviews_deleted": reviews_deleted, "orphan_jobs_deleted": jobs_deleted}
+    return {
+        "reviews_deleted": reviews_deleted,
+        "orphan_jobs_deleted": jobs_deleted,
+        "agent_runs_reaped": runs_reaped,
+    }
 
 
 def _do_expire(db: Session) -> dict:
