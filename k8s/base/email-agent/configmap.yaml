@@ -9,7 +9,7 @@ data:
   JOBRADAR_API_URL: "http://jobradar-tracker-api"
   # Ops notifications (per-user notification routing is a later refinement).
   NOTIFIER: "slack"
-  LANGFUSE_HOST: "https://cloud.langfuse.com"
+  LANGFUSE_HOST: "https://us.cloud.langfuse.com"   # US region — must match the project the keys belong to
   # Run caps — keep a single 15-min run bounded.
   MAX_EMAILS_PER_RUN: "50"
   MAX_EMAIL_AGE_DAYS: "7"
