@@ -175,6 +175,8 @@ export interface JobReview {
   research_summary: string | null;
   application_answers: Record<string, string> | null;
   interview_questions: InterviewQuestion[] | null;
+  recruiter_id: string | null;
+  recruiter_name: string | null;
   created_at: string;
   updated_at: string;
   timeline: TimelineEvent[];
@@ -183,6 +185,40 @@ export interface JobReview {
 export interface JobListResponse {
   total: number;
   items: JobReview[];
+}
+
+// ─── Recruiters ───────────────────────────────────────────────
+export type RecruiterStatus = "active" | "ghosted" | "archived" | "do_not_contact";
+export type RecruiterType = "agency" | "in_house";
+
+export interface RecruiterJobBrief {
+  id: string;          // UserJobReview.id
+  title: string;
+  company: string;
+  status: JobStatus;
+}
+
+export interface Recruiter {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  employer: string | null;
+  companies_represented: string[] | null;
+  linkedin_url: string | null;
+  type: RecruiterType | null;
+  status: RecruiterStatus;
+  last_contacted: string | null;   // ISO date (YYYY-MM-DD)
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  jobs: RecruiterJobBrief[];
+}
+
+export interface RecruiterSuggestion {
+  name: string;
+  email: string | null;
+  email_count: number;
 }
 
 export type WorkStyle = "remote" | "hybrid" | "onsite" | "any";

@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, Enum, Float, Integer,
+    Boolean, Column, Date, DateTime, Enum, Float, Integer,
     String, Text, ForeignKey, JSON, Uuid, UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
@@ -100,6 +100,7 @@ class User(Base):
     profiles    = relationship("Profile", back_populates="user", cascade="all, delete-orphan")
     api_keys    = relationship("UserAPIKey", back_populates="user", cascade="all, delete-orphan")
     connections = relationship("LinkedInConnection", back_populates="user", cascade="all, delete-orphan")
+    recruiters  = relationship("Recruiter", back_populates="user", cascade="all, delete-orphan")
     # Email agent
     inbox_emails      = relationship("InboxEmail", back_populates="user", cascade="all, delete-orphan")
     inbox_postings    = relationship("InboxPosting", back_populates="user", cascade="all, delete-orphan")
@@ -174,6 +175,12 @@ class UserJobReview(Base):
     has_contact      = Column(Boolean, default=False)
     contact_notes    = Column(Text, nullable=True)   # "Sarah at Acme, 2nd-degree via John"
 
+    # Recruiter who sourced this role (optional). SET NULL so deleting a recruiter
+    # never deletes the job — it just unlinks.
+    recruiter_id = Column(
+        Uuid(), ForeignKey("recruiters.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
     # AI-generated per-job content
     research_summary     = Column(Text, nullable=True)
     application_answers  = Column(JSON, nullable=True)  # {str(template_idx): answer}
@@ -185,6 +192,7 @@ class UserJobReview(Base):
     # Relationships
     user     = relationship("User", back_populates="reviews")
     job      = relationship("Job", back_populates="user_reviews")
+    recruiter = relationship("Recruiter", back_populates="jobs")
     timeline = relationship(
         "TimelineEvent", back_populates="review",
         cascade="all, delete-orphan",
@@ -303,6 +311,38 @@ class LinkedInConnection(Base):
     created_at   = Column(DateTime(timezone=True), default=utcnow)
 
     user = relationship("User", back_populates="connections")
+
+
+# Recruiter CRM — status/type kept as plain strings (validated in schemas) to
+# avoid native-enum migration overhead; values mirror the Literals in schemas.
+RECRUITER_STATUSES = ("active", "ghosted", "archived", "do_not_contact")
+RECRUITER_TYPES = ("agency", "in_house")
+
+
+class Recruiter(Base):
+    """A recruiter the user has connected with (manual entry or confirmed from an
+    inbox recruiter_outreach email). Linked to the jobs they sourced via
+    UserJobReview.recruiter_id."""
+    __tablename__ = "recruiters"
+
+    id           = Column(Uuid(), primary_key=True, default=uuid.uuid4)
+    user_id      = Column(Uuid(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name         = Column(String(200), nullable=False)
+    email        = Column(String(255), nullable=True, index=True)
+    phone        = Column(String(50), nullable=True)
+    employer     = Column(String(200), nullable=True)            # their own firm
+    companies_represented = Column(JSON, nullable=True)          # list[str] — agency clients
+    linkedin_url = Column(String(500), nullable=True)
+    type         = Column(String(20), nullable=True)             # 'agency' | 'in_house'
+    status       = Column(String(20), nullable=False, default="active")
+    last_contacted = Column(Date, nullable=True)
+    notes        = Column(Text, nullable=True)
+    created_at   = Column(DateTime(timezone=True), default=utcnow)
+    updated_at   = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    user = relationship("User", back_populates="recruiters")
+    # SET NULL at the DB; passive_deletes lets the DB handle unlink on delete.
+    jobs = relationship("UserJobReview", back_populates="recruiter", passive_deletes=True)
 
 
 # ── Email agent — enums ──────────────────────────────────────

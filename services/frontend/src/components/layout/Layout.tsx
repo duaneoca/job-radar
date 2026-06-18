@@ -82,6 +82,21 @@ export function Layout({ children }: LayoutProps) {
             )}
           </NavLink>
 
+          {/* Recruiters tab — to the right of Inbox */}
+          <NavLink
+            to="/recruiters"
+            className={({ isActive }) =>
+              cn(
+                "relative flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium transition-colors",
+                isActive ? "bg-accent text-accent-foreground"
+                         : "text-muted-foreground hover:text-foreground hover:bg-accent/50",
+              )
+            }
+          >
+            <Users className="h-4 w-4" />
+            <span className="hidden sm:inline">Recruiters</span>
+          </NavLink>
+
           {/* Spacer pushes the rest to the right */}
           <div className="flex-1" />
 

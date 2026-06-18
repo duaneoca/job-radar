@@ -8,6 +8,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { SignupPage } from "./pages/SignupPage";
 import { JobsPage } from "./pages/JobsPage";
 import { InboxPage } from "./pages/InboxPage";
+import { RecruitersPage } from "./pages/RecruitersPage";
 import { JobDetailPage } from "./pages/JobDetailPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { LocalAgentSetupPage } from "./pages/LocalAgentSetupPage";
@@ -78,6 +79,16 @@ export default function App() {
             <RequireAuth>
               <Layout>
                 <InboxPage />
+              </Layout>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/recruiters"
+          element={
+            <RequireAuth>
+              <Layout>
+                <RecruitersPage />
               </Layout>
             </RequireAuth>
           }

@@ -11,7 +11,9 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import SessionLocal
 from app.models import User
-from app.routers import admin, agent, auth, connections, criteria, generate, jobs, keys, profile
+from app.routers import (
+    admin, agent, auth, connections, criteria, generate, jobs, keys, profile, recruiters,
+)
 from app.security import hash_password
 
 logger = logging.getLogger(__name__)
@@ -72,6 +74,7 @@ app.include_router(jobs.router)
 app.include_router(criteria.router)
 app.include_router(profile.router)
 app.include_router(connections.router)
+app.include_router(recruiters.router)
 app.include_router(keys.router)
 app.include_router(generate.router)
 
