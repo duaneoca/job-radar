@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Upload, Trash2, Loader2 } from "lucide-react";
+import { Upload, Trash2, Loader2, Search } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -598,6 +598,20 @@ function ConnectionsTab() {
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [search, setSearch] = useState("");
+
+  // Client-side search across name / company / position (the full list is already
+  // loaded, so this is instant — no extra round trips).
+  const query = search.trim().toLowerCase();
+  const filtered = query
+    ? connections.filter((c) =>
+        [c.first_name, c.last_name, c.company, c.position]
+          .filter(Boolean)
+          .some((v) => v!.toLowerCase().includes(query)),
+      )
+    : connections;
+  // Un-searched: keep the list short (first 20). Searching: show all matches.
+  const visible = query ? filtered : filtered.slice(0, 20);
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -671,31 +685,52 @@ function ConnectionsTab() {
       </div>
 
       {connections.length > 0 && (
-        <div>
-          <p className="text-sm text-muted-foreground mb-2">Showing first 20</p>
-          <div className="rounded-lg border overflow-hidden">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-muted/50 border-b">
-                  <th className="text-left px-3 py-2">Name</th>
-                  <th className="text-left px-3 py-2 hidden sm:table-cell">Company</th>
-                  <th className="text-left px-3 py-2 hidden md:table-cell">Position</th>
-                </tr>
-              </thead>
-              <tbody>
-                {connections.slice(0, 20).map((c) => (
-                  <tr key={c.id} className="border-b last:border-0">
-                    <td className="px-3 py-1.5">{c.first_name} {c.last_name}</td>
-                    <td className="px-3 py-1.5 hidden sm:table-cell text-muted-foreground">{c.company}</td>
-                    <td className="px-3 py-1.5 hidden md:table-cell text-muted-foreground">{c.position}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {connections.length > 20 && (
-              <p className="text-xs text-muted-foreground px-3 py-2">+{connections.length - 20} more</p>
-            )}
+        <div className="space-y-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by name, company, or position…"
+              className="pl-8"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
+
+          <p className="text-sm text-muted-foreground">
+            {query
+              ? `${filtered.length} ${filtered.length === 1 ? "match" : "matches"}`
+              : connections.length > 20
+                ? "Showing first 20 — search to find anyone"
+                : `${connections.length} contacts`}
+          </p>
+
+          {visible.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-3">No contacts match "{search.trim()}".</p>
+          ) : (
+            <div className="rounded-lg border overflow-hidden">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-muted/50 border-b">
+                    <th className="text-left px-3 py-2">Name</th>
+                    <th className="text-left px-3 py-2 hidden sm:table-cell">Company</th>
+                    <th className="text-left px-3 py-2 hidden md:table-cell">Position</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map((c) => (
+                    <tr key={c.id} className="border-b last:border-0">
+                      <td className="px-3 py-1.5">{c.first_name} {c.last_name}</td>
+                      <td className="px-3 py-1.5 hidden sm:table-cell text-muted-foreground">{c.company}</td>
+                      <td className="px-3 py-1.5 hidden md:table-cell text-muted-foreground">{c.position}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {!query && connections.length > 20 && (
+                <p className="text-xs text-muted-foreground px-3 py-2">+{connections.length - 20} more — use search above</p>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
