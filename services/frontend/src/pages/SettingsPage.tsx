@@ -1147,24 +1147,26 @@ function ImapPanel() {
   async function saveImap() {
     setSaving(true);
     try {
-      // 1) store creds (creates the credential row), 2) set folders on it.
+      const norm = (s: string | null) => (!s || s.trim() === "" ? null : s.trim());
+      // One verified call: the backend tests the connection + that the folders
+      // exist before storing anything.
       await agentApi.put("/agent/email-credentials/imap", {
         host: host.trim(), port: Number(port) || 993, username: username.trim(), password, use_ssl: useSsl,
-      });
-      const norm = (s: string | null) => (!s || s.trim() === "" ? null : s.trim());
-      await agentApi.put("/agent/email-credentials", {
         folders: {
           root: norm(folders.root), interaction: norm(folders.interaction),
           postings: norm(folders.postings), social: norm(folders.social),
           unprocessed: norm(folders.unprocessed),
         },
-        enabled: true,
       });
       setPassword("");
       qc.invalidateQueries({ queryKey: ["agent-email-credentials"] });
       toast({ title: "IMAP mailbox connected" });
     } catch (err: any) {
-      toast({ title: "Failed to save", description: err?.response?.data?.detail, variant: "destructive" });
+      toast({
+        title: "Couldn't connect to that mailbox",
+        description: err?.response?.data?.detail ?? "Check the host, port, credentials, and folder names.",
+        variant: "destructive",
+      });
     } finally {
       setSaving(false);
     }
@@ -1186,8 +1188,9 @@ function ImapPanel() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Connect any IMAP mailbox; Job Radar's hosted agent reads and files it. Credentials are stored
-        encrypted. (Cloud-IMAP processing ships with the agent's IMAP provider — your config is saved and ready.)
+        Connect any IMAP mailbox; Job Radar's hosted agent reads and files it. We test the connection
+        and that your folders exist before saving; credentials are stored encrypted. (Cloud-IMAP
+        processing ships with the agent's IMAP provider — your config is saved and ready.)
       </p>
       <div className="space-y-3">
         <div className="grid grid-cols-3 gap-2">
