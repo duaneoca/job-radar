@@ -53,6 +53,8 @@ export interface EmailCredentialStatus {
   enabled: boolean;
   folders: AgentFolderConfig;
   updated_at: string | null;
+  imap_host?: string | null;
+  imap_username?: string | null;
 }
 
 // ─── Slack notifications (per-user OAuth install — JR-6) ──────
