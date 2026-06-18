@@ -73,3 +73,19 @@ def test_multi_value_source_filter(client, db):
     _scrape(client, url="https://x/3", external_id="3", source="remotive")
     body = client.get("/jobs", params={"source": ["manual", "adzuna"]}).json()
     assert body["total"] == 2
+
+
+def test_job_contacts_exact_match(client, db):
+    _scrape(client, company="Acme Corp")
+    _add_connection(db, "  Acme Corp ")     # matches (case/space-insensitive)
+    _add_connection(db, "Acme Corporation")  # different company → excluded
+    rid = client.get("/jobs").json()["items"][0]["id"]
+    contacts = client.get(f"/jobs/{rid}/contacts").json()
+    assert len(contacts) == 1
+    assert contacts[0]["company"].strip() == "Acme Corp"
+
+
+def test_job_contacts_none(client, db):
+    _scrape(client, company="Nobody LLC")
+    rid = client.get("/jobs").json()["items"][0]["id"]
+    assert client.get(f"/jobs/{rid}/contacts").json() == []

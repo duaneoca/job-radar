@@ -2,7 +2,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, ExternalLink, Star, Building2, MapPin, DollarSign,
-  UserCheck, Loader2, Calendar, Sparkles, MessageSquarePlus, Plus, AlertTriangle,
+  UserCheck, Users, Loader2, Calendar, Sparkles, MessageSquarePlus, Plus, AlertTriangle,
   Clock, Send, Trash2,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -19,7 +19,7 @@ import {
 import { jobsApi, criteriaApi } from "../lib/api";
 import { formatDate, formatSalary, formatSource, scoreColor, STATUS_OPTIONS } from "../lib/utils";
 import { toast } from "../hooks/useToast";
-import type { JobReview, Criteria, ApplicationTemplate, InterviewQuestion } from "../lib/types";
+import type { JobReview, Criteria, ApplicationTemplate, InterviewQuestion, LinkedInConnection } from "../lib/types";
 import { useState } from "react";
 import { RefinementDrawer } from "../components/RefinementDrawer";
 import { InterviewPrepCard } from "../components/InterviewPrepCard";
@@ -129,6 +129,12 @@ export function JobDetailPage() {
   const { data: job, isLoading } = useQuery<JobReview>({
     queryKey: ["job", id],
     queryFn: () => jobsApi.get(`/jobs/${id}`).then((r) => r.data),
+    enabled: !!id,
+  });
+
+  const { data: contacts = [] } = useQuery<LinkedInConnection[]>({
+    queryKey: ["job-contacts", id],
+    queryFn: () => jobsApi.get(`/jobs/${id}/contacts`).then((r) => r.data),
     enabled: !!id,
   });
 
@@ -489,6 +495,28 @@ export function JobDetailPage() {
             </DialogContent>
           </Dialog>
         </>
+      )}
+
+      {/* Your contacts at this company (from your LinkedIn upload) */}
+      {contacts.length > 0 && (
+        <div className="p-4 rounded-lg border bg-card space-y-2">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Users className="h-4 w-4 text-blue-500" />
+            Your contacts at {job.company}
+            <Badge variant="secondary" className="ml-0.5">{contacts.length}</Badge>
+          </div>
+          <ul className="space-y-1.5">
+            {contacts.map((c) => {
+              const name = [c.first_name, c.last_name].filter(Boolean).join(" ") || "Unknown";
+              return (
+                <li key={c.id} className="text-sm flex flex-wrap items-baseline gap-x-2">
+                  <span className="font-medium">{name}</span>
+                  {c.position && <span className="text-xs text-muted-foreground">{c.position}</span>}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
 
       {/* Status + delete */}
