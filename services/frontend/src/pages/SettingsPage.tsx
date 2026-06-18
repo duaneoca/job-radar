@@ -1141,13 +1141,24 @@ function ImapPanel() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [useSsl, setUseSsl] = useState(true);
+  const [folders, setFolders] = useState<AgentFolderConfig>(EMPTY_FOLDERS);
   const [saving, setSaving] = useState(false);
 
   async function saveImap() {
     setSaving(true);
     try {
+      // 1) store creds (creates the credential row), 2) set folders on it.
       await agentApi.put("/agent/email-credentials/imap", {
         host: host.trim(), port: Number(port) || 993, username: username.trim(), password, use_ssl: useSsl,
+      });
+      const norm = (s: string | null) => (!s || s.trim() === "" ? null : s.trim());
+      await agentApi.put("/agent/email-credentials", {
+        folders: {
+          root: norm(folders.root), interaction: norm(folders.interaction),
+          postings: norm(folders.postings), social: norm(folders.social),
+          unprocessed: norm(folders.unprocessed),
+        },
+        enabled: true,
       });
       setPassword("");
       qc.invalidateQueries({ queryKey: ["agent-email-credentials"] });
@@ -1201,6 +1212,27 @@ function ImapPanel() {
           <Switch id="imap-ssl" checked={useSsl} onCheckedChange={setUseSsl} />
           <Label htmlFor="imap-ssl" className="text-sm">Use SSL/TLS</Label>
         </div>
+
+        <div className="space-y-3 pt-2 border-t">
+          <div>
+            <h4 className="text-sm font-medium">Folders</h4>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              The agent files mail under these folders. <strong>Create the folders yourself first</strong> — the agent never creates folders. You can change these later.
+            </p>
+          </div>
+          {LABEL_FIELDS.map((f) => (
+            <div key={f.key} className="space-y-1">
+              <Label htmlFor={`imap-folder-${f.key}`} className="text-xs">{f.label}</Label>
+              <Input
+                id={`imap-folder-${f.key}`}
+                value={folders[f.key] ?? ""}
+                placeholder={f.hint}
+                onChange={(e) => setFolders((prev) => ({ ...prev, [f.key]: e.target.value }))}
+              />
+            </div>
+          ))}
+        </div>
+
         <Button size="sm" disabled={saving || !host || !username || !password} onClick={saveImap}>
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Connect mailbox"}
         </Button>
