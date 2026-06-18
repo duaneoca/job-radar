@@ -478,6 +478,29 @@ def get_timeline(
     return review.timeline
 
 
+@router.get("/{review_id}/contacts", response_model=list[schemas.LinkedInConnectionOut])
+def get_job_contacts(
+    review_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """The user's LinkedIn connections at this job's company (case-insensitive exact
+    match — same rule as the job-list contact checkbox)."""
+    review = _get_review_or_404(review_id, current_user, db)
+    company = (review.job.company or "").strip()
+    if not company:
+        return []
+    return (
+        db.query(models.LinkedInConnection)
+        .filter(
+            models.LinkedInConnection.user_id == current_user.id,
+            func.lower(func.trim(models.LinkedInConnection.company)) == company.lower(),
+        )
+        .order_by(models.LinkedInConnection.first_name, models.LinkedInConnection.last_name)
+        .all()
+    )
+
+
 @router.post("/{review_id}/notes")
 def add_note(
     review_id: UUID,
