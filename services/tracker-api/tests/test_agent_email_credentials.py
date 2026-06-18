@@ -121,6 +121,7 @@ def test_oauth_callback_stores_refresh_token(client, db, monkeypatch):
     cred = db.query(models.EmailCredential).filter_by(user_id=TEST_USER_ID).first()
     assert cred is not None
     assert json.loads(decrypt_blob(cred))["refresh_token"] == "rt-new"
+    assert cred.enabled is False  # not enabled until labels are set + verified
 
 
 def test_oauth_callback_bad_state_redirects_error(client):

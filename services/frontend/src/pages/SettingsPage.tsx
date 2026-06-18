@@ -1028,6 +1028,7 @@ function MailboxConfig({ status, connectedLabel, noun }: {
   }
 
   const nounCap = noun === "label" ? "Labels" : "Folders";
+  const foldersComplete = LABEL_FIELDS.every((ff) => (folders[ff.key] ?? "").trim() !== "");
 
   return (
     <div className="space-y-4">
@@ -1045,9 +1046,18 @@ function MailboxConfig({ status, connectedLabel, noun }: {
       <div className="flex items-center justify-between border rounded-md px-3 py-2">
         <div>
           <p className="text-sm font-medium">Agent enabled</p>
-          <p className="text-xs text-muted-foreground">Pause to stop the hosted agent processing this mailbox.</p>
+          <p className="text-xs text-muted-foreground">
+            {!enabled && !foldersComplete
+              ? `Set all five ${noun}s below to enable. The agent won't run until then.`
+              : "Pause to stop the hosted agent processing this mailbox."}
+          </p>
         </div>
-        <Switch checked={enabled} onCheckedChange={toggleEnabled} aria-label="Agent enabled" />
+        <Switch
+          checked={enabled}
+          onCheckedChange={toggleEnabled}
+          disabled={!enabled && !foldersComplete}
+          aria-label="Agent enabled"
+        />
       </div>
 
       <div className="space-y-3">
