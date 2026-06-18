@@ -9,8 +9,12 @@ Three auth classes:
 Route ordering: all literal paths registered before /{id} param routes.
 """
 
+import imaplib
+import ipaddress
 import json
 import logging
+import re
+import socket
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import urlencode, urlparse
@@ -445,14 +449,84 @@ def update_email_credentials(
     return _credential_status(cred)
 
 
+def _assert_public_host(host: str) -> None:
+    """Block IMAP verification against private/loopback addresses (SSRF guard) —
+    an authenticated user could otherwise probe in-cluster services via the host field."""
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        raise HTTPException(status_code=400, detail=f"Couldn't resolve '{host}'. Check the IMAP server address.")
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+            raise HTTPException(status_code=400, detail="IMAP host must be a public mail server.")
+
+
+def _imap_folder_name(line: bytes) -> str:
+    """Extract the mailbox name from an IMAP LIST response line."""
+    decoded = line.decode("utf-8", errors="replace") if isinstance(line, bytes) else str(line)
+    m = re.match(r'^\([^)]*\)\s+(?:"[^"]*"|\S+)\s+(.*)$', decoded)
+    name = (m.group(1).strip() if m else "").strip()
+    if len(name) >= 2 and name[0] == '"' and name[-1] == '"':
+        name = name[1:-1]
+    return name
+
+
+def _verify_imap(host, port, username, password, use_ssl, folder_names):
+    """Live-verify an IMAP mailbox before storing: reachability, login, and that
+    each configured folder exists. Raises HTTPException(400) with a useful message."""
+    _assert_public_host(host)
+    try:
+        conn = (imaplib.IMAP4_SSL(host, port, timeout=10) if use_ssl
+                else imaplib.IMAP4(host, port, timeout=10))
+    except (socket.timeout, TimeoutError):
+        raise HTTPException(status_code=400, detail=f"Timed out connecting to {host}:{port}. Check the host, port, and SSL setting.")
+    except (ConnectionRefusedError, OSError):
+        raise HTTPException(status_code=400, detail=f"Couldn't connect to {host}:{port}. Check the host, port, and SSL setting.")
+
+    try:
+        try:
+            conn.login(username, password)
+        except imaplib.IMAP4.error:
+            raise HTTPException(status_code=400, detail="Login failed — check the username and password.")
+
+        if folder_names:
+            typ, data = conn.list()
+            if typ != "OK":
+                raise HTTPException(status_code=400, detail="Connected, but couldn't list folders on the server.")
+            existing = {_imap_folder_name(line) for line in data if line}
+            missing = [f for f in folder_names if f not in existing]
+            if missing:
+                raise HTTPException(
+                    status_code=400,
+                    detail="These folders don't exist on the server (create them first): " + ", ".join(missing),
+                )
+    finally:
+        try:
+            conn.logout()
+        except Exception:
+            pass
+
+
 @router.put("/email-credentials/imap", response_model=schemas.EmailCredentialStatusOut)
 def set_imap_credentials(
     payload: schemas.ImapCredentialsIn,
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
-    """Store IMAP mailbox credentials ("Other" provider). Encrypted; the password is
-    never returned. Consumed by the cloud agent once it ships a cloud-IMAP provider."""
+    """Verify (connection + folders) then store IMAP mailbox credentials ("Other"
+    provider). Encrypted; the password is never returned."""
+    f = payload.folders
+    folder_names = [
+        v.strip() for v in (
+            (f.root, f.interaction, f.postings, f.social, f.unprocessed) if f else ()
+        ) if v and v.strip()
+    ]
+    _verify_imap(
+        payload.host.strip(), payload.port, payload.username.strip(),
+        payload.password, payload.use_ssl, folder_names,
+    )
+
     blob = encrypt_api_key(json.dumps({
         "provider": "imap",
         "host": payload.host.strip(),
@@ -466,15 +540,17 @@ def set_imap_credentials(
         .filter(models.EmailCredential.user_id == user.id)
         .first()
     )
-    if cred:
-        cred.provider = models.EmailProvider.IMAP
-        cred.encrypted_blob = blob
-    else:
-        cred = models.EmailCredential(
-            user_id=user.id, provider=models.EmailProvider.IMAP,
-            encrypted_blob=blob, enabled=True,
-        )
+    if not cred:
+        cred = models.EmailCredential(user_id=user.id, enabled=True)
         db.add(cred)
+    cred.provider = models.EmailProvider.IMAP
+    cred.encrypted_blob = blob
+    if f:
+        cred.folder_root = (f.root or "").strip() or None
+        cred.folder_interaction = (f.interaction or "").strip() or None
+        cred.folder_postings = (f.postings or "").strip() or None
+        cred.folder_social = (f.social or "").strip() or None
+        cred.folder_unprocessed = (f.unprocessed or "").strip() or None
     db.commit()
     db.refresh(cred)
     return _credential_status(cred)

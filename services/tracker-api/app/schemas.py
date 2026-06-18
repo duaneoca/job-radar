@@ -637,12 +637,14 @@ class EmailCredentialUpdateIn(BaseModel):
 
 
 # IMAP "Other" provider — host/port/user/password/SSL (cloud non-Gmail mailbox).
+# Verified live (connection + folder existence) before storing.
 class ImapCredentialsIn(BaseModel):
     host: str
     port: int = 993
     username: str
     password: str
     use_ssl: bool = True
+    folders: Optional[AgentFolderConfig] = None
 
 
 # Agent API key management
