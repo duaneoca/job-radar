@@ -178,6 +178,10 @@ class UserJobReviewOut(BaseModel):
     application_answers: Optional[dict]
     interview_questions: Optional[list]
 
+    # Sourcing recruiter (optional)
+    recruiter_id: Optional[UUID] = None
+    recruiter_name: Optional[str] = None
+
     created_at: datetime
     updated_at: datetime
     timeline: List[TimelineEventOut] = []
@@ -225,6 +229,8 @@ class UserJobReviewOut(BaseModel):
             research_summary=review.research_summary,
             application_answers=review.application_answers,
             interview_questions=review.interview_questions,
+            recruiter_id=review.recruiter_id,
+            recruiter_name=(review.recruiter.name if review.recruiter else None),
             created_at=review.created_at,
             updated_at=review.updated_at,
             timeline=review.timeline,
@@ -372,6 +378,82 @@ class LinkedInConnectionOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ── Recruiters ────────────────────────────────────────────────
+
+from datetime import date as _date  # noqa: E402
+from typing import Literal  # noqa: E402
+
+RecruiterStatus = Literal["active", "ghosted", "archived", "do_not_contact"]
+RecruiterType = Literal["agency", "in_house"]
+
+
+class RecruiterJobBrief(BaseModel):
+    """A job linked to a recruiter — minimal fields for the recruiter's job list."""
+    id: UUID            # UserJobReview.id (use as the route param elsewhere)
+    title: str
+    company: str
+    status: JobStatus
+
+    class Config:
+        from_attributes = True
+
+
+class RecruiterBase(BaseModel):
+    name: str
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    employer: Optional[str] = None
+    companies_represented: Optional[List[str]] = None
+    linkedin_url: Optional[str] = None
+    type: Optional[RecruiterType] = None
+    status: RecruiterStatus = "active"
+    last_contacted: Optional[_date] = None
+    notes: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class RecruiterCreate(RecruiterBase):
+    pass
+
+
+class RecruiterUpdate(BaseModel):
+    """All fields optional — partial update."""
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    employer: Optional[str] = None
+    companies_represented: Optional[List[str]] = None
+    linkedin_url: Optional[str] = None
+    type: Optional[RecruiterType] = None
+    status: Optional[RecruiterStatus] = None
+    last_contacted: Optional[_date] = None
+    notes: Optional[str] = None
+
+
+class RecruiterOut(RecruiterBase):
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+    jobs: List[RecruiterJobBrief] = []
+
+    class Config:
+        from_attributes = True
+
+
+class RecruiterJobLink(BaseModel):
+    review_id: UUID     # UserJobReview.id to link to this recruiter
+
+
+class RecruiterSuggestion(BaseModel):
+    """A proposed recruiter parsed from an inbox recruiter_outreach email. The user
+    confirms before it becomes a Recruiter row."""
+    name: str
+    email: Optional[str] = None
+    email_count: int    # how many recruiter emails from this address
 
 
 # ── Admin ─────────────────────────────────────────────────────

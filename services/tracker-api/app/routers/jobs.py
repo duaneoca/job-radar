@@ -186,7 +186,11 @@ def list_jobs(
     q = (
         db.query(models.UserJobReview)
         .join(models.Job)
-        .options(joinedload(models.UserJobReview.job), joinedload(models.UserJobReview.timeline))
+        .options(
+            joinedload(models.UserJobReview.job),
+            joinedload(models.UserJobReview.timeline),
+            joinedload(models.UserJobReview.recruiter),
+        )
         .filter(models.UserJobReview.user_id == current_user.id)
     )
 

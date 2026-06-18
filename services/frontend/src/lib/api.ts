@@ -30,5 +30,6 @@ export const criteriaApi = client;
 export const profileApi = client;
 export const keysApi = client;
 export const connectionsApi = client;
+export const recruitersApi = client;
 export const adminApi = client;
 export const agentApi = client;
