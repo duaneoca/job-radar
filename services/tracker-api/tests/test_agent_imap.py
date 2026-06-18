@@ -11,8 +11,11 @@ from app.config import settings
 from app.routers import agent as agent_router
 from app.routers.agent import _assert_public_host, _imap_folder_name, get_agent_config
 
+FOLDERS = {"root": "JobRadar", "interaction": "JobRadar/Interaction",
+           "postings": "JobRadar/Postings", "social": "JobRadar/Social",
+           "unprocessed": "JobRadar/Unprocessed"}
 IMAP = {"host": "imap.fastmail.com", "port": 993, "username": "me@fastmail.com",
-        "password": "s3cret", "use_ssl": True}
+        "password": "s3cret", "use_ssl": True, "folders": FOLDERS}
 
 
 @pytest.fixture
@@ -37,14 +40,30 @@ def test_set_imap_then_status(client, no_verify, monkeypatch):
 
 def test_imap_stores_folders_in_one_call(client, no_verify, monkeypatch):
     monkeypatch.setattr(settings, "encryption_key", Fernet.generate_key().decode())
-    r = client.put("/agent/email-credentials/imap", json={
-        **IMAP,
-        "folders": {"root": "JobRadar", "interaction": "JobRadar/Interaction",
-                    "postings": None, "social": None, "unprocessed": None},
-    })
+    r = client.put("/agent/email-credentials/imap", json=IMAP)
     assert r.status_code == 200
     assert r.json()["folders"]["root"] == "JobRadar"
-    assert r.json()["folders"]["interaction"] == "JobRadar/Interaction"
+    assert r.json()["folders"]["unprocessed"] == "JobRadar/Unprocessed"
+
+
+def test_imap_requires_all_folders(client, no_verify, monkeypatch):
+    monkeypatch.setattr(settings, "encryption_key", Fernet.generate_key().decode())
+    # missing social + unprocessed → 400, nothing stored
+    r = client.put("/agent/email-credentials/imap", json={
+        **IMAP,
+        "folders": {"root": "JobRadar", "interaction": "x", "postings": "y",
+                    "social": "", "unprocessed": None},
+    })
+    assert r.status_code == 400
+    assert "Social" in r.json()["detail"] and "Unprocessed" in r.json()["detail"]
+    assert client.get("/agent/email-credentials").json()["connected"] is False
+
+
+def test_imap_no_folders_rejected(client, no_verify, monkeypatch):
+    monkeypatch.setattr(settings, "encryption_key", Fernet.generate_key().decode())
+    r = client.put("/agent/email-credentials/imap", json={k: v for k, v in IMAP.items() if k != "folders"})
+    assert r.status_code == 400
+    assert "required" in r.json()["detail"].lower()
 
 
 def test_imap_config_injection(client, db, test_user, no_verify, monkeypatch):

@@ -1174,6 +1174,7 @@ function ImapPanel() {
 
   if (isLoading) return <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />;
   const connected = status?.connected && status.provider === "imap";
+  const foldersComplete = LABEL_FIELDS.every((f) => (folders[f.key] ?? "").trim() !== "");
 
   if (connected) {
     return (
@@ -1218,9 +1219,10 @@ function ImapPanel() {
 
         <div className="space-y-3 pt-2 border-t">
           <div>
-            <h4 className="text-sm font-medium">Folders</h4>
+            <h4 className="text-sm font-medium">Folders <span className="text-muted-foreground font-normal">(all required)</span></h4>
             <p className="text-xs text-muted-foreground mt-0.5">
-              The agent files mail under these folders. <strong>Create the folders yourself first</strong> — the agent never creates folders. You can change these later.
+              The agent reads new mail from the root and files it into the others.{" "}
+              <strong>Create all five folders yourself first</strong> — the agent never creates folders, and a missing one breaks it at runtime. We check each exists before saving.
             </p>
           </div>
           {LABEL_FIELDS.map((f) => (
@@ -1236,7 +1238,7 @@ function ImapPanel() {
           ))}
         </div>
 
-        <Button size="sm" disabled={saving || !host || !username || !password} onClick={saveImap}>
+        <Button size="sm" disabled={saving || !host || !username || !password || !foldersComplete} onClick={saveImap}>
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Connect mailbox"}
         </Button>
       </div>
