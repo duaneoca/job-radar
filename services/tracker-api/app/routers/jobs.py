@@ -16,6 +16,7 @@ from uuid import UUID
 
 from celery import Celery
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy import exists, func
 from sqlalchemy.orm import Session, joinedload
 
 from app import models, schemas
@@ -170,8 +171,8 @@ def get_job_internal(
 
 @router.get("", response_model=schemas.JobListOut)
 def list_jobs(
-    job_status: Optional[models.JobStatus] = Query(None, alias="status"),
-    source: Optional[str] = Query(None),
+    job_status: Optional[list[models.JobStatus]] = Query(None, alias="status"),
+    source: Optional[list[str]] = Query(None),
     remote_only: Optional[bool] = Query(None),
     min_score: Optional[float] = Query(None, ge=0, le=10),
     recommended_only: Optional[bool] = Query(None),
@@ -189,18 +190,30 @@ def list_jobs(
         .filter(models.UserJobReview.user_id == current_user.id)
     )
 
+    # "Known contact" = the job's company matches one of the user's uploaded
+    # LinkedIn connections (case-insensitive, trimmed). Computed live so it always
+    # reflects the current connections, not a stale stored flag.
+    contact_match = exists().where(
+        models.LinkedInConnection.user_id == current_user.id,
+        models.LinkedInConnection.company.isnot(None),
+        func.lower(func.trim(models.LinkedInConnection.company))
+        == func.lower(func.trim(models.Job.company)),
+    )
+
     if job_status:
-        q = q.filter(models.UserJobReview.status == job_status)
+        q = q.filter(models.UserJobReview.status.in_(job_status))
     if source:
-        q = q.filter(models.Job.source == source)
+        q = q.filter(models.Job.source.in_(source))
     if remote_only is not None:
         q = q.filter(models.Job.remote == remote_only)
     if min_score is not None:
         q = q.filter(models.UserJobReview.ai_score >= min_score)
     if recommended_only:
         q = q.filter(models.UserJobReview.recommended == True)  # noqa: E712
-    if has_contact is not None:
-        q = q.filter(models.UserJobReview.has_contact == has_contact)
+    if has_contact is True:
+        q = q.filter(contact_match)
+    elif has_contact is False:
+        q = q.filter(~contact_match)
     if search:
         term = f"%{search}%"
         q = q.filter(
@@ -217,10 +230,27 @@ def list_jobs(
         .all()
     )
 
-    return schemas.JobListOut(
-        total=total,
-        items=[schemas.UserJobReviewOut.from_review(r) for r in reviews],
-    )
+    # Normalized set of the user's connection companies — for the contact checkbox.
+    conn_companies = {
+        row[0]
+        for row in db.query(func.lower(func.trim(models.LinkedInConnection.company)))
+        .filter(
+            models.LinkedInConnection.user_id == current_user.id,
+            models.LinkedInConnection.company.isnot(None),
+        )
+        .distinct()
+        .all()
+        if row[0]
+    }
+
+    items = []
+    for r in reviews:
+        out = schemas.UserJobReviewOut.from_review(r)
+        company_norm = (r.job.company or "").strip().lower()
+        out.has_contact = bool(company_norm) and company_norm in conn_companies
+        items.append(out)
+
+    return schemas.JobListOut(total=total, items=items)
 
 
 @router.get("/{review_id}", response_model=schemas.UserJobReviewOut)

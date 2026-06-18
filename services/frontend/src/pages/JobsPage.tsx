@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
   Search, SlidersHorizontal, ExternalLink, RefreshCw, ChevronLeft, ChevronRight,
-  MapPin, Building2, DollarSign, Star, UserCheck, Loader2, Plus, Trash2,
+  MapPin, Building2, DollarSign, Star, Check, UserCheck, Loader2, Plus, Trash2,
 } from "lucide-react";
+import { ColumnFilter } from "../components/ColumnFilter";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Badge } from "../components/ui/badge";
@@ -27,13 +28,32 @@ import type { JobReview, JobListResponse } from "../lib/types";
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100];
 
+// Excel-style header filters hold multi-selections; empty array = no filter.
 interface Filters {
-  status: string;
-  source: string;
+  status: string[];
+  source: string[];
+  contact: string[];   // subset of ["yes", "no"]
   remote_only: boolean;
-  has_contact: boolean;
   min_score: string;
   search: string;
+}
+
+const CONTACT_OPTIONS = [
+  { value: "yes", label: "Has contact" },
+  { value: "no", label: "No contact" },
+];
+
+const FILTERS_KEY = "jr-jobs-filters";
+const DEFAULT_FILTERS: Filters = {
+  status: [], source: [], contact: [], remote_only: false, min_score: "", search: "",
+};
+
+function loadFilters(): Filters {
+  try {
+    const raw = localStorage.getItem(FILTERS_KEY);
+    if (raw) return { ...DEFAULT_FILTERS, ...JSON.parse(raw) };
+  } catch { /* corrupt value — fall back to defaults */ }
+  return DEFAULT_FILTERS;
 }
 
 // ─── Score breakdown dialog ───────────────────────────────────────────────────
@@ -93,15 +113,18 @@ export function JobsPage() {
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const [filters, setFilters] = useState<Filters>({
-    status: "all",
-    source: "all",
-    remote_only: false,
-    has_contact: false,
-    min_score: "",
-    search: "",
-  });
+  const [filters, setFilters] = useState<Filters>(loadFilters);
   const [showFilters, setShowFilters] = useState(false);
+
+  // Persist filters across refreshes.
+  useEffect(() => {
+    localStorage.setItem(FILTERS_KEY, JSON.stringify(filters));
+  }, [filters]);
+
+  function updateFilter(patch: Partial<Filters>) {
+    setFilters((f) => ({ ...f, ...patch }));
+    setPage(1);
+  }
   const [selected, setSelected] = useState<JobReview | null>(null);
   const [notesDraft, setNotesDraft] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
@@ -111,16 +134,18 @@ export function JobsPage() {
     skip: (page - 1) * pageSize,
     limit: pageSize,
   };
-  if (filters.status && filters.status !== "all") params.status = filters.status;
-  if (filters.source && filters.source !== "all") params.source = filters.source;
+  if (filters.status.length) params.status = filters.status;
+  if (filters.source.length) params.source = filters.source;
+  // contact: one option selected = filter; both or none = no filter.
+  if (filters.contact.length === 1) params.has_contact = filters.contact[0] === "yes";
   if (filters.remote_only) params.remote_only = true;
-  if (filters.has_contact) params.has_contact = true;
   if (filters.min_score) params.min_score = Number(filters.min_score);
   if (filters.search) params.search = filters.search;
 
   const { data, isLoading, isFetching } = useQuery<JobListResponse>({
     queryKey: ["jobs", params],
-    queryFn: () => jobsApi.get("/jobs", { params }).then((r) => r.data),
+    // indexes:null → arrays serialize as `status=a&status=b` (FastAPI list[...] shape).
+    queryFn: () => jobsApi.get("/jobs", { params, paramsSerializer: { indexes: null } }).then((r) => r.data),
     placeholderData: (prev) => prev,
   });
 
@@ -184,9 +209,13 @@ export function JobsPage() {
   const jobs = data?.items ?? [];
 
   function resetFilters() {
-    setFilters({ status: "all", source: "all", remote_only: false, has_contact: false, min_score: "", search: "" });
+    setFilters(DEFAULT_FILTERS);
     setPage(1);
   }
+
+  const activeFilterCount =
+    filters.status.length + filters.source.length + filters.contact.length +
+    (filters.remote_only ? 1 : 0) + (filters.min_score ? 1 : 0);
 
   return (
     <div className="space-y-4">
@@ -211,7 +240,7 @@ export function JobsPage() {
         </Button>
       </div>
 
-      {/* Search + filter bar */}
+      {/* Search + filter bar — Status/Source/Contact filters now live in the column headers */}
       <div className="flex flex-wrap gap-2 items-center">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -219,33 +248,9 @@ export function JobsPage() {
             placeholder="Search title, company, source…"
             className="pl-8"
             value={filters.search}
-            onChange={(e) => { setFilters((f) => ({ ...f, search: e.target.value })); setPage(1); }}
+            onChange={(e) => updateFilter({ search: e.target.value })}
           />
         </div>
-
-        <Select value={filters.status} onValueChange={(v) => { setFilters((f) => ({ ...f, status: v })); setPage(1); }}>
-          <SelectTrigger className="w-[140px]">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
-            {STATUS_OPTIONS.map((s) => (
-              <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={filters.source} onValueChange={(v) => { setFilters((f) => ({ ...f, source: v })); setPage(1); }}>
-          <SelectTrigger className="w-[130px]">
-            <SelectValue placeholder="Source" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All sources</SelectItem>
-            {SOURCE_OPTIONS.map((s) => (
-              <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
 
         <Button
           variant={showFilters ? "secondary" : "outline"}
@@ -255,6 +260,11 @@ export function JobsPage() {
           <SlidersHorizontal className="h-4 w-4 mr-1" />
           Filters
         </Button>
+        {activeFilterCount > 0 && (
+          <Button variant="ghost" size="sm" onClick={resetFilters}>
+            Clear filters ({activeFilterCount})
+          </Button>
+        )}
       </div>
 
       {/* Extra filters */}
@@ -264,17 +274,9 @@ export function JobsPage() {
             <Switch
               id="remote"
               checked={filters.remote_only}
-              onCheckedChange={(v) => { setFilters((f) => ({ ...f, remote_only: v })); setPage(1); }}
+              onCheckedChange={(v) => updateFilter({ remote_only: v })}
             />
             <Label htmlFor="remote">Remote only</Label>
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch
-              id="contact"
-              checked={filters.has_contact}
-              onCheckedChange={(v) => { setFilters((f) => ({ ...f, has_contact: v })); setPage(1); }}
-            />
-            <Label htmlFor="contact">Has connection</Label>
           </div>
           <div className="flex items-center gap-2">
             <Label htmlFor="minscore" className="whitespace-nowrap">Min score</Label>
@@ -285,7 +287,7 @@ export function JobsPage() {
               max={10}
               className="w-20"
               value={filters.min_score}
-              onChange={(e) => { setFilters((f) => ({ ...f, min_score: e.target.value })); setPage(1); }}
+              onChange={(e) => updateFilter({ min_score: e.target.value })}
               placeholder="0–10"
             />
           </div>
@@ -302,22 +304,32 @@ export function JobsPage() {
               <th className="text-left px-3 py-2.5 font-medium hidden md:table-cell">Location</th>
               <th className="text-left px-3 py-2.5 font-medium hidden lg:table-cell">Salary</th>
               <th className="text-center px-3 py-2.5 font-medium w-16">Score</th>
-              <th className="text-left px-3 py-2.5 font-medium w-32">Status</th>
-              <th className="text-left px-3 py-2.5 font-medium hidden sm:table-cell w-24">Source</th>
+              <th className="text-center px-3 py-2.5 font-medium w-20">
+                <ColumnFilter label="Contact" options={CONTACT_OPTIONS}
+                  selected={filters.contact} onChange={(v) => updateFilter({ contact: v })} />
+              </th>
+              <th className="text-left px-3 py-2.5 font-medium w-32">
+                <ColumnFilter label="Status" options={STATUS_OPTIONS}
+                  selected={filters.status} onChange={(v) => updateFilter({ status: v })} />
+              </th>
+              <th className="text-left px-3 py-2.5 font-medium hidden sm:table-cell w-24">
+                <ColumnFilter label="Source" options={SOURCE_OPTIONS}
+                  selected={filters.source} onChange={(v) => updateFilter({ source: v })} />
+              </th>
               <th className="text-center px-3 py-2.5 font-medium hidden sm:table-cell w-10"></th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={7} className="text-center py-12 text-muted-foreground">
+                <td colSpan={8} className="text-center py-12 text-muted-foreground">
                   <Loader2 className="h-5 w-5 animate-spin inline mr-2" />
                   Loading…
                 </td>
               </tr>
             ) : jobs.length === 0 ? (
               <tr>
-                <td colSpan={7} className="text-center py-12 text-muted-foreground">
+                <td colSpan={8} className="text-center py-12 text-muted-foreground">
                   No jobs found. Try adjusting your filters.
                 </td>
               </tr>
@@ -335,11 +347,6 @@ export function JobsPage() {
                         <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
                           <Building2 className="h-3 w-3 shrink-0" />
                           <span className="truncate">{job.company}</span>
-                          {job.has_contact && (
-                            <span title="Known contact at this company">
-                              <UserCheck className="h-3 w-3 text-blue-500 shrink-0" />
-                            </span>
-                          )}
                         </div>
                       </div>
                     </div>
@@ -364,6 +371,18 @@ export function JobsPage() {
                       </button>
                     ) : (
                       <span className="text-muted-foreground text-xs">—</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5 text-center">
+                    {job.has_contact ? (
+                      <span
+                        className="inline-flex h-4 w-4 items-center justify-center rounded-[3px] bg-blue-500 text-white"
+                        title="You have a LinkedIn contact at this company"
+                      >
+                        <Check className="h-3 w-3" strokeWidth={3} />
+                      </span>
+                    ) : (
+                      <span className="inline-flex h-4 w-4 rounded-[3px] border border-muted-foreground/25" />
                     )}
                   </td>
                   <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
