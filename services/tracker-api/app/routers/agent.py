@@ -380,11 +380,13 @@ def _credential_status(cred: Optional[models.EmailCredential]) -> schemas.EmailC
             provider=None, connected=False, enabled=False,
             folders=empty_folders, updated_at=None,
         )
-    connected = False
+    blob = {}
     try:
-        connected = bool(json.loads(decrypt_api_key(cred.encrypted_blob)).get("refresh_token"))
+        blob = json.loads(decrypt_api_key(cred.encrypted_blob))
     except Exception:
-        connected = False
+        blob = {}
+    # Gmail = refresh_token present; IMAP = host present.
+    connected = bool(blob.get("refresh_token") or blob.get("host"))
     return schemas.EmailCredentialStatusOut(
         provider=cred.provider.value,
         connected=connected,
@@ -397,6 +399,8 @@ def _credential_status(cred: Optional[models.EmailCredential]) -> schemas.EmailC
             unprocessed=cred.folder_unprocessed,
         ),
         updated_at=cred.updated_at,
+        imap_host=blob.get("host"),
+        imap_username=blob.get("username"),
     )
 
 
@@ -436,6 +440,41 @@ def update_email_credentials(
     cred.folder_social = f.social
     cred.folder_unprocessed = f.unprocessed
     cred.enabled = payload.enabled
+    db.commit()
+    db.refresh(cred)
+    return _credential_status(cred)
+
+
+@router.put("/email-credentials/imap", response_model=schemas.EmailCredentialStatusOut)
+def set_imap_credentials(
+    payload: schemas.ImapCredentialsIn,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Store IMAP mailbox credentials ("Other" provider). Encrypted; the password is
+    never returned. Consumed by the cloud agent once it ships a cloud-IMAP provider."""
+    blob = encrypt_api_key(json.dumps({
+        "provider": "imap",
+        "host": payload.host.strip(),
+        "port": payload.port,
+        "username": payload.username.strip(),
+        "password": payload.password,
+        "use_ssl": payload.use_ssl,
+    }))
+    cred = (
+        db.query(models.EmailCredential)
+        .filter(models.EmailCredential.user_id == user.id)
+        .first()
+    )
+    if cred:
+        cred.provider = models.EmailProvider.IMAP
+        cred.encrypted_blob = blob
+    else:
+        cred = models.EmailCredential(
+            user_id=user.id, provider=models.EmailProvider.IMAP,
+            encrypted_blob=blob, enabled=True,
+        )
+        db.add(cred)
     db.commit()
     db.refresh(cred)
     return _credential_status(cred)

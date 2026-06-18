@@ -10,6 +10,7 @@ import { JobsPage } from "./pages/JobsPage";
 import { InboxPage } from "./pages/InboxPage";
 import { JobDetailPage } from "./pages/JobDetailPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { LocalAgentSetupPage } from "./pages/LocalAgentSetupPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { AdminPage } from "./pages/AdminPage";
 import { AddJobPage } from "./pages/AddJobPage";
@@ -117,6 +118,16 @@ export default function App() {
             <RequireAuth>
               <Layout>
                 <SettingsPage />
+              </Layout>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/settings/agent-setup"
+          element={
+            <RequireAuth>
+              <Layout>
+                <LocalAgentSetupPage />
               </Layout>
             </RequireAuth>
           }

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, BookmarkIcon, Chrome, Eye, EyeOff, Loader2, MessageSquare, Trash2, Copy, Plus } from "lucide-react";
+import { AlertTriangle, BookmarkIcon, BookOpen, Chrome, Eye, EyeOff, Loader2, MessageSquare, Trash2, Copy, Plus } from "lucide-react";
+import { GoogleButton } from "../components/GoogleButton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -943,62 +944,77 @@ const EMPTY_FOLDERS: AgentFolderConfig = {
   root: "", interaction: "", postings: "", social: "", unprocessed: "",
 };
 
-// Cloud Gmail mailbox connection (JR-5). Local self-host users configure their
-// mailbox via the agent's own .env and don't use this section.
-function MailboxConnectionSection() {
-  const qc = useQueryClient();
-  const { data: status, isLoading } = useQuery<EmailCredentialStatus>({
-    queryKey: ["agent-email-credentials"],
-    queryFn: () => agentApi.get("/agent/email-credentials").then((r) => r.data),
-  });
+const PROVIDERS = [
+  { value: "proton", label: "Proton" },
+  { value: "gmail",  label: "Gmail" },
+  { value: "other",  label: "Other" },
+] as const;
+type ProviderKey = (typeof PROVIDERS)[number]["value"];
 
+function ProviderSelector({ value, onChange }: { value: ProviderKey; onChange: (v: ProviderKey) => void }) {
+  return (
+    <div className="inline-flex rounded-lg border bg-muted/30 p-1">
+      {PROVIDERS.map((p) => (
+        <button
+          key={p.value} type="button" onClick={() => onChange(p.value)}
+          className={`px-4 py-1.5 text-sm rounded-md transition-colors ${
+            value === p.value ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {p.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Shared cloud-mailbox config (Gmail + IMAP, once connected): enable toggle
+// (saves instantly), labels/folders, and disconnect.
+function MailboxConfig({ status, connectedLabel, noun }: {
+  status: EmailCredentialStatus;
+  connectedLabel: string;
+  noun: "label" | "folder";
+}) {
+  const qc = useQueryClient();
   const [folders, setFolders] = useState<AgentFolderConfig>(EMPTY_FOLDERS);
-  const [enabled, setEnabled] = useState(true);
+  const [enabled, setEnabled] = useState(status.enabled);
   const [saving, setSaving] = useState(false);
-  const [connecting, setConnecting] = useState(false);
 
   useEffect(() => {
-    if (!status) return;
     setFolders({
-      root: status.folders.root ?? "",
-      interaction: status.folders.interaction ?? "",
-      postings: status.folders.postings ?? "",
-      social: status.folders.social ?? "",
+      root: status.folders.root ?? "", interaction: status.folders.interaction ?? "",
+      postings: status.folders.postings ?? "", social: status.folders.social ?? "",
       unprocessed: status.folders.unprocessed ?? "",
     });
     setEnabled(status.enabled);
   }, [status]);
 
-  async function connect() {
-    setConnecting(true);
-    try {
-      const { data } = await agentApi.get("/agent/oauth/start");
-      window.location.href = data.authorization_url;
-    } catch (err: any) {
-      toast({ title: "Couldn't start Gmail connect", description: err?.response?.data?.detail, variant: "destructive" });
-      setConnecting(false);
-    }
+  const norm = (s: string | null) => (!s || s.trim() === "" ? null : s.trim());
+
+  async function persist(nextEnabled: boolean, announce?: string) {
+    await agentApi.put("/agent/email-credentials", {
+      folders: {
+        root: norm(folders.root), interaction: norm(folders.interaction),
+        postings: norm(folders.postings), social: norm(folders.social),
+        unprocessed: norm(folders.unprocessed),
+      },
+      enabled: nextEnabled,
+    });
+    qc.invalidateQueries({ queryKey: ["agent-email-credentials"] });
+    if (announce) toast({ title: announce });
   }
 
-  async function save() {
+  async function toggleEnabled(v: boolean) {
+    setEnabled(v);
+    try { await persist(v, v ? "Agent enabled" : "Agent paused"); }
+    catch (err: any) { setEnabled(!v); toast({ title: "Failed to update", description: err?.response?.data?.detail, variant: "destructive" }); }
+  }
+
+  async function saveFolders() {
     setSaving(true);
-    try {
-      const norm = (s: string | null) => (!s || s.trim() === "" ? null : s.trim());
-      await agentApi.put("/agent/email-credentials", {
-        folders: {
-          root: norm(folders.root), interaction: norm(folders.interaction),
-          postings: norm(folders.postings), social: norm(folders.social),
-          unprocessed: norm(folders.unprocessed),
-        },
-        enabled,
-      });
-      qc.invalidateQueries({ queryKey: ["agent-email-credentials"] });
-      toast({ title: "Mailbox settings saved" });
-    } catch (err: any) {
-      toast({ title: "Failed to save", description: err?.response?.data?.detail, variant: "destructive" });
-    } finally {
-      setSaving(false);
-    }
+    try { await persist(enabled, `${noun === "label" ? "Labels" : "Folders"} saved`); }
+    catch (err: any) { toast({ title: "Failed to save", description: err?.response?.data?.detail, variant: "destructive" }); }
+    finally { setSaving(false); }
   }
 
   async function disconnect() {
@@ -1011,73 +1027,184 @@ function MailboxConnectionSection() {
     }
   }
 
+  const nounCap = noun === "label" ? "Labels" : "Folders";
+
   return (
-    <div className="space-y-3">
-      <div>
-        <h3 className="font-medium">Mailbox connection</h3>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Cloud users connect a Gmail mailbox so Job Radar's hosted agent can read and label it.
-          (Self-hosting locally? Configure your mailbox in the agent's own environment instead.)
-        </p>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-2 border rounded-md px-3 py-2">
+        <Badge variant="secondary">{connectedLabel}</Badge>
+        <Button
+          size="sm" variant="ghost"
+          className="h-7 shrink-0 text-destructive hover:bg-destructive/10 px-2"
+          onClick={disconnect}
+        >
+          <Trash2 className="h-3.5 w-3.5 mr-1" /> Disconnect
+        </Button>
       </div>
 
-      {isLoading ? (
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-      ) : !status?.connected ? (
-        <Button size="sm" disabled={connecting} onClick={connect}>
-          {connecting ? <Loader2 className="h-4 w-4 animate-spin" />
-                      : <><Chrome className="h-4 w-4 mr-1" /> Connect Gmail</>}
-        </Button>
-      ) : (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between gap-2 border rounded-md px-3 py-2">
-            <span className="text-sm flex items-center gap-2">
-              <Badge variant="secondary">Gmail connected</Badge>
-            </span>
-            <Button
-              size="sm" variant="ghost"
-              className="h-7 shrink-0 text-destructive hover:bg-destructive/10 px-2"
-              onClick={disconnect}
-            >
-              <Trash2 className="h-3.5 w-3.5 mr-1" /> Disconnect
-            </Button>
-          </div>
-
-          <div className="space-y-3">
-            <div>
-              <h4 className="text-sm font-medium">Labels</h4>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                The agent files mail under these Gmail labels.{" "}
-                <strong>Create the labels in Gmail yourself first</strong> — the agent never
-                creates labels. Use the full nested path (e.g. <code>Hire Duane/Interaction</code>).
-              </p>
-            </div>
-            {LABEL_FIELDS.map((f) => (
-              <div key={f.key} className="space-y-1">
-                <Label htmlFor={`folder-${f.key}`} className="text-xs">{f.label}</Label>
-                <Input
-                  id={`folder-${f.key}`}
-                  value={folders[f.key] ?? ""}
-                  placeholder={f.hint}
-                  onChange={(e) => setFolders((prev) => ({ ...prev, [f.key]: e.target.value }))}
-                />
-              </div>
-            ))}
-          </div>
-
-          <div className="flex items-center justify-between border rounded-md px-3 py-2">
-            <div>
-              <p className="text-sm font-medium">Agent enabled</p>
-              <p className="text-xs text-muted-foreground">Pause to stop the agent processing this mailbox.</p>
-            </div>
-            <Switch checked={enabled} onCheckedChange={setEnabled} aria-label="Agent enabled" />
-          </div>
-
-          <Button size="sm" disabled={saving} onClick={save}>
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save mailbox settings"}
-          </Button>
+      <div className="flex items-center justify-between border rounded-md px-3 py-2">
+        <div>
+          <p className="text-sm font-medium">Agent enabled</p>
+          <p className="text-xs text-muted-foreground">Pause to stop the hosted agent processing this mailbox.</p>
         </div>
-      )}
+        <Switch checked={enabled} onCheckedChange={toggleEnabled} aria-label="Agent enabled" />
+      </div>
+
+      <div className="space-y-3">
+        <div>
+          <h4 className="text-sm font-medium">{nounCap}</h4>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            The agent files mail under these {noun}s. <strong>Create the {noun}s yourself first</strong> — the agent never creates {noun}s.
+            {noun === "label" && <> Use the nested name (e.g. <code>Hire Duane/Interaction</code>).</>}
+          </p>
+        </div>
+        {LABEL_FIELDS.map((f) => (
+          <div key={f.key} className="space-y-1">
+            <Label htmlFor={`folder-${f.key}`} className="text-xs">{f.label}</Label>
+            <Input
+              id={`folder-${f.key}`}
+              value={folders[f.key] ?? ""}
+              placeholder={f.hint}
+              onChange={(e) => setFolders((prev) => ({ ...prev, [f.key]: e.target.value }))}
+            />
+          </div>
+        ))}
+      </div>
+
+      <Button size="sm" disabled={saving} onClick={saveFolders}>
+        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : `Save ${noun}s`}
+      </Button>
+    </div>
+  );
+}
+
+function useMailboxStatus() {
+  return useQuery<EmailCredentialStatus>({
+    queryKey: ["agent-email-credentials"],
+    queryFn: () => agentApi.get("/agent/email-credentials").then((r) => r.data),
+  });
+}
+
+function ProtonPanel() {
+  return (
+    <div className="space-y-6">
+      <AgentKeySection />
+      <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+        <p className="text-sm text-muted-foreground">
+          The Proton agent runs on your own machine (Proton Bridge is local-only) and reads its config
+          from a local <code>.env</code> — your mailbox credentials never touch Job Radar.
+        </p>
+        <Link to="/settings/agent-setup" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline">
+          <BookOpen className="h-4 w-4" /> Local agent setup guide
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function GmailPanel() {
+  const { data: status, isLoading } = useMailboxStatus();
+  const [connecting, setConnecting] = useState(false);
+
+  async function connect() {
+    setConnecting(true);
+    try {
+      const { data } = await agentApi.get("/agent/oauth/start");
+      window.location.href = data.authorization_url;
+    } catch (err: any) {
+      toast({ title: "Couldn't start Gmail connect", description: err?.response?.data?.detail, variant: "destructive" });
+      setConnecting(false);
+    }
+  }
+
+  if (isLoading) return <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />;
+  const connected = status?.connected && status.provider === "gmail";
+
+  if (!connected) {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          Connect your Gmail so Job Radar's hosted agent can read and label it.
+        </p>
+        <GoogleButton onClick={connect} loading={connecting} />
+      </div>
+    );
+  }
+  return <MailboxConfig status={status!} connectedLabel="Gmail connected" noun="label" />;
+}
+
+function ImapPanel() {
+  const qc = useQueryClient();
+  const { data: status, isLoading } = useMailboxStatus();
+  const [host, setHost] = useState("");
+  const [port, setPort] = useState("993");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [useSsl, setUseSsl] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  async function saveImap() {
+    setSaving(true);
+    try {
+      await agentApi.put("/agent/email-credentials/imap", {
+        host: host.trim(), port: Number(port) || 993, username: username.trim(), password, use_ssl: useSsl,
+      });
+      setPassword("");
+      qc.invalidateQueries({ queryKey: ["agent-email-credentials"] });
+      toast({ title: "IMAP mailbox connected" });
+    } catch (err: any) {
+      toast({ title: "Failed to save", description: err?.response?.data?.detail, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (isLoading) return <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />;
+  const connected = status?.connected && status.provider === "imap";
+
+  if (connected) {
+    return (
+      <MailboxConfig
+        status={status!}
+        connectedLabel={`IMAP: ${status!.imap_username ?? status!.imap_host ?? "connected"}`}
+        noun="folder"
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Connect any IMAP mailbox; Job Radar's hosted agent reads and files it. Credentials are stored
+        encrypted. (Cloud-IMAP processing ships with the agent's IMAP provider — your config is saved and ready.)
+      </p>
+      <div className="space-y-3">
+        <div className="grid grid-cols-3 gap-2">
+          <div className="col-span-2 space-y-1">
+            <Label htmlFor="imap-host" className="text-xs">IMAP host</Label>
+            <Input id="imap-host" value={host} placeholder="imap.fastmail.com" onChange={(e) => setHost(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="imap-port" className="text-xs">Port</Label>
+            <Input id="imap-port" value={port} onChange={(e) => setPort(e.target.value)} />
+          </div>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="imap-user" className="text-xs">Username</Label>
+          <Input id="imap-user" value={username} placeholder="you@example.com" onChange={(e) => setUsername(e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="imap-pass" className="text-xs">Password</Label>
+          <Input id="imap-pass" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        </div>
+        <div className="flex items-center gap-2">
+          <Switch id="imap-ssl" checked={useSsl} onCheckedChange={setUseSsl} />
+          <Label htmlFor="imap-ssl" className="text-sm">Use SSL/TLS</Label>
+        </div>
+        <Button size="sm" disabled={saving || !host || !username || !password} onClick={saveImap}>
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Connect mailbox"}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -1212,13 +1339,38 @@ function SlackNotificationsSection() {
 }
 
 function EmailAgentTab() {
+  const { data: status } = useMailboxStatus();
+  const [provider, setProvider] = useState<ProviderKey>("proton");
+
+  // Default the selector to the user's current connection (once status loads).
+  const synced = useRef(false);
+  useEffect(() => {
+    if (synced.current || !status) return;
+    synced.current = true;
+    if (status.provider === "gmail") setProvider("gmail");
+    else if (status.provider === "imap") setProvider("other");
+  }, [status]);
+
   return (
     <div className="max-w-lg space-y-8">
-      <AgentKeySection />
-      <Separator />
-      <MailboxConnectionSection />
+      <div className="space-y-3">
+        <div>
+          <h3 className="font-medium">Email provider</h3>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            How the agent reaches your mailbox. Proton runs locally; Gmail and Other are processed by the hosted agent.
+          </p>
+        </div>
+        <ProviderSelector value={provider} onChange={setProvider} />
+        <div className="pt-2">
+          {provider === "proton" && <ProtonPanel />}
+          {provider === "gmail" && <GmailPanel />}
+          {provider === "other" && <ImapPanel />}
+        </div>
+      </div>
+
       <Separator />
       <SlackNotificationsSection />
+
       <Separator />
       <div className="space-y-3">
         <div>

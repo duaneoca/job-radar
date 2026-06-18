@@ -623,15 +623,26 @@ class CloudUserOut(BaseModel):
 # The refresh_token is never returned to the frontend; only connection status.
 class EmailCredentialStatusOut(BaseModel):
     provider: Optional[str]            # gmail | imap | None
-    connected: bool                    # a usable refresh_token is stored
+    connected: bool                    # usable creds stored (refresh_token or imap host)
     enabled: bool
     folders: AgentFolderConfig
     updated_at: Optional[datetime]
+    imap_host: Optional[str] = None      # non-secret, for prefilling the IMAP form
+    imap_username: Optional[str] = None  # the password is never returned
 
 
 class EmailCredentialUpdateIn(BaseModel):
     folders: AgentFolderConfig
     enabled: bool
+
+
+# IMAP "Other" provider — host/port/user/password/SSL (cloud non-Gmail mailbox).
+class ImapCredentialsIn(BaseModel):
+    host: str
+    port: int = 993
+    username: str
+    password: str
+    use_ssl: bool = True
 
 
 # Agent API key management
