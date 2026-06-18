@@ -50,6 +50,7 @@ from app.security import (
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
+GMAIL_LABELS_URL = "https://gmail.googleapis.com/gmail/v1/users/me/labels"
 
 # Slack OAuth v2 endpoints (per-user "Add to Slack" notifications — JR-6)
 SLACK_AUTHORIZE_URL = "https://slack.com/oauth/v2/authorize"
@@ -367,7 +368,7 @@ def gmail_oauth_callback(
             user_id=user_uuid,
             provider=models.EmailProvider.GMAIL,
             encrypted_blob=blob,
-            enabled=True,
+            enabled=False,   # can't run until labels are set + verified, then enabled
         ))
     db.commit()
     return _back("connected")
@@ -428,8 +429,10 @@ def update_email_credentials(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
-    """Set folder/label config and the enable flag. Requires a connected mailbox
-    (the row is created by the OAuth callback, which supplies the secret blob)."""
+    """Set folder/label config and the enable flag. Enabling requires all five
+    folders/labels to be set AND to exist on the mailbox (verified per provider) —
+    a partial layout breaks the agent at runtime. You can save a partial config while
+    disabled. Requires a connected mailbox (created by the connect flow)."""
     cred = (
         db.query(models.EmailCredential)
         .filter(models.EmailCredential.user_id == user.id)
@@ -437,12 +440,33 @@ def update_email_credentials(
     )
     if not cred:
         raise HTTPException(status_code=404, detail="No mailbox connected")
+
     f = payload.folders
-    cred.folder_root = f.root
-    cred.folder_interaction = f.interaction
-    cred.folder_postings = f.postings
-    cred.folder_social = f.social
-    cred.folder_unprocessed = f.unprocessed
+    _LABELS = {
+        "root": "Root", "interaction": "Interaction", "postings": "Postings",
+        "social": "Social", "unprocessed": "Unprocessed",
+    }
+    vals = {k: ((getattr(f, k) or "").strip() or None) for k in _LABELS}
+
+    if payload.enabled:
+        noun = "labels" if cred.provider == models.EmailProvider.GMAIL else "folders"
+        missing = [_LABELS[k] for k, v in vals.items() if not v]
+        if missing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"All {noun} are required to enable the agent. Missing: " + ", ".join(missing),
+            )
+        names = list(vals.values())
+        if cred.provider == models.EmailProvider.GMAIL:
+            _verify_gmail_labels(cred, names)
+        elif cred.provider == models.EmailProvider.IMAP:
+            _verify_imap_stored(cred, names)
+
+    cred.folder_root = vals["root"]
+    cred.folder_interaction = vals["interaction"]
+    cred.folder_postings = vals["postings"]
+    cred.folder_social = vals["social"]
+    cred.folder_unprocessed = vals["unprocessed"]
     cred.enabled = payload.enabled
     db.commit()
     db.refresh(cred)
@@ -506,6 +530,56 @@ def _verify_imap(host, port, username, password, use_ssl, folder_names):
             conn.logout()
         except Exception:
             pass
+
+
+def _verify_imap_stored(cred: models.EmailCredential, folder_names) -> None:
+    """Verify configured folders against a user's already-stored IMAP creds."""
+    try:
+        blob = json.loads(decrypt_api_key(cred.encrypted_blob))
+    except Exception:
+        raise HTTPException(status_code=400, detail="IMAP connection is invalid — reconnect it.")
+    _verify_imap(
+        (blob.get("host") or "").strip(), int(blob.get("port") or 993),
+        (blob.get("username") or "").strip(), blob.get("password") or "",
+        bool(blob.get("use_ssl", True)), folder_names,
+    )
+
+
+def _verify_gmail_labels(cred: models.EmailCredential, label_names) -> None:
+    """Confirm each configured Gmail label exists (the agent never creates labels).
+    Refreshes an access token from the stored refresh_token. Raises HTTPException(400)."""
+    if not (settings.google_oauth_client_id and settings.google_oauth_client_secret):
+        return  # no app creds configured (local/dev) — can't verify; don't block
+    try:
+        refresh_token = json.loads(decrypt_api_key(cred.encrypted_blob)).get("refresh_token")
+    except Exception:
+        refresh_token = None
+    if not refresh_token:
+        raise HTTPException(status_code=400, detail="Gmail connection is invalid — reconnect it.")
+    try:
+        tok = httpx.post(GOOGLE_TOKEN_URL, data={
+            "grant_type": "refresh_token", "refresh_token": refresh_token,
+            "client_id": settings.google_oauth_client_id,
+            "client_secret": settings.google_oauth_client_secret,
+        }, timeout=15)
+        tok.raise_for_status()
+        access = tok.json().get("access_token")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Couldn't reach Gmail to verify labels. Try again in a moment.")
+    if not access:
+        raise HTTPException(status_code=400, detail="Gmail authorization expired — reconnect it.")
+    try:
+        resp = httpx.get(GMAIL_LABELS_URL, headers={"Authorization": f"Bearer {access}"}, timeout=15)
+        resp.raise_for_status()
+        existing = {lab.get("name") for lab in resp.json().get("labels", [])}
+    except Exception:
+        raise HTTPException(status_code=400, detail="Couldn't list your Gmail labels to verify. Try again.")
+    missing = [n for n in label_names if n not in existing]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail="These Gmail labels don't exist (create them first): " + ", ".join(missing),
+        )
 
 
 @router.put("/email-credentials/imap", response_model=schemas.EmailCredentialStatusOut)
