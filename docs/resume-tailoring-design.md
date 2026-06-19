@@ -236,6 +236,24 @@ readable nudge — exactly the per-user tweak this knob enables.
 
 ## 9. Diff & review
 
+### Entry point — a "Tailor résumé" tab (launchpad)
+On the job-detail page, add a **"Tailor résumé" tab between Application and Interview Prep**
+(grouped with the other per-job AI features, where users look). The tab is a **status +
+launch panel**, not the workspace:
+- **Before:** a line of context + a primary **"Open résumé tailor →"** button.
+- **After:** a summary — *"Tailored for this role · N changes (M flagged) · template: Classic"* —
+  plus **Open / Re-tailor / Download PDF** actions.
+- **Stale banner** when the base résumé changed since this copy was tailored (Phase 1's
+  `resume_structured_stale` / per-job snapshot): *"Based on a previous version — regenerate."*
+
+Chosen over a bare "Tailor my résumé" button (e.g. above Application Assistance) because the
+tab gives the per-job tailor state (`tailored_resume` / changes / status) a discoverable home;
+a button has nowhere to show "already tailored, 3 flagged, here's the PDF."
+
+The **"Open résumé tailor"** action launches the review in a **new browser tab** (default) so
+the job detail stays open while tailoring; flippable to in-app navigation after we see it.
+
+### The review surface
 A dedicated full-width **pop-out** route (`/jobs/:id/tailor`); the job-detail page is too
 cramped. Three columns:
 - **Left:** original résumé (rendered in the template).
