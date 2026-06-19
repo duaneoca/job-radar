@@ -14,7 +14,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 
-from app import models
+from sqlalchemy.orm.attributes import flag_modified
+
+from app import models, resume_tailor, schemas
 from app.database import get_db
 from app.deps import get_current_user
 from app.llm import get_llm_provider, get_tavily_key, llm_complete
@@ -451,3 +453,133 @@ def generate_interview_prep(
     db.commit()
 
     return {"questions": questions}
+
+
+# ── Résumé tailoring (Phase 2) ────────────────────────────────
+
+def _fresh_structured(profile: models.Profile, user_id: UUID, db: Session):
+    """Return the profile's structured résumé, (re)parsing if missing or stale.
+    The honesty core later checks against facts derived from this."""
+    if profile.resume_structured and not profile.resume_structured_stale:
+        return schemas.ResumeStructured.model_validate(profile.resume_structured)
+    api_key, model = get_llm_provider(user_id, db)
+    structured = resume_tailor.parse_resume_text(profile.resume_text, api_key, model)
+    profile.resume_structured = structured.model_dump()
+    profile.resume_structured_stale = False
+    db.commit()
+    return structured
+
+
+@router.get("/{review_id}/tailor-resume")
+def get_tailored_resume(
+    review_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Return the stored tailor state for this job, or 404 if not tailored yet."""
+    review = _get_review(review_id, current_user, db)
+    if not review.resume_tailor:
+        raise HTTPException(status_code=404, detail="Not tailored yet")
+    # Flag staleness vs the current base résumé (snapshot may be behind).
+    profile = _get_profile(current_user.id, db)
+    state = dict(review.resume_tailor)
+    base = (profile.resume_structured if profile else None)
+    state["base_changed"] = bool(base) and base != state.get("original")
+    return state
+
+
+@router.post("/{review_id}/tailor-resume")
+def tailor_resume_endpoint(
+    review_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Tailor the user's résumé to this job. Parses the résumé if needed, runs the
+    tailor under the locked honesty core, computes the change diff, stores + returns
+    the per-job tailor state. BYOK."""
+    review = _get_review(review_id, current_user, db)
+    profile = _get_profile(current_user.id, db)
+    if not profile or not (profile.resume_text or "").strip():
+        raise HTTPException(status_code=400, detail="Add your résumé (Settings → Résumé) before tailoring.")
+
+    structured = _fresh_structured(profile, current_user.id, db)
+    honesty = resume_tailor.derive_honesty_facts(structured)
+    criteria = _get_criteria(current_user.id, db)
+    style = (criteria.resume_tailor_prompt if criteria else None) or resume_tailor.DEFAULT_RESUME_TAILOR_PROMPT
+    api_key, model = get_llm_provider(current_user.id, db)
+
+    tailored, notes = resume_tailor.tailor_resume(
+        structured, honesty, _job_block(review.job), style, api_key, model)
+    state = resume_tailor.build_tailor_state(structured, tailored, notes, model, honesty)
+
+    review.resume_tailor = state
+    db.commit()
+    return state
+
+
+@router.post("/{review_id}/tailor-resume/refine")
+def refine_tailored_resume(
+    review_id: UUID,
+    payload: schemas.TailorRefineIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Stateful refine: re-tailor from the current draft with the user's instruction,
+    keeping rejected phrasings unchanged, then recompute the diff and carry prior
+    accept/reject decisions forward by change id."""
+    review = _get_review(review_id, current_user, db)
+    if not review.resume_tailor:
+        raise HTTPException(status_code=404, detail="Tailor the résumé first, then refine.")
+    prev = review.resume_tailor
+
+    original = schemas.ResumeStructured.model_validate(prev["original"])
+    current = schemas.ResumeStructured.model_validate(prev["tailored"])
+    honesty = resume_tailor.derive_honesty_facts(original)
+    criteria = _get_criteria(current_user.id, db)
+    style = (criteria.resume_tailor_prompt if criteria else None) or resume_tailor.DEFAULT_RESUME_TAILOR_PROMPT
+    api_key, model = get_llm_provider(current_user.id, db)
+
+    rejected = [c["before"] for c in prev["changes"] if c.get("decision") == "rejected" and c.get("before")]
+    extra = payload.instruction.strip()
+    if rejected:
+        extra += "\n\nKeep these phrasings EXACTLY as written (the user rejected changing them): " + " | ".join(rejected)
+
+    tailored, notes = resume_tailor.tailor_resume(
+        current, honesty, _job_block(review.job), style, api_key, model, extra=extra)
+    state = resume_tailor.build_tailor_state(original, tailored, notes, model, honesty)
+
+    # Carry prior decisions forward by change id.
+    prior = {c["id"]: c.get("decision", "pending") for c in prev["changes"]}
+    for c in state["changes"]:
+        if prior.get(c["id"]) in ("accepted", "rejected"):
+            c["decision"] = prior[c["id"]]
+
+    review.resume_tailor = state
+    db.commit()
+    return state
+
+
+@router.patch("/{review_id}/tailor-resume/decisions")
+def set_change_decisions(
+    review_id: UUID,
+    payload: schemas.ChangeDecisionsIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Accept/reject individual changes. The 'effective' résumé (used at export)
+    takes the original text for any rejected change."""
+    review = _get_review(review_id, current_user, db)
+    if not review.resume_tailor:
+        raise HTTPException(status_code=404, detail="Not tailored yet")
+    valid = {"accepted", "rejected", "pending"}
+    bad = {v for v in payload.decisions.values() if v not in valid}
+    if bad:
+        raise HTTPException(status_code=400, detail=f"Invalid decision(s): {', '.join(bad)}")
+
+    state = review.resume_tailor
+    for c in state["changes"]:
+        if c["id"] in payload.decisions:
+            c["decision"] = payload.decisions[c["id"]]
+    flag_modified(review, "resume_tailor")
+    db.commit()
+    return state
