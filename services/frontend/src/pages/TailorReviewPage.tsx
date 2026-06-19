@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Wand2, Loader2, Sparkles, AlertTriangle, Check, X, RefreshCw } from "lucide-react";
+import { ArrowLeft, Wand2, Loader2, Sparkles, AlertTriangle, Check, X, RefreshCw, Printer } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Textarea } from "../components/ui/textarea";
@@ -158,10 +158,15 @@ export function TailorReviewPage() {
         </div>
         {job && <span className="text-sm text-muted-foreground">— {job.title} · {job.company}</span>}
         {state && (
-          <Button variant="outline" size="sm" className="ml-auto" disabled={busy} onClick={() => tailorMut.mutate()}>
-            {tailorMut.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
-            Re-tailor from scratch
-          </Button>
+          <div className="ml-auto flex gap-2">
+            <Button variant="outline" size="sm" disabled={busy} onClick={() => tailorMut.mutate()}>
+              {tailorMut.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+              Re-tailor
+            </Button>
+            <Button size="sm" onClick={() => window.open(`/jobs/${id}/tailor/print`, "_blank", "noopener,noreferrer")}>
+              <Printer className="h-4 w-4 mr-1" /> Download PDF
+            </Button>
+          </div>
         )}
       </div>
 
