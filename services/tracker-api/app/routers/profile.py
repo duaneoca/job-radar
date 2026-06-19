@@ -7,11 +7,28 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app import models, schemas
+from app import models, resume_tailor, schemas
 from app.database import get_db
 from app.deps import get_current_user
+from app.llm import get_llm_provider
 
 router = APIRouter(prefix="/profile", tags=["profile"])
+
+
+def _active_profile(user: models.User, db: Session) -> models.Profile | None:
+    return (
+        db.query(models.Profile)
+        .filter(models.Profile.user_id == user.id, models.Profile.is_active == True)  # noqa: E712
+        .order_by(models.Profile.updated_at.desc())
+        .first()
+    )
+
+
+def _mark_resume_stale_if_changed(obj: models.Profile, updates: dict) -> None:
+    """When resume_text changes, the structured parse is out of date — flag it so
+    the next tailor re-ingests (lazy refresh)."""
+    if "resume_text" in updates and (updates["resume_text"] or "") != (obj.resume_text or ""):
+        obj.resume_structured_stale = True
 
 
 def _get_or_404(profile_id: UUID, user: models.User, db: Session) -> models.Profile:
@@ -56,7 +73,9 @@ def upsert_profile(
         .first()
     )
     if obj:
-        for field, value in payload.model_dump(exclude_unset=True).items():
+        updates = payload.model_dump(exclude_unset=True)
+        _mark_resume_stale_if_changed(obj, updates)
+        for field, value in updates.items():
             setattr(obj, field, value)
     else:
         obj = models.Profile(**payload.model_dump(), user_id=current_user.id, is_active=True)
@@ -64,6 +83,32 @@ def upsert_profile(
     db.commit()
     db.refresh(obj)
     return obj
+
+
+@router.post("/resume/ingest", response_model=schemas.ResumeIngestOut)
+def ingest_resume(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Parse the active profile's résumé text into structured JSON (stored) and
+    return it plus the derived honesty facts. Clears the stale flag. Idempotent —
+    safe to call repeatedly; uses the user's own LLM key (BYOK)."""
+    obj = _active_profile(current_user, db)
+    if not obj:
+        raise HTTPException(status_code=404, detail="No active profile found")
+
+    api_key, model = get_llm_provider(current_user.id, db)
+    structured = resume_tailor.parse_resume_text(obj.resume_text, api_key, model)
+
+    obj.resume_structured = structured.model_dump()
+    obj.resume_structured_stale = False
+    db.commit()
+
+    return schemas.ResumeIngestOut(
+        structured=structured,
+        honesty_facts=resume_tailor.derive_honesty_facts(structured),
+        stale=False,
+    )
 
 
 @router.get("/active", response_model=schemas.ProfileOut)
@@ -99,7 +144,9 @@ def update_profile(
     current_user: models.User = Depends(get_current_user),
 ):
     obj = _get_or_404(profile_id, current_user, db)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(exclude_unset=True)
+    _mark_resume_stale_if_changed(obj, updates)
+    for field, value in updates.items():
         setattr(obj, field, value)
     db.commit()
     db.refresh(obj)

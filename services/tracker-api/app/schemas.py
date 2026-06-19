@@ -311,11 +311,75 @@ class ProfileOut(ProfileBase):
     id: UUID
     user_id: UUID
     is_active: bool
+    # Résumé tailoring (Phase 1) — read-only; resume_structured is derived from
+    # resume_text via /profile/resume/ingest.
+    resume_structured: Optional[dict] = None
+    resume_structured_stale: bool = True
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
+
+
+# ── Résumé structured parse (tailoring) ───────────────────────
+
+class ResumeContact(BaseModel):
+    name: Optional[str] = None
+    location: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    links: List[str] = []
+
+
+class ResumeSkillGroup(BaseModel):
+    label: str
+    items: List[str] = []
+
+
+class ResumePhase(BaseModel):
+    label: Optional[str] = None
+    start: Optional[str] = None
+    end: Optional[str] = None
+    bullets: List[str] = []
+
+
+class ResumeExperience(BaseModel):
+    company: str
+    titles: List[str] = []
+    start: Optional[str] = None
+    end: Optional[str] = None
+    bullets: List[str] = []
+    phases: List[ResumePhase] = []
+    notable: List[str] = []
+
+
+class ResumeEducation(BaseModel):
+    degree: Optional[str] = None
+    school: Optional[str] = None
+
+
+class ResumeProject(BaseModel):
+    title: Optional[str] = None
+    bullets: List[str] = []
+
+
+class ResumeStructured(BaseModel):
+    """The canonical structured résumé — output of the ingest parse and the unit
+    of tailoring/diffing. Lenient: a parse that omits a section still validates."""
+    contact: ResumeContact = ResumeContact()
+    summary: Optional[str] = None
+    skills: List[ResumeSkillGroup] = []
+    experience: List[ResumeExperience] = []
+    education: List[ResumeEducation] = []
+    projects: List[ResumeProject] = []
+
+
+class ResumeIngestOut(BaseModel):
+    """Result of /profile/resume/ingest."""
+    structured: ResumeStructured
+    honesty_facts: dict
+    stale: bool = False
 
 
 # ── API Keys ──────────────────────────────────────────────────
