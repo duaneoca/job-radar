@@ -404,6 +404,7 @@ class RecruiterBase(BaseModel):
     name: str
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
+    title: Optional[str] = None
     employer: Optional[str] = None
     companies_represented: Optional[List[str]] = None
     linkedin_url: Optional[str] = None
@@ -425,6 +426,7 @@ class RecruiterUpdate(BaseModel):
     name: Optional[str] = None
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
+    title: Optional[str] = None
     employer: Optional[str] = None
     companies_represented: Optional[List[str]] = None
     linkedin_url: Optional[str] = None
@@ -450,10 +452,23 @@ class RecruiterJobLink(BaseModel):
 
 class RecruiterSuggestion(BaseModel):
     """A proposed recruiter parsed from an inbox recruiter_outreach email. The user
-    confirms before it becomes a Recruiter row."""
+    confirms before it becomes a Recruiter row.
+
+    Beyond the parsed sender (name/email), fields below are populated from the
+    agent's `recruiter_contact` card (signature/body extraction) when present —
+    all agent-derived and therefore untrusted (sanitized server-side; the client
+    still escapes on render and routes linkedin_url through safeHref)."""
     name: str
     email: Optional[str] = None
     email_count: int    # how many recruiter emails from this address
+    # Enriched from the agent's recruiter_contact card (all best-effort/optional)
+    phone: Optional[str] = None
+    title: Optional[str] = None
+    employer: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    type: Optional[RecruiterType] = None              # derived from is_agency
+    companies_represented: Optional[List[str]] = None  # from `represents`
+    recruiter_confidence: Optional[float] = None       # agent's extraction confidence
 
 
 # ── Admin ─────────────────────────────────────────────────────
