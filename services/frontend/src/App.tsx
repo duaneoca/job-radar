@@ -11,6 +11,7 @@ import { InboxPage } from "./pages/InboxPage";
 import { RecruitersPage } from "./pages/RecruitersPage";
 import { JobDetailPage } from "./pages/JobDetailPage";
 import { TailorReviewPage } from "./pages/TailorReviewPage";
+import { TailorPrintPage } from "./pages/TailorPrintPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { LocalAgentSetupPage } from "./pages/LocalAgentSetupPage";
 import { ProfilePage } from "./pages/ProfilePage";
@@ -101,6 +102,14 @@ export default function App() {
               <Layout>
                 <AddJobPage />
               </Layout>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/jobs/:id/tailor/print"
+          element={
+            <RequireAuth>
+              <TailorPrintPage />
             </RequireAuth>
           }
         />
