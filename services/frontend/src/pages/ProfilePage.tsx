@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Upload, Trash2, Loader2, Search } from "lucide-react";
+import { Upload, Trash2, Loader2, Search, Lock } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -50,6 +50,20 @@ Employers may expect full time in office, hybrid, or remote. Evaluate compatibil
 
 ## Scoring
 Overall score = evenly weighted average of the five ranks, rounded to one decimal.`;
+
+// The locked honesty contract, shown read-only above the editable style prompt so
+// the user sees exactly what's always enforced (the real enforcement is server-side).
+const HONESTY_CONTRACT_DISPLAY = `Always enforced — cannot be edited (here for your protection):
+• Meet-or-exceed, never inflate — a qualification may be phrased to meet/exceed a posting only when your true value already clears it (e.g. "8+ years" if you have at least 8); never claim beyond reality.
+• Never invent or fabricate skills, technologies, employers, titles, dates, durations, or certifications not in your résumé.
+• Keep factual anchors — company names, job titles, employers, and dates are not changed.
+• Preserve structure — rephrase in place; don't add or remove bullets, jobs, or sections.
+Changes that touch a factual claim are flagged for your review in the diff.`;
+
+const DEFAULT_RESUME_TAILOR_PROMPT = `Tailoring style:
+- Mirror the posting's terminology and priorities; lead each role with the experience most relevant to THIS job.
+- Prefer the posting's exact technology names where they're a true synonym for what you used.
+- Keep your voice; concise, results-first bullets. Don't pad.`;
 
 const DEFAULT_RESEARCH_PROMPT =
   `Summarize this company based on the job posting:\n1. What they do and their market position\n2. Culture and work environment signals from the posting\n3. Growth stage / stability signals\n4. Why this role could be a good fit given the candidate's background`;
@@ -579,6 +593,28 @@ function AIPromptsTab() {
           rows={8}
           value={c.interview_prep_prompt ?? DEFAULT_INTERVIEW_PREP_PROMPT}
           onChange={(e) => set("interview_prep_prompt", e.target.value || null)}
+        />
+      </div>
+
+      <Separator />
+
+      <div className="space-y-1.5">
+        <Label>Résumé tailoring</Label>
+        <p className="text-xs text-muted-foreground">
+          How the AI realigns your résumé to a specific job posting. The honesty rules below
+          are always applied and can't be edited — your style guidance layers on top.
+        </p>
+        <div className="rounded-md border border-amber-300/60 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 p-3 text-xs">
+          <div className="flex items-center gap-1.5 font-medium text-amber-800 dark:text-amber-300 mb-1">
+            <Lock className="h-3.5 w-3.5" /> Always enforced — not editable
+          </div>
+          <pre className="whitespace-pre-wrap font-sans text-amber-900/90 dark:text-amber-200/80 leading-relaxed">{HONESTY_CONTRACT_DISPLAY}</pre>
+        </div>
+        <Textarea
+          rows={6}
+          value={c.resume_tailor_prompt ?? DEFAULT_RESUME_TAILOR_PROMPT}
+          onChange={(e) => set("resume_tailor_prompt", e.target.value || null)}
+          placeholder={DEFAULT_RESUME_TAILOR_PROMPT}
         />
       </div>
 

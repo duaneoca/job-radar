@@ -270,8 +270,37 @@ export interface Criteria {
   application_templates: ApplicationTemplate[] | null;
   voice_guidelines: string | null;
   interview_prep_prompt: string | null;
+  resume_tailor_prompt: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// ─── Résumé tailoring (Phase 2) ───────────────────────────────
+export type TailorChangeType = "vocabulary" | "emphasis" | "reorder" | "factual" | "wording";
+export type TailorDecision = "pending" | "accepted" | "rejected";
+
+export interface TailorChange {
+  id: string;
+  path: string;
+  section: string;       // summary | skills | experience | education | projects
+  before: string | null;
+  after: string | null;
+  kind: string;          // modified | added | removed
+  type: TailorChangeType;
+  rationale: string;
+  decision: TailorDecision;
+}
+
+export interface TailorState {
+  original: Record<string, any>;
+  tailored: Record<string, any>;
+  changes: TailorChange[];
+  status: string;
+  model: string;
+  generated_at: string;
+  total_years: number | null;
+  flagged_count: number;
+  base_changed?: boolean;
 }
 
 export interface Profile {

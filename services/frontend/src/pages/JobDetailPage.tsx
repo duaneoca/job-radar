@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, ExternalLink, Star, Building2, MapPin, DollarSign,
   UserCheck, Users, Loader2, Calendar, Sparkles, MessageSquarePlus, Plus, AlertTriangle,
-  Clock, Send, Trash2,
+  Clock, Send, Trash2, Wand2, FileText,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -19,7 +19,7 @@ import {
 import { jobsApi, criteriaApi } from "../lib/api";
 import { formatDate, formatSalary, formatSource, scoreColor, STATUS_OPTIONS } from "../lib/utils";
 import { toast } from "../hooks/useToast";
-import type { JobReview, Criteria, ApplicationTemplate, InterviewQuestion, LinkedInConnection } from "../lib/types";
+import type { JobReview, Criteria, ApplicationTemplate, InterviewQuestion, LinkedInConnection, TailorState } from "../lib/types";
 import { useState } from "react";
 import { RefinementDrawer } from "../components/RefinementDrawer";
 import { InterviewPrepCard } from "../components/InterviewPrepCard";
@@ -115,6 +115,71 @@ function TimelineTab({ reviewId, events }: { reviewId: string; events: import(".
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Tailor résumé tab (launchpad — the workspace is the /tailor pop-out) ──────
+
+function TailorTab({ reviewId }: { reviewId: string }) {
+  const { data: state, isLoading } = useQuery<TailorState | null>({
+    queryKey: ["tailor", reviewId],
+    // 404 = not tailored yet → treat as null rather than an error.
+    queryFn: () =>
+      jobsApi.get(`/jobs/${reviewId}/tailor-resume`).then((r) => r.data).catch(() => null),
+  });
+
+  function openTailor() {
+    window.open(`/jobs/${reviewId}/tailor`, "_blank", "noopener,noreferrer");
+  }
+
+  if (isLoading) {
+    return <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
+  }
+
+  return (
+    <div className="max-w-lg space-y-4">
+      <div className="flex items-start gap-2">
+        <Wand2 className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm font-medium">Tailor your résumé to this job</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Realigns your real skills and wording to the posting — honestly. Every change is shown
+            in a side-by-side diff you approve. Opens in a new tab.
+          </p>
+        </div>
+      </div>
+
+      {state?.base_changed && (
+        <div className="flex items-start gap-2 rounded-md border border-amber-300/60 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 px-3 py-2 text-xs">
+          <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+          <span>Your résumé changed since this was tailored — re-tailor to refresh.</span>
+        </div>
+      )}
+
+      {state ? (
+        <div className="rounded-lg border bg-card p-3 space-y-2">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <FileText className="h-4 w-4 text-muted-foreground" />
+            <span className="font-medium">Tailored for this role</span>
+            <span className="text-muted-foreground">· {state.changes.length} change{state.changes.length === 1 ? "" : "s"}</span>
+            {state.flagged_count > 0 && (
+              <Badge variant="outline" className="border-amber-500/40 text-amber-700 dark:text-amber-400">
+                {state.flagged_count} flagged
+              </Badge>
+            )}
+          </div>
+          <div className="flex gap-2 pt-1">
+            <Button size="sm" onClick={openTailor}>
+              <ExternalLink className="h-4 w-4 mr-1" /> Open review
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button onClick={openTailor}>
+          <Wand2 className="h-4 w-4 mr-1" /> Open résumé tailor →
+        </Button>
+      )}
     </div>
   );
 }
@@ -552,6 +617,7 @@ export function JobDetailPage() {
           <TabsTrigger value="description">Description</TabsTrigger>
           <TabsTrigger value="research">Research</TabsTrigger>
           <TabsTrigger value="application">Application</TabsTrigger>
+          <TabsTrigger value="tailor">Tailor résumé</TabsTrigger>
           <TabsTrigger value="prep">Interview Prep</TabsTrigger>
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
           <TabsTrigger value="notes">Notes</TabsTrigger>
@@ -695,6 +761,11 @@ export function JobDetailPage() {
               </div>
             );
           })}
+        </TabsContent>
+
+        {/* ── Tailor résumé (launchpad) ── */}
+        <TabsContent value="tailor" className="mt-4">
+          <TailorTab reviewId={job.id} />
         </TabsContent>
 
         {/* ── Interview Prep ── */}
