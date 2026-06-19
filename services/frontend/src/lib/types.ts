@@ -203,6 +203,7 @@ export interface Recruiter {
   name: string;
   email: string | null;
   phone: string | null;
+  title: string | null;
   employer: string | null;
   companies_represented: string[] | null;
   linkedin_url: string | null;
@@ -219,6 +220,14 @@ export interface RecruiterSuggestion {
   name: string;
   email: string | null;
   email_count: number;
+  // Enriched from the agent's recruiter_contact card (all optional)
+  phone: string | null;
+  title: string | null;
+  employer: string | null;
+  linkedin_url: string | null;
+  type: RecruiterType | null;
+  companies_represented: string[] | null;
+  recruiter_confidence: number | null;
 }
 
 export type WorkStyle = "remote" | "hybrid" | "onsite" | "any";

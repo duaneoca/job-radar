@@ -63,7 +63,7 @@ PostgreSQL in-cluster with PVC. Alembic migrations in `services/tracker-api/alem
 - `user_job_reviews` — per-user AI scores, status, notes; FK → `jobs` with `ondelete=CASCADE`
 - `timeline_events` — FK → `user_job_reviews` with `ondelete=CASCADE`
 - `criteria`, `profiles`, `user_api_keys`, `linkedin_connections`, `recruiters`, `email_credentials`, `slack_connections` — all cascade on user delete
-- `recruiters` — per-user recruiter CRM. `user_job_reviews.recruiter_id` FK → `recruiters` with `ondelete=SET NULL` (deleting a recruiter unlinks its jobs, never deletes them). Seedable from inbox `recruiter_outreach` senders via `GET /recruiters/suggestions` (review-and-confirm; sender strings are agent-derived → treated as untrusted, C2).
+- `recruiters` — per-user recruiter CRM. `user_job_reviews.recruiter_id` FK → `recruiters` with `ondelete=SET NULL` (deleting a recruiter unlinks its jobs, never deletes them). Seedable from inbox `recruiter_outreach` senders via `GET /recruiters/suggestions` — enriched (phone/title/employer/linkedin/type/companies) from the agent's `recruiter_contact` card in `inbox_emails.raw_extracted_json` when present. All agent-derived fields are untrusted (C2): sanitized server-side (`_clean_card` — length-caps, http(s)-only linkedin), review-and-confirm, never auto-created.
 
 **Cascade rule:** deleting a `User` cascades to all their rows. Deleting a `UserJobReview` cascades to `TimelineEvent`. Deleting a `Recruiter` only nulls `user_job_reviews.recruiter_id`. The shared `jobs` row is only deleted when zero reviews reference it (handled in code, not DB FK).
 

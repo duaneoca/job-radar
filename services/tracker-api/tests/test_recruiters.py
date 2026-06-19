@@ -19,7 +19,8 @@ def _first_review_id(client) -> str:
     return client.get("/jobs").json()["items"][0]["id"]
 
 
-def _seed_recruiter_email(db, sender, *, n=1, message_prefix="m"):
+def _seed_recruiter_email(db, sender, *, n=1, message_prefix="m", card=None):
+    raw = {"recruiter_contact": card} if card is not None else None
     for i in range(n):
         db.add(models.InboxEmail(
             user_id=TEST_USER_ID,
@@ -29,6 +30,7 @@ def _seed_recruiter_email(db, sender, *, n=1, message_prefix="m"):
             received_at=datetime.now(timezone.utc),
             category=models.EmailCategory.RECRUITER_OUTREACH,
             confidence=0.9,
+            raw_extracted_json=raw,
             status=models.EmailStatus.PROCESSED,
         ))
     db.commit()
@@ -153,3 +155,80 @@ def test_suggestions_ignore_non_recruiter_emails(client, db):
     ))
     db.commit()
     assert client.get("/recruiters/suggestions").json() == []
+
+
+# ── Suggestions enriched from the agent's recruiter_contact card ──────────────
+
+FULL_CARD = {
+    "name": "Nishant Vij", "email": "nishant.vij@testingxperts.com",
+    "phone": "212 389 9503", "employer": "TestingXperts",
+    "title": "Staffing Specialist", "is_agency": True,
+    "linkedin_url": "https://www.linkedin.com/in/nishantvij",
+    "represents": ["Acme Corp"], "recruiter_confidence": 0.95,
+}
+
+
+def test_suggestion_enriched_from_card(client, db):
+    _seed_recruiter_email(db, "Nishant Vij <nishant.vij@testingxperts.com>", card=FULL_CARD)
+    s = client.get("/recruiters/suggestions").json()[0]
+    assert s["name"] == "Nishant Vij"
+    assert s["email"] == "nishant.vij@testingxperts.com"
+    assert s["phone"] == "212 389 9503"
+    assert s["title"] == "Staffing Specialist"
+    assert s["employer"] == "TestingXperts"
+    assert s["linkedin_url"] == "https://www.linkedin.com/in/nishantvij"
+    assert s["type"] == "agency"                       # is_agency True
+    assert s["companies_represented"] == ["Acme Corp"]
+    assert s["recruiter_confidence"] == 0.95
+
+
+def test_is_agency_false_maps_in_house(client, db):
+    _seed_recruiter_email(db, "ip@acme.com", card={"name": "IP", "email": "ip@acme.com", "is_agency": False})
+    assert client.get("/recruiters/suggestions").json()[0]["type"] == "in_house"
+
+
+def test_is_agency_absent_leaves_type_null(client, db):
+    _seed_recruiter_email(db, "x@y.com", card={"name": "X", "email": "x@y.com"})
+    assert client.get("/recruiters/suggestions").json()[0]["type"] is None
+
+
+def test_partial_card_omits_missing(client, db):
+    """A card with only some fields (the agent omits unknowns) surfaces just those."""
+    _seed_recruiter_email(db, "Jo <jo@firm.com>",
+                          card={"name": "Jo", "email": "jo@firm.com", "employer": "Firm", "is_agency": True})
+    s = client.get("/recruiters/suggestions").json()[0]
+    assert s["employer"] == "Firm" and s["type"] == "agency"
+    assert s["phone"] is None and s["title"] is None and s["linkedin_url"] is None
+
+
+def test_unsafe_linkedin_url_dropped(client, db):
+    _seed_recruiter_email(db, "bad@firm.com",
+                          card={"name": "Bad", "email": "bad@firm.com", "linkedin_url": "javascript:alert(1)"})
+    assert client.get("/recruiters/suggestions").json()[0]["linkedin_url"] is None
+
+
+def test_card_email_preferred_for_dedup(client, db):
+    """Card email keys the suggestion; tracking that email excludes it."""
+    _seed_recruiter_email(db, "Display Name <noreply@bounce.com>",
+                          card={"name": "Real", "email": "real@agency.com"})
+    assert client.get("/recruiters/suggestions").json()[0]["email"] == "real@agency.com"
+    client.post("/recruiters", json={"name": "Real", "email": "real@agency.com"})
+    assert client.get("/recruiters/suggestions").json() == []
+
+
+def test_most_complete_card_wins(client, db):
+    addr = "Pat <pat@agency.com>"
+    _seed_recruiter_email(db, addr, message_prefix="thin", card={"name": "Pat", "email": "pat@agency.com"})
+    _seed_recruiter_email(db, addr, message_prefix="rich",
+                          card={"name": "Pat", "email": "pat@agency.com", "phone": "555", "title": "Recruiter"})
+    s = client.get("/recruiters/suggestions").json()[0]
+    assert s["email_count"] == 2
+    assert s["phone"] == "555" and s["title"] == "Recruiter"
+
+
+def test_create_recruiter_with_title(client):
+    """The title field round-trips through create + list (new column)."""
+    r = client.post("/recruiters", json={"name": "T", "title": "Lead Recruiter"})
+    assert r.status_code == 201
+    assert r.json()["title"] == "Lead Recruiter"
+    assert client.get("/recruiters").json()[0]["title"] == "Lead Recruiter"

@@ -330,6 +330,7 @@ class Recruiter(Base):
     name         = Column(String(200), nullable=False)
     email        = Column(String(255), nullable=True, index=True)
     phone        = Column(String(50), nullable=True)
+    title        = Column(String(200), nullable=True)            # e.g. "Senior Technical Recruiter"
     employer     = Column(String(200), nullable=True)            # their own firm
     companies_represented = Column(JSON, nullable=True)          # list[str] — agency clients
     linkedin_url = Column(String(500), nullable=True)

@@ -2,15 +2,17 @@
 Recruiter CRM router — track recruiters you've connected with, link them to the
 jobs they sourced, and seed entries from inbox recruiter_outreach emails.
 
-Security note (C2): inbox sender strings are agent-derived and therefore
-attacker-controlled. Suggestions only ever surface a parsed display name + email
-address (both length-capped); everything else is user-entered. Responses are JSON
-and rendered by a React client that escapes text by default — but the frontend
-must still route linkedin_url through its safeHref guard before using it as a link.
+Security note (C2): everything sourced from inbox emails is agent-derived and
+therefore attacker-controlled — both the parsed sender string AND the agent's
+`recruiter_contact` card (signature/body extraction). We sanitize server-side
+(length-cap every field, allowlist linkedin_url to http/https, drop markup-y
+values) and never auto-create — suggestions are review-and-confirm. The React
+client also escapes on render and routes linkedin_url through safeHref.
 """
 
 from email.utils import parseaddr
 from typing import Optional
+from urllib.parse import urlparse
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -24,6 +26,70 @@ router = APIRouter(prefix="/recruiters", tags=["recruiters"])
 
 _NAME_MAX = 200
 _EMAIL_MAX = 255
+_PHONE_MAX = 50
+_FIELD_MAX = 200          # title / employer
+_URL_MAX = 500
+_COMPANIES_MAX = 20       # cap list length to bound payload
+
+
+def _cap(v, n: int) -> Optional[str]:
+    """Trim a value to a clean, length-capped string, or None."""
+    if not isinstance(v, str):
+        return None
+    s = v.strip()
+    return s[:n] if s else None
+
+
+def _safe_url(v) -> Optional[str]:
+    """Allow only absolute http(s) URLs (mirrors the frontend safeHref guard)."""
+    s = _cap(v, _URL_MAX)
+    if not s:
+        return None
+    try:
+        return s if urlparse(s).scheme in ("http", "https") else None
+    except ValueError:
+        return None
+
+
+def _clean_card(card) -> dict:
+    """Sanitize the agent's `recruiter_contact` card into our CRM field shape.
+
+    Untrusted input — every field is capped/validated; unknown keys ignored.
+    Maps `is_agency` → type and `represents` → companies_represented."""
+    if not isinstance(card, dict):
+        return {}
+    out: dict = {}
+    out["name"] = _cap(card.get("name"), _NAME_MAX)
+    email = _cap(card.get("email"), _EMAIL_MAX)
+    out["email"] = email.lower() if email and "@" in email else None
+    out["phone"] = _cap(card.get("phone"), _PHONE_MAX)
+    out["title"] = _cap(card.get("title"), _FIELD_MAX)
+    out["employer"] = _cap(card.get("employer"), _FIELD_MAX)
+    out["linkedin_url"] = _safe_url(card.get("linkedin_url"))
+
+    is_agency = card.get("is_agency")
+    out["type"] = "agency" if is_agency is True else "in_house" if is_agency is False else None
+
+    represents = card.get("represents")
+    if isinstance(represents, list):
+        cleaned = [c for c in (_cap(x, _FIELD_MAX) for x in represents) if c][:_COMPANIES_MAX]
+        out["companies_represented"] = cleaned or None
+    else:
+        out["companies_represented"] = None
+
+    conf = card.get("recruiter_confidence")
+    out["recruiter_confidence"] = float(conf) if isinstance(conf, (int, float)) else None
+    return {k: v for k, v in out.items() if v is not None}
+
+
+# Fields that count toward "completeness" when picking the best card for a sender.
+_CARD_FIELDS = ("phone", "title", "employer", "linkedin_url", "type", "companies_represented")
+
+
+def _card_score(card: dict) -> tuple[int, float]:
+    """More populated fields wins; confidence breaks ties."""
+    filled = sum(1 for f in _CARD_FIELDS if card.get(f))
+    return (filled, card.get("recruiter_confidence") or 0.0)
 
 
 def _get_recruiter_or_404(recruiter_id: UUID, user: models.User, db: Session) -> models.Recruiter:
@@ -64,9 +130,11 @@ def recruiter_suggestions(
     current_user: models.User = Depends(get_current_user),
 ):
     """Distinct senders of recruiter_outreach inbox emails that aren't already
-    tracked, most-frequent first. The user confirms one to create a recruiter."""
+    tracked, most-frequent first. Enriched with the agent's `recruiter_contact`
+    card (phone/title/employer/linkedin/type/companies) when the agent extracted
+    one. The user confirms one to create a recruiter."""
     rows = (
-        db.query(models.InboxEmail.sender)
+        db.query(models.InboxEmail.sender, models.InboxEmail.raw_extracted_json)
         .filter(
             models.InboxEmail.user_id == current_user.id,
             models.InboxEmail.category == models.EmailCategory.RECRUITER_OUTREACH,
@@ -83,23 +151,41 @@ def recruiter_suggestions(
         if e
     }
 
-    # Group parsed senders by email address.
+    # Group by email address, merging the best card across this sender's emails.
     by_email: dict[str, dict] = {}
-    for (sender,) in rows:
-        name, email = parseaddr(sender or "")
-        email = (email or "").strip().lower()[:_EMAIL_MAX]
+    for sender, raw in rows:
+        card = _clean_card(raw.get("recruiter_contact")) if isinstance(raw, dict) else {}
+
+        parsed_name, parsed_email = parseaddr(sender or "")
+        # Prefer the card's reply-to address, fall back to the parsed sender.
+        email = (card.get("email") or parsed_email or "").strip().lower()[:_EMAIL_MAX]
         if not email or "@" not in email or email in existing:
             continue
-        name = (name or "").strip()[:_NAME_MAX] or email.split("@")[0]
-        slot = by_email.setdefault(email, {"name": name, "email": email, "count": 0})
+
+        name = (card.get("name") or (parsed_name or "").strip() or email.split("@")[0])[:_NAME_MAX]
+        slot = by_email.get(email)
+        if slot is None:
+            slot = {"name": name, "email": email, "count": 0, "card": {}}
+            by_email[email] = slot
         slot["count"] += 1
-        # Prefer a real display name over the email-local fallback.
         if name and "@" not in slot["name"] and len(name) > len(slot["name"]):
             slot["name"] = name
+        # Keep the more complete card (more fields wins; ties broken by confidence).
+        if _card_score(card) > _card_score(slot["card"]):
+            slot["card"] = card
 
     suggestions = sorted(by_email.values(), key=lambda s: s["count"], reverse=True)
     return [
-        schemas.RecruiterSuggestion(name=s["name"], email=s["email"], email_count=s["count"])
+        schemas.RecruiterSuggestion(
+            name=s["name"], email=s["email"], email_count=s["count"],
+            phone=s["card"].get("phone"),
+            title=s["card"].get("title"),
+            employer=s["card"].get("employer"),
+            linkedin_url=s["card"].get("linkedin_url"),
+            type=s["card"].get("type"),
+            companies_represented=s["card"].get("companies_represented"),
+            recruiter_confidence=s["card"].get("recruiter_confidence"),
+        )
         for s in suggestions
     ]
 

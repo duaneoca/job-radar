@@ -47,23 +47,39 @@ function statusLabel(s: RecruiterStatus) {
 
 // Blank draft for the "Add recruiter" form.
 type Draft = {
-  name: string; email: string; phone: string; employer: string;
+  name: string; email: string; phone: string; title: string; employer: string;
   companies_represented: string;   // comma-separated in the form
   linkedin_url: string; type: RecruiterType | ""; status: RecruiterStatus;
   last_contacted: string; notes: string;
 };
 
 const EMPTY_DRAFT: Draft = {
-  name: "", email: "", phone: "", employer: "", companies_represented: "",
+  name: "", email: "", phone: "", title: "", employer: "", companies_represented: "",
   linkedin_url: "", type: "", status: "active", last_contacted: "", notes: "",
 };
 
 function toDraft(r: Recruiter): Draft {
   return {
-    name: r.name, email: r.email ?? "", phone: r.phone ?? "", employer: r.employer ?? "",
+    name: r.name, email: r.email ?? "", phone: r.phone ?? "", title: r.title ?? "",
+    employer: r.employer ?? "",
     companies_represented: (r.companies_represented ?? []).join(", "),
     linkedin_url: r.linkedin_url ?? "", type: r.type ?? "", status: r.status,
     last_contacted: r.last_contacted ?? "", notes: r.notes ?? "",
+  };
+}
+
+// Pre-fill a draft from an inbox suggestion (the agent's extracted card).
+function draftFromSuggestion(s: RecruiterSuggestion): Draft {
+  return {
+    ...EMPTY_DRAFT,
+    name: s.name,
+    email: s.email ?? "",
+    phone: s.phone ?? "",
+    title: s.title ?? "",
+    employer: s.employer ?? "",
+    companies_represented: (s.companies_represented ?? []).join(", "),
+    linkedin_url: s.linkedin_url ?? "",
+    type: s.type ?? "",
   };
 }
 
@@ -74,6 +90,7 @@ function toPayload(d: Draft) {
     name: d.name.trim(),
     email: clean(d.email),
     phone: clean(d.phone),
+    title: clean(d.title),
     employer: clean(d.employer),
     companies_represented: d.companies_represented
       .split(",").map((c) => c.trim()).filter(Boolean),
@@ -209,6 +226,10 @@ function RecruiterSheet({
             </Field>
           </div>
 
+          <Field label="Title">
+            <Input value={form.title} onChange={(e) => patch({ title: e.target.value })} placeholder="Senior Technical Recruiter" />
+          </Field>
+
           <div className="grid grid-cols-2 gap-3">
             <Field label="Type">
               <Select value={form.type || "none"} onValueChange={(v) => patch({ type: v === "none" ? "" : v as RecruiterType })}>
@@ -337,9 +358,10 @@ function RecruiterCard({ r, onEdit, onDelete }: { r: Recruiter; onEdit: () => vo
             <Badge variant="outline" className={STATUS_TONE[r.status]}>{statusLabel(r.status)}</Badge>
             {r.type && <Badge variant="secondary" className="text-[10px]">{r.type === "agency" ? "Agency" : "In-house"}</Badge>}
           </div>
-          {r.employer && (
+          {(r.title || r.employer) && (
             <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-              <Building2 className="h-3 w-3" /> {r.employer}
+              <Building2 className="h-3 w-3 shrink-0" />
+              <span className="truncate">{[r.title, r.employer].filter(Boolean).join(" · ")}</span>
             </p>
           )}
         </div>
@@ -427,7 +449,7 @@ export function RecruitersPage() {
   });
 
   function addFromSuggestion(s: RecruiterSuggestion) {
-    setEditing({ recruiter: null, draft: { ...EMPTY_DRAFT, name: s.name, email: s.email ?? "" } });
+    setEditing({ recruiter: null, draft: draftFromSuggestion(s) });
   }
 
   return (
@@ -457,10 +479,12 @@ export function RecruitersPage() {
                 key={s.email ?? s.name}
                 type="button"
                 onClick={() => addFromSuggestion(s)}
+                title={[s.title, s.employer, s.email].filter(Boolean).join(" · ") || undefined}
                 className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-xs hover:bg-accent/50"
               >
                 <Plus className="h-3 w-3" />
                 <span className="font-medium">{s.name}</span>
+                {s.employer && <span className="text-muted-foreground truncate max-w-[120px]">· {s.employer}</span>}
                 {s.email_count > 1 && <span className="text-muted-foreground">×{s.email_count}</span>}
               </button>
             ))}
