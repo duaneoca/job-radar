@@ -288,6 +288,7 @@ export interface TailorChange {
   kind: string;          // modified | added | removed
   type: TailorChangeType;
   rationale: string;
+  trigger?: string;      // job-posting phrase that motivated the change
   decision: TailorDecision;
 }
 
