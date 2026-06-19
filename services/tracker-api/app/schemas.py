@@ -255,6 +255,7 @@ class CriteriaBase(BaseModel):
     application_templates: Optional[List[dict]] = None  # [{label, prompt}]
     voice_guidelines: Optional[str] = None
     interview_prep_prompt: Optional[str] = None
+    resume_tailor_prompt: Optional[str] = None   # editable style prompt (honesty core is server-side)
     # Legacy fields — preserved in DB, no longer shown in UI
     required_skills: Optional[List[str]] = None
     nice_to_have_skills: Optional[List[str]] = None
@@ -380,6 +381,14 @@ class ResumeIngestOut(BaseModel):
     structured: ResumeStructured
     honesty_facts: dict
     stale: bool = False
+
+
+class TailorRefineIn(BaseModel):
+    instruction: str   # "emphasize cloud architecture; leave the summary alone"
+
+
+class ChangeDecisionsIn(BaseModel):
+    decisions: dict[str, str]   # {change_id: "accepted" | "rejected" | "pending"}
 
 
 # ── API Keys ──────────────────────────────────────────────────

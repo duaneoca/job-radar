@@ -185,6 +185,9 @@ class UserJobReview(Base):
     research_summary     = Column(Text, nullable=True)
     application_answers  = Column(JSON, nullable=True)  # {str(template_idx): answer}
     interview_questions  = Column(JSON, nullable=True)  # [{id, category, question, coaching, story_refs, notes}]
+    # Per-job tailored résumé (Phase 2): {original, tailored, changes[], status,
+    # model, generated_at, total_years}. Snapshot — not mutated when the base résumé changes.
+    resume_tailor        = Column(JSON, nullable=True)
 
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -237,6 +240,7 @@ class Criteria(Base):
     application_templates = Column(JSON, nullable=True)  # [{label, prompt}]
     voice_guidelines     = Column(Text, nullable=True)
     interview_prep_prompt = Column(Text, nullable=True)
+    resume_tailor_prompt  = Column(Text, nullable=True)  # editable style prompt (honesty core is server-side, not here)
     # Legacy columns preserved for data migration
     required_skills      = Column(JSON, nullable=True)
     preferred_skills     = Column(JSON, nullable=True)
