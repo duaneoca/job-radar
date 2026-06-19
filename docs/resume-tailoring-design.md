@@ -161,15 +161,11 @@ An admin then builds a matching React template (using the attached file purely a
 reference) and adds it to the shared library. This is the codified path to bespoke looks
 without per-user layout code.
 
-**Address is config-driven** — a `support_email` setting (the `mailto:` on the template
-page reads it), not hardcoded. **Important caveat (verified via code + OpenBrain):** AWS SES
-is set up as a **domain identity** for `job-radar.net`, which authorizes *sending* as any
-`@job-radar.net` address (e.g. `admin@job-radar.net`) — but that's **send-only**. Receiving
-inbound mail at `admin@job-radar.net` needs a separate path (MX → mailbox/Workspace, or an
-SES inbound rule), which **is not configured in this repo**. So before wiring the note to
-`admin@job-radar.net`, confirm that inbox actually *receives*. A known-good fallback that
-already exists in config is `admin_notify_email` (currently `duaneo@duanesworld.org`, where
-new-account alerts go).
+**Address:** `admin@job-radar.net` (**confirmed receiving** — MX records were configured at
+domain registration; mail lands in the owner's inbox). Note the inbound path is separate
+from AWS SES, which is only a *sending* domain identity for `job-radar.net` — so this is
+intentionally a config-driven `support_email` setting (the `mailto:` on the template page
+reads it), defaulting to `admin@job-radar.net`, not a hardcode.
 
 ### Export = print-to-PDF (no server PDF engine)
 The styled HTML page **is** the PDF, via the browser's print (`@media print` / `@page`).
