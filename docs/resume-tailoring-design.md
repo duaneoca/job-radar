@@ -1,6 +1,7 @@
 # Résumé Tailoring — Design
 
-**Status:** design, pre-build (validated with prototypes). Awaiting go-ahead to implement.
+**Status:** design, pre-build (validated with prototypes); key decisions resolved (§14).
+Awaiting go-ahead to implement.
 **Owner:** Duane. **Last updated:** 2026-06-19.
 
 ---
@@ -90,10 +91,20 @@ the tailored **JSON** is stored per job and rendered on demand.
 
 ---
 
-## 5. Ingest (generalized, multi-user-safe)
+## 5. Ingest (text-only, multi-user-safe)
 
-Any résumé (`.docx` / PDF / pasted text) → the **same structured JSON schema** via one LLM
-parse. This is the only per-user step and it generalizes to anyone.
+**Input is the plain-text résumé only** (`Profile.resume_text`) — no `.docx`/PDF parsing.
+This eliminates layout misinterpretation; the text is parsed into the **structured JSON
+schema** via one LLM call. This is the only per-user content step and it generalizes to
+anyone. (A user's `.docx` is used *only* as a visual reference when an admin builds a
+matching template — see §7 — never as runtime input.)
+
+**Refresh on edit.** `resume_text` is the source of truth; `resume_structured` is derived.
+Editing the text marks the structured JSON **stale**; it is re-parsed lazily (on the next
+tailor, or via an explicit "re-sync" button) to avoid spending BYOK tokens on every keystroke
+of editing. **Per-job tailored copies are snapshots** — if the base résumé changes we do
+**not** mutate them; they are flagged *"based on a previous résumé version — regenerate to
+refresh."*
 
 ```jsonc
 {
@@ -113,8 +124,6 @@ parse. This is the only per-user step and it generalizes to anyone.
 
 - **Honesty facts** (total years overall and per-skill, true titles/dates) are *derived*
   from the real dates so the tailor step has ground truth to check the contract against.
-- Source format (Duane's is a clean, Claude-authored `.docx`) seeds **content**; it does
-  **not** become runtime layout — see §7.
 
 ---
 
@@ -145,6 +154,14 @@ Validated starting library (prototyped against Duane's real content):
   **One-page design:** a full-bleed colored sidebar can't continue cleanly onto a second
   printed page. **Selection rule: sidebar ⇒ 1 page; single-column ⇒ any length.**
 
+Start with **two** templates; the library can grow. The template page carries a static
+note for users who want their own look:
+> *"Want a template shaped like your own résumé? Email \<admin address\> and attach it."*
+An admin then builds a matching React template (using the attached file purely as a visual
+reference) and adds it to the shared library. This is the codified path to bespoke looks
+without per-user layout code. (Admin/support address comes from config, e.g. the existing
+`ADMIN_EMAIL` / a support alias.)
+
 ### Export = print-to-PDF (no server PDF engine)
 The styled HTML page **is** the PDF, via the browser's print (`@media print` / `@page`).
 No WeasyPrint/LibreOffice in the cluster; rendering is client-side and inherently
@@ -160,12 +177,27 @@ multi-user. Validated print rules:
 - `print-color-adjust: exact` for colored backgrounds (Modern sidebar) — and the user must
   enable "Background graphics" in the print dialog.
 
-### Pagination upgrade (V2): Paged.js
-Pure CSS handles clean 1–2 page résumés. For **surgical** control ("keep *this section*
-whole / on page 1", a true paged preview, "find the smallest nudge automatically"), add
-**Paged.js** — a client-side CSS Paged Media polyfill that splits content into real page
-boxes. Keeps the no-server-PDF property. Ladder: (1) `@page` + keep-together + autofit →
-(2) Paged.js → (3) server renderer only if ever needed (not expected).
+### Pagination: Paged.js (adopted)
+**Decision:** build on **Paged.js** from the start — pure CSS was immediately fiddly on
+real résumés, and getting the look right matters. Paged.js is a client-side CSS Paged Media
+polyfill that splits content into **real page boxes**, so we get a true paged preview,
+reliable break rules, and surgical control. It keeps the no-server-PDF property. The
+`@page` margins + keep-together rules + autofit still apply *within* it.
+
+### Manual page breaks (draggable)
+Because export is browser-print with **no post-export editing** (§3 of the user's
+decisions), the front end must let the user get breaks exactly right. With Paged.js this is
+clean:
+- Every block (section / entry / bullet) gets a **stable id**.
+- A draggable break handle **snaps to the gaps between blocks** — you can't cleanly break
+  mid-paragraph, and snapping to a logical boundary *is* the intent. Dropping it sets
+  `break-before: page` on that block; Paged.js re-flows and the rest moves to the next page
+  (a clean break even if it lands ¾ down a page).
+- Manual breaks are stored per tailored résumé as a small list (`force_break_before:
+  [blockId, …]`), and are removable.
+- **Interaction with autofit:** manual breaks take precedence (they define *where* pages
+  split); autofit may still scale the font within the resulting page count. "Auto-fit" and
+  "manual breaks" are presented as complementary, not competing.
 
 ---
 
@@ -246,10 +278,11 @@ click-to-scroll-and-highlight both panes. V2 = merge-tool connector lines.
 
 1. **Ingest + structured parse + honesty facts** (foundation).
 2. **Tailor + diff review** (the value — all text, no PDF yet).
-3. **Template render → print-to-PDF** (Classic + Modern; `@page`/keep-together/autofit).
-4. **Per-user knobs** + live preview + "fits page 1" readout.
-5. **(V2)** Paged.js for surgical pagination; accept/reject connector lines; optional
-   `.docx` export.
+3. **Template render via Paged.js → print-to-PDF** (Classic + Modern; `@page`/keep-together/
+   autofit within Paged.js). PDF-only (browser print).
+4. **Per-user knobs** + live preview + "fits page 1" readout + **draggable manual breaks**.
+5. **(later)** more templates via the admin-request flow; accept/reject connector lines in
+   the diff middle column.
 
 The riskiest/most-valuable part (honest tailoring + auditable diff) is usable before the
 pixel-level pagination work is finalized.
@@ -270,10 +303,16 @@ rendering + measuring in a real browser:
 
 ---
 
-## 14. Open questions (to resolve before build)
+## 14. Resolved decisions (2026-06-19)
 
-1. Number of templates for v1 — ship Classic only, or Classic + Modern?
-2. Adopt **Paged.js** in phase 3, or start pure-CSS and add it only if pagination proves
-   fiddly?
-3. `.docx` export alongside PDF in v1, or PDF-only?
-4. Confirm the knob set for v1 (font, density, margin, accent, autofit mode).
+1. **Templates:** start with **two** (Classic + Modern); library grows via the admin
+   custom-template request flow (§7).
+2. **Pagination:** **adopt Paged.js from the start** — getting the look right matters and
+   pure CSS was immediately fiddly on a real résumé.
+3. **Export:** **PDF via the browser's print** only (no `.docx`). Trade-off accepted: no
+   post-export tweaking, so the **front end must get it right** (autofit, knobs, draggable
+   breaks).
+4. **Knobs (v1):** font size, density, margin, accent, autofit mode — **plus the draggable
+   manual page-break bar** (§7).
+5. **Input:** **text-only** (`resume_text`); structured JSON re-parsed on edit (lazy);
+   tailored copies are snapshots flagged stale when the base changes (§5).
