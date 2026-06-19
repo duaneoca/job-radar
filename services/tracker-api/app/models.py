@@ -270,6 +270,12 @@ class Profile(Base):
     extra_context      = Column(Text, nullable=True)
     career_stories     = Column(JSON, nullable=True)  # [{title, content}]
 
+    # Résumé tailoring (Phase 1): structured parse of resume_text + freshness flag.
+    # resume_structured is the parsed sections JSON; stale=True means resume_text
+    # changed since the last parse (re-ingest lazily on next tailor).
+    resume_structured       = Column(JSON, nullable=True)
+    resume_structured_stale = Column(Boolean, nullable=False, default=True)
+
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
