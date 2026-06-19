@@ -100,11 +100,11 @@ anyone. (A user's `.docx` is used *only* as a visual reference when an admin bui
 matching template — see §7 — never as runtime input.)
 
 **Refresh on edit.** `resume_text` is the source of truth; `resume_structured` is derived.
-Editing the text marks the structured JSON **stale**; it is re-parsed lazily (on the next
-tailor, or via an explicit "re-sync" button) to avoid spending BYOK tokens on every keystroke
-of editing. **Per-job tailored copies are snapshots** — if the base résumé changes we do
-**not** mutate them; they are flagged *"based on a previous résumé version — regenerate to
-refresh."*
+The existing **"Save résumé"** button on the Resume tab (it enables when the text is edited)
+is the hook: saving **marks `resume_structured` stale** and re-parses it (lazily — on the
+next tailor, to avoid spending BYOK tokens on every save). **Per-job tailored copies are
+snapshots** — if the base résumé changes we do **not** mutate them; they are flagged
+*"based on a previous résumé version — regenerate to refresh."*
 
 ```jsonc
 {
@@ -156,11 +156,20 @@ Validated starting library (prototyped against Duane's real content):
 
 Start with **two** templates; the library can grow. The template page carries a static
 note for users who want their own look:
-> *"Want a template shaped like your own résumé? Email \<admin address\> and attach it."*
+> *"Want a template shaped like your own résumé? Email \<support address\> and attach it."*
 An admin then builds a matching React template (using the attached file purely as a visual
 reference) and adds it to the shared library. This is the codified path to bespoke looks
-without per-user layout code. (Admin/support address comes from config, e.g. the existing
-`ADMIN_EMAIL` / a support alias.)
+without per-user layout code.
+
+**Address is config-driven** — a `support_email` setting (the `mailto:` on the template
+page reads it), not hardcoded. **Important caveat (verified via code + OpenBrain):** AWS SES
+is set up as a **domain identity** for `job-radar.net`, which authorizes *sending* as any
+`@job-radar.net` address (e.g. `admin@job-radar.net`) — but that's **send-only**. Receiving
+inbound mail at `admin@job-radar.net` needs a separate path (MX → mailbox/Workspace, or an
+SES inbound rule), which **is not configured in this repo**. So before wiring the note to
+`admin@job-radar.net`, confirm that inbox actually *receives*. A known-good fallback that
+already exists in config is `admin_notify_email` (currently `duaneo@duanesworld.org`, where
+new-account alerts go).
 
 ### Export = print-to-PDF (no server PDF engine)
 The styled HTML page **is** the PDF, via the browser's print (`@media print` / `@page`).
