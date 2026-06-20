@@ -187,10 +187,17 @@ export function TailorReviewPage() {
       if (!el) continue;
       found = true;
       el.classList.add("rt-highlight");   // stays until another change is located
-      // Align the element to the change card's vertical position (fallback: 1/4 down).
+      // Only scroll if the element isn't already comfortably in view — otherwise
+      // aligning a near-top change to the card would push the résumé's top lines
+      // off-screen. When we do scroll, align to the card's vertical position.
       const cRect = container.getBoundingClientRect();
-      const target = anchorTop ?? cRect.top + cRect.height * 0.25;
-      container.scrollTo({ top: container.scrollTop + (el.getBoundingClientRect().top - target), behavior: "smooth" });
+      const eRect = el.getBoundingClientRect();
+      const pad = 12;
+      const fullyVisible = eRect.top >= cRect.top + pad && eRect.bottom <= cRect.bottom - pad;
+      if (!fullyVisible) {
+        const target = Math.min(Math.max(anchorTop ?? cRect.top + cRect.height * 0.25, cRect.top + pad), cRect.bottom - pad);
+        container.scrollTo({ top: container.scrollTop + (eRect.top - target), behavior: "smooth" });
+      }
     }
     if (!found) toast({ title: "Couldn't locate that change in the résumé" });
   }
