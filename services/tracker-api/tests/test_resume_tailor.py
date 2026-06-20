@@ -69,6 +69,21 @@ def test_title_and_date_changes_are_factual():
     assert by_path["experience/0/end"]["type"] == "factual"
 
 
+def test_tailor_tolerates_surrounding_text(monkeypatch):
+    """Models (esp. Haiku on refine) sometimes wrap the JSON in prose / fences /
+    a trailing note. Parsing must extract the first object and ignore the rest."""
+    import json as _json
+    payload = _json.dumps({"tailored": TAILORED, "notes": NOTES})
+    monkeypatch.setattr(
+        resume_tailor, "llm_complete",
+        lambda **k: "Sure, here you go:\n```json\n" + payload + "\n```\nHope that helps!",
+    )
+    tailored, notes = resume_tailor.tailor_resume(
+        _s(ORIGINAL), {"total_years_experience": 10}, "job", "style", "k", "m")
+    assert tailored.summary == "Built scalable data pipelines."
+    assert notes == NOTES
+
+
 def test_build_state_counts_flagged():
     t = {**ORIGINAL, "experience": [{**ORIGINAL["experience"][0], "titles": ["Senior Engineer"]}]}
     state = resume_tailor.build_tailor_state(_s(ORIGINAL), _s(t), [], "model", {"total_years_experience": 10})

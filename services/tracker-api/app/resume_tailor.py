@@ -19,6 +19,25 @@ from app.llm import llm_complete
 
 logger = logging.getLogger(__name__)
 
+
+def _loads_json_object(raw: str) -> dict:
+    """Parse the first JSON object from a model response, tolerating markdown
+    fences, leading prose, and TRAILING text. Some models (esp. Haiku on the
+    refine prompt) append an explanation after the JSON, which plain json.loads
+    rejects with 'Extra data'. We strip fences, jump to the first '{', and use
+    raw_decode so anything after the object is ignored."""
+    s = raw.strip()
+    if s.startswith("```"):
+        s = s.split("\n", 1)[-1]
+        if s.endswith("```"):
+            s = s.rsplit("```", 1)[0]
+        s = s.strip()
+    start = s.find("{")
+    if start == -1:
+        raise json.JSONDecodeError("no JSON object found", s, 0)
+    obj, _ = json.JSONDecoder().raw_decode(s[start:])
+    return obj
+
 # The structure we ask the model to emit. Lenient — omit unknown fields rather
 # than invent. No fabrication: only what's present in the résumé text.
 DEFAULT_RESUME_PARSE_PROMPT = """You are a precise résumé parser. Convert the résumé text below into JSON with EXACTLY this shape:
@@ -60,15 +79,8 @@ def parse_resume_text(resume_text: str, api_key: str, model: str) -> schemas.Res
         max_tokens=4096,
     ).strip()
 
-    # Strip markdown code fences if the model added them.
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[-1]
-        if raw.endswith("```"):
-            raw = raw.rsplit("```", 1)[0]
-        raw = raw.strip()
-
     try:
-        data = json.loads(raw)
+        data = _loads_json_object(raw)
     except json.JSONDecodeError as e:
         logger.error("Résumé parse returned malformed JSON: %s\nRaw: %s", e, raw[:500])
         raise HTTPException(status_code=502, detail="AI returned malformed JSON parsing your résumé. Try again.")
@@ -202,14 +214,8 @@ def tailor_resume(structured, honesty_facts, job_text, style_prompt, api_key, mo
         max_tokens=8192,
     ).strip()
 
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[-1]
-        if raw.endswith("```"):
-            raw = raw.rsplit("```", 1)[0]
-        raw = raw.strip()
-
     try:
-        data = json.loads(raw)
+        data = _loads_json_object(raw)
     except json.JSONDecodeError as e:
         logger.error("Tailor returned malformed JSON: %s\nRaw: %s", e, raw[:500])
         raise HTTPException(status_code=502, detail="AI returned malformed JSON tailoring your résumé. Try again.")
