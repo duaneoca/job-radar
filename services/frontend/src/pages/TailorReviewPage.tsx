@@ -81,11 +81,12 @@ function ResumeView({ data }: { data: any }) {
 // ─── Change card ────────────────────────────────────────────────────────────────
 
 function ChangeCard({ c, onDecide, onLocate, busy }: {
-  c: TailorChange; onDecide: (id: string, d: TailorDecision) => void; onLocate: (path: string) => void; busy: boolean;
+  c: TailorChange; onDecide: (id: string, d: TailorDecision) => void; onLocate: (path: string, anchorTop: number) => void; busy: boolean;
 }) {
   const flagged = c.type === "factual";
+  const cardRef = useRef<HTMLDivElement>(null);
   return (
-    <div className={cn(
+    <div ref={cardRef} className={cn(
       "rounded-md border p-2.5 text-xs space-y-1.5",
       flagged && "border-amber-400/60 bg-amber-50/40 dark:bg-amber-950/20",
       c.decision === "rejected" && "opacity-60",
@@ -97,7 +98,7 @@ function ChangeCard({ c, onDecide, onLocate, busy }: {
         <button
           type="button"
           title="Show where this is in the résumé"
-          onClick={() => onLocate(c.path)}
+          onClick={() => onLocate(c.path, cardRef.current?.getBoundingClientRect().top ?? 0)}
           className="ml-auto inline-flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground"
         >
           <Crosshair className="h-3 w-3" /> locate
@@ -169,29 +170,37 @@ export function TailorReviewPage() {
 
   const busy = tailorMut.isPending || refineMut.isPending;
 
-  // Scroll both panes to a change's element and flash it.
+  // origRef/tailRef are the two pane SCROLL CONTAINERS. Locate scrolls each so the
+  // matched element lines up with the (stationary) change card — only the side
+  // panes move; the page and the changes column stay put.
   const origRef = useRef<HTMLDivElement>(null);
   const tailRef = useRef<HTMLDivElement>(null);
-  function locate(path: string) {
-    // Clear any previous highlight — only one located change is highlighted at a time.
+  function locate(path: string, anchorTop?: number) {
     for (const ref of [origRef, tailRef]) {
       ref.current?.querySelectorAll(".rt-highlight").forEach((e) => e.classList.remove("rt-highlight"));
     }
     let found = false;
     for (const ref of [origRef, tailRef]) {
-      const el = ref.current?.querySelector(`[data-path="${CSS.escape(path)}"]`) as HTMLElement | null;
+      const container = ref.current;
+      if (!container) continue;
+      const el = container.querySelector(`[data-path="${CSS.escape(path)}"]`) as HTMLElement | null;
       if (!el) continue;
       found = true;
       el.classList.add("rt-highlight");   // stays until another change is located
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      // Align the element to the change card's vertical position (fallback: 1/4 down).
+      const cRect = container.getBoundingClientRect();
+      const target = anchorTop ?? cRect.top + cRect.height * 0.25;
+      container.scrollTo({ top: container.scrollTop + (el.getBoundingClientRect().top - target), behavior: "smooth" });
     }
     if (!found) toast({ title: "Couldn't locate that change in the résumé" });
   }
 
   return (
-    <div className="max-w-[1400px] mx-auto p-4 space-y-4">
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-3">
+    <div className="h-screen flex flex-col w-full max-w-[1700px] mx-auto">
+      <style>{`.rt-highlight{background:rgba(59,130,246,.20);box-shadow:0 0 0 2px rgba(59,130,246,.30);border-radius:3px;transition:background .2s}`}</style>
+
+      {/* Header (fixed) */}
+      <div className="shrink-0 px-4 pt-3 pb-2 flex flex-wrap items-center gap-3 border-b">
         <Button variant="ghost" size="sm" asChild className="-ml-1">
           <Link to={`/jobs/${id}`}><ArrowLeft className="h-4 w-4 mr-1" /> Back to job</Link>
         </Button>
@@ -199,7 +208,13 @@ export function TailorReviewPage() {
           <Wand2 className="h-5 w-5 text-primary" />
           <h1 className="text-lg font-bold">Tailor résumé</h1>
         </div>
-        {job && <span className="text-sm text-muted-foreground">— {job.title} · {job.company}</span>}
+        {job && <span className="text-sm text-muted-foreground hidden sm:inline">— {job.title} · {job.company}</span>}
+        {state && state.changes.length > 0 && (
+          <span className="text-xs text-muted-foreground hidden md:inline">
+            {state.changes.length} change{state.changes.length === 1 ? "" : "s"}
+            {state.flagged_count > 0 && <> · <span className="text-amber-700 dark:text-amber-400">{state.flagged_count} flagged</span></>}
+          </span>
+        )}
         {state && (
           <div className="ml-auto flex gap-2">
             <Button variant="outline" size="sm" disabled={busy} onClick={() => tailorMut.mutate()}>
@@ -214,89 +229,75 @@ export function TailorReviewPage() {
       </div>
 
       {state?.base_changed && (
-        <div className="flex items-start gap-2 rounded-md border border-amber-300/60 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 px-3 py-2 text-xs">
+        <div className="shrink-0 mx-4 mt-2 flex items-start gap-2 rounded-md border border-amber-300/60 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 px-3 py-2 text-xs">
           <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
           <span>Your base résumé changed since this was tailored. Re-tailor to refresh.</span>
         </div>
       )}
 
       {isLoading ? (
-        <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+        <div className="flex-1 flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
       ) : !state ? (
-        // Empty state — generate.
-        <div className="rounded-lg border border-dashed p-10 text-center space-y-3 max-w-lg mx-auto">
-          <Wand2 className="h-7 w-7 mx-auto text-muted-foreground/50" />
-          <p className="text-sm text-muted-foreground">
-            Tailor your résumé to <span className="font-medium text-foreground">{job?.title}</span> — honestly.
-            Every change is shown for your approval.
-          </p>
-          <Button onClick={() => tailorMut.mutate()} disabled={busy}>
-            {tailorMut.isPending ? <><Loader2 className="h-4 w-4 animate-spin mr-1" />Tailoring…</> : <><Sparkles className="h-4 w-4 mr-1" />Tailor résumé</>}
-          </Button>
+        <div className="flex-1 flex items-center justify-center p-4">
+          <div className="rounded-lg border border-dashed p-10 text-center space-y-3 max-w-lg">
+            <Wand2 className="h-7 w-7 mx-auto text-muted-foreground/50" />
+            <p className="text-sm text-muted-foreground">
+              Tailor your résumé to <span className="font-medium text-foreground">{job?.title}</span> — honestly.
+              Every change is shown for your approval.
+            </p>
+            <Button onClick={() => tailorMut.mutate()} disabled={busy}>
+              {tailorMut.isPending ? <><Loader2 className="h-4 w-4 animate-spin mr-1" />Tailoring…</> : <><Sparkles className="h-4 w-4 mr-1" />Tailor résumé</>}
+            </Button>
+          </div>
         </div>
       ) : (
         <>
-          {/* Summary line */}
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="font-medium">{state.changes.length} change{state.changes.length === 1 ? "" : "s"}</span>
-            {state.flagged_count > 0 && (
-              <Badge variant="outline" className="border-amber-500/40 text-amber-700 dark:text-amber-400 gap-1">
-                <AlertTriangle className="h-3 w-3" /> {state.flagged_count} touch a factual claim — review
-              </Badge>
-            )}
-            <span className="text-xs text-muted-foreground">Accept or reject each; rejected changes keep your original wording.</span>
-          </div>
-
-          {/* flash highlight used by the locate buttons */}
-          <style>{`.rt-highlight{background:rgba(59,130,246,.20);box-shadow:0 0 0 2px rgba(59,130,246,.30);border-radius:3px}`}</style>
-
-          {/* 3-pane: original | changes | tailored */}
-          <div className="grid gap-4 lg:grid-cols-[1fr_1.3fr_1fr]">
-            <div className="rounded-lg border bg-card p-3">
-              <div className="text-xs font-semibold text-muted-foreground mb-2">Original</div>
-              <div ref={origRef}><ResumeView data={state.original} /></div>
+          {/* 3 independently-scrolling panes fill the remaining height */}
+          <div className="flex-1 min-h-0 grid gap-3 p-3 grid-cols-1 lg:grid-cols-[1fr_1.25fr_1fr]">
+            {/* Original */}
+            <div className="rounded-lg border bg-card flex flex-col min-h-0">
+              <div className="shrink-0 text-xs font-semibold text-muted-foreground px-3 py-2 border-b">Original</div>
+              <div ref={origRef} className="flex-1 overflow-y-auto p-3"><ResumeView data={state.original} /></div>
             </div>
 
-            <div className="space-y-2">
-              <div className="text-xs font-semibold text-muted-foreground">Changes</div>
-              {state.changes.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4">No changes — the AI left your résumé as-is for this posting.</p>
-              ) : (
-                state.changes.map((c) => (
-                  <ChangeCard key={c.id} c={c} busy={decideMut.isPending} onLocate={locate} onDecide={(cid, d) => decideMut.mutate({ id: cid, decision: d })} />
-                ))
-              )}
+            {/* Changes */}
+            <div className="flex flex-col min-h-0">
+              <div className="shrink-0 flex items-center gap-2 px-1 pb-1 text-xs font-semibold text-muted-foreground">
+                Changes
+                <span className="font-normal text-[11px]">— accept/reject each; click <span className="inline-flex items-center gap-0.5"><Crosshair className="h-3 w-3" />locate</span> to find it</span>
+              </div>
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                {state.changes.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-4">No changes — the AI left your résumé as-is for this posting.</p>
+                ) : (
+                  state.changes.map((c) => (
+                    <ChangeCard key={c.id} c={c} busy={decideMut.isPending} onLocate={locate} onDecide={(cid, d) => decideMut.mutate({ id: cid, decision: d })} />
+                  ))
+                )}
+              </div>
             </div>
 
-            <div className="rounded-lg border bg-card p-3">
-              <div className="text-xs font-semibold text-muted-foreground mb-2">Tailored</div>
-              <div ref={tailRef}><ResumeView data={state.tailored} /></div>
+            {/* Tailored */}
+            <div className="rounded-lg border bg-card flex flex-col min-h-0">
+              <div className="shrink-0 text-xs font-semibold text-muted-foreground px-3 py-2 border-b">Tailored</div>
+              <div ref={tailRef} className="flex-1 overflow-y-auto p-3"><ResumeView data={state.tailored} /></div>
             </div>
           </div>
 
-          {/* Refine */}
-          <div className="rounded-lg border bg-muted/30 p-3 space-y-2 max-w-2xl">
-            <p className="text-xs font-medium">Refine</p>
-            <p className="text-xs text-muted-foreground">
-              Tell the AI what to adjust (it keeps your rejected wording and stays within the honesty rules).
-            </p>
-            <div className="flex gap-2">
-              <Textarea
-                rows={2}
-                className="text-sm"
-                placeholder="e.g. emphasize cloud architecture; leave the summary alone"
-                value={instruction}
-                onChange={(e) => setInstruction(e.target.value)}
-              />
-              <Button disabled={busy || !instruction.trim()} onClick={() => refineMut.mutate()}>
-                {refineMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Refine"}
-              </Button>
-            </div>
+          {/* Refine (fixed bottom bar) */}
+          <div className="shrink-0 border-t bg-muted/30 px-3 py-2 flex items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground shrink-0 hidden sm:inline">Refine →</span>
+            <Textarea
+              rows={1}
+              className="text-sm min-h-0 resize-none"
+              placeholder="Tell the AI what to adjust (keeps rejected wording, stays honest) — e.g. emphasize cloud architecture"
+              value={instruction}
+              onChange={(e) => setInstruction(e.target.value)}
+            />
+            <Button disabled={busy || !instruction.trim()} onClick={() => refineMut.mutate()}>
+              {refineMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Refine"}
+            </Button>
           </div>
-
-          <p className="text-xs text-muted-foreground">
-            PDF export and template rendering are coming next — this view confirms the tailored content.
-          </p>
         </>
       )}
     </div>
