@@ -161,7 +161,7 @@ You realign an existing résumé to a specific job posting WITHOUT lying. Absolu
 5. Do not change company names, job titles, employers, or dates unless correcting an obvious typo — these are factual anchors.
 
 Return ONLY a JSON object:
-{{"tailored": <the full résumé in the SAME schema as the input>, "notes": [{{"before": "<original text>", "after": "<new text>", "type": "vocabulary|emphasis|reorder|factual", "rationale": "<why>", "trigger": "<the exact phrase or requirement FROM THE JOB POSTING that motivated this change — quote it verbatim; leave empty if it's a general improvement not tied to a specific line>"}}]}}
+{{"tailored": <the full résumé in the SAME schema as the input>, "notes": [{{"before": "<original text>", "after": "<new text>", "type": "vocabulary|emphasis|reorder|factual", "rationale": "<why>", "trigger": "<the VERBATIM sentence or requirement line FROM THE JOB POSTING that inspired this change — quote enough to stand on its own (a full phrase or sentence, not a single word); leave empty only if no specific line in the posting applies>"}}]}}
 - "tailored" must match the input schema exactly (contact, summary, skills[], experience[], education[], projects[]).
 - "notes" explains the meaningful changes you made (best-effort; the system also computes its own diff). "trigger" must be copied from the job posting text, never invented."""
 
