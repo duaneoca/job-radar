@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Wand2, Loader2, Sparkles, AlertTriangle, Check, X, RefreshCw, Printer } from "lucide-react";
+import { ArrowLeft, Wand2, Loader2, Sparkles, AlertTriangle, Check, X, RefreshCw, Printer, Crosshair, Briefcase } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Textarea } from "../components/ui/textarea";
@@ -21,15 +21,16 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+// data-path values mirror the backend diff paths so a change can locate its element.
 function ResumeView({ data }: { data: any }) {
   if (!data) return null;
   return (
     <div className="space-y-3 text-xs leading-relaxed">
-      {data.summary && <Section title="Summary"><p>{data.summary}</p></Section>}
+      {data.summary && <Section title="Summary"><p data-path="summary">{data.summary}</p></Section>}
       {data.skills?.length > 0 && (
         <Section title="Skills">
           {data.skills.map((g: any, i: number) => (
-            <p key={i}><b>{g.label}:</b> {(g.items ?? []).join(" · ")}</p>
+            <p key={i}><b data-path={`skills/${i}/label`}>{g.label}:</b> <span data-path={`skills/${i}/items`}>{(g.items ?? []).join(" · ")}</span></p>
           ))}
         </Section>
       )}
@@ -38,32 +39,37 @@ function ResumeView({ data }: { data: any }) {
           {data.experience.map((e: any, i: number) => (
             <div key={i} className="mb-2">
               <div className="font-medium">
-                {e.company} {(e.start || e.end) && <span className="text-muted-foreground font-normal">· {e.start}–{e.end}</span>}
+                <span data-path={`experience/${i}/company`}>{e.company}</span>{" "}
+                {(e.start || e.end) && (
+                  <span className="text-muted-foreground font-normal">· <span data-path={`experience/${i}/start`}>{e.start}</span>–<span data-path={`experience/${i}/end`}>{e.end}</span></span>
+                )}
               </div>
-              {e.titles?.length > 0 && <div className="italic text-muted-foreground">{e.titles.join(" → ")}</div>}
-              {e.bullets?.length > 0 && <ul className="list-disc ml-4">{e.bullets.map((b: string, j: number) => <li key={j}>{b}</li>)}</ul>}
+              {e.titles?.length > 0 && <div className="italic text-muted-foreground" data-path={`experience/${i}/titles`}>{e.titles.join(" → ")}</div>}
+              {e.bullets?.length > 0 && <ul className="list-disc ml-4">{e.bullets.map((b: string, j: number) => <li key={j} data-path={`experience/${i}/bullets/${j}`}>{b}</li>)}</ul>}
               {e.phases?.map((p: any, k: number) => (
                 <div key={k} className="mt-1">
                   {p.label && <div className="font-medium">{p.label}</div>}
-                  <ul className="list-disc ml-4">{(p.bullets ?? []).map((b: string, j: number) => <li key={j}>{b}</li>)}</ul>
+                  <ul className="list-disc ml-4">{(p.bullets ?? []).map((b: string, j: number) => <li key={j} data-path={`experience/${i}/phases/${k}/bullets/${j}`}>{b}</li>)}</ul>
                 </div>
               ))}
-              {e.notable?.length > 0 && <p className="text-muted-foreground mt-0.5">Notable: {e.notable.join(", ")}</p>}
+              {e.notable?.length > 0 && <p className="text-muted-foreground mt-0.5">Notable: {e.notable.map((n: string, j: number) => <span key={j} data-path={`experience/${i}/notable/${j}`}>{n}{j < e.notable.length - 1 ? ", " : ""}</span>)}</p>}
             </div>
           ))}
         </Section>
       )}
       {data.education?.length > 0 && (
         <Section title="Education">
-          {data.education.map((ed: any, i: number) => <p key={i}>{[ed.degree, ed.school].filter(Boolean).join(" · ")}</p>)}
+          {data.education.map((ed: any, i: number) => (
+            <p key={i}><span data-path={`education/${i}/degree`}>{ed.degree}</span>{ed.school && <> · <span data-path={`education/${i}/school`}>{ed.school}</span></>}</p>
+          ))}
         </Section>
       )}
       {data.projects?.length > 0 && (
         <Section title="Projects">
           {data.projects.map((pr: any, i: number) => (
             <div key={i}>
-              {pr.title && <div className="font-medium">{pr.title}</div>}
-              <ul className="list-disc ml-4">{(pr.bullets ?? []).map((b: string, j: number) => <li key={j}>{b}</li>)}</ul>
+              {pr.title && <div className="font-medium" data-path={`projects/${i}/title`}>{pr.title}</div>}
+              <ul className="list-disc ml-4">{(pr.bullets ?? []).map((b: string, j: number) => <li key={j} data-path={`projects/${i}/bullets/${j}`}>{b}</li>)}</ul>
             </div>
           ))}
         </Section>
@@ -74,7 +80,9 @@ function ResumeView({ data }: { data: any }) {
 
 // ─── Change card ────────────────────────────────────────────────────────────────
 
-function ChangeCard({ c, onDecide, busy }: { c: TailorChange; onDecide: (id: string, d: TailorDecision) => void; busy: boolean }) {
+function ChangeCard({ c, onDecide, onLocate, busy }: {
+  c: TailorChange; onDecide: (id: string, d: TailorDecision) => void; onLocate: (path: string) => void; busy: boolean;
+}) {
   const flagged = c.type === "factual";
   return (
     <div className={cn(
@@ -86,10 +94,26 @@ function ChangeCard({ c, onDecide, busy }: { c: TailorChange; onDecide: (id: str
         <Badge variant="outline" className="text-[10px] capitalize">{c.section}</Badge>
         <Badge variant="outline" className={cn("text-[10px] capitalize", flagged ? "border-amber-500/40 text-amber-700 dark:text-amber-400" : "text-muted-foreground")}>{c.type}</Badge>
         {flagged && <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-700 dark:text-amber-400"><AlertTriangle className="h-3 w-3" />review carefully</span>}
+        <button
+          type="button"
+          title="Show where this is in the résumé"
+          onClick={() => onLocate(c.path)}
+          className="ml-auto inline-flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground"
+        >
+          <Crosshair className="h-3 w-3" /> locate
+        </button>
         {c.decision !== "pending" && (
-          <Badge className={cn("text-[10px] ml-auto", c.decision === "accepted" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" : "bg-rose-500/15 text-rose-700 dark:text-rose-400")}>{c.decision}</Badge>
+          <Badge className={cn("text-[10px]", c.decision === "accepted" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" : "bg-rose-500/15 text-rose-700 dark:text-rose-400")}>{c.decision}</Badge>
         )}
       </div>
+
+      {c.trigger && (
+        <div className="flex items-start gap-1 rounded bg-blue-500/10 px-1.5 py-1 text-[11px] text-blue-800 dark:text-blue-300">
+          <Briefcase className="h-3 w-3 shrink-0 mt-0.5" />
+          <span>Posting asks: <span className="italic">“{c.trigger}”</span></span>
+        </div>
+      )}
+
       {c.before && <p className="text-rose-600 dark:text-rose-400 line-through decoration-rose-400/50">{c.before}</p>}
       {c.after && <p className="text-emerald-700 dark:text-emerald-400">{c.after}</p>}
       {c.rationale && <p className="text-muted-foreground italic">{c.rationale}</p>}
@@ -144,6 +168,24 @@ export function TailorReviewPage() {
   });
 
   const busy = tailorMut.isPending || refineMut.isPending;
+
+  // Scroll both panes to a change's element and flash it.
+  const origRef = useRef<HTMLDivElement>(null);
+  const tailRef = useRef<HTMLDivElement>(null);
+  function locate(path: string) {
+    let found = false;
+    for (const ref of [origRef, tailRef]) {
+      const el = ref.current?.querySelector(`[data-path="${CSS.escape(path)}"]`) as HTMLElement | null;
+      if (!el) continue;
+      found = true;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.remove("rt-flash");
+      void el.offsetWidth;            // restart the animation
+      el.classList.add("rt-flash");
+      setTimeout(() => el.classList.remove("rt-flash"), 1600);
+    }
+    if (!found) toast({ title: "Couldn't locate that change in the résumé" });
+  }
 
   return (
     <div className="max-w-[1400px] mx-auto p-4 space-y-4">
@@ -204,11 +246,14 @@ export function TailorReviewPage() {
             <span className="text-xs text-muted-foreground">Accept or reject each; rejected changes keep your original wording.</span>
           </div>
 
+          {/* flash highlight used by the locate buttons */}
+          <style>{`@keyframes rtflash{0%{background:rgba(59,130,246,.35)}100%{background:transparent}}.rt-flash{animation:rtflash 1.5s ease-out;border-radius:3px}`}</style>
+
           {/* 3-pane: original | changes | tailored */}
           <div className="grid gap-4 lg:grid-cols-[1fr_1.3fr_1fr]">
             <div className="rounded-lg border bg-card p-3">
               <div className="text-xs font-semibold text-muted-foreground mb-2">Original</div>
-              <ResumeView data={state.original} />
+              <div ref={origRef}><ResumeView data={state.original} /></div>
             </div>
 
             <div className="space-y-2">
@@ -217,14 +262,14 @@ export function TailorReviewPage() {
                 <p className="text-sm text-muted-foreground py-4">No changes — the AI left your résumé as-is for this posting.</p>
               ) : (
                 state.changes.map((c) => (
-                  <ChangeCard key={c.id} c={c} busy={decideMut.isPending} onDecide={(cid, d) => decideMut.mutate({ id: cid, decision: d })} />
+                  <ChangeCard key={c.id} c={c} busy={decideMut.isPending} onLocate={locate} onDecide={(cid, d) => decideMut.mutate({ id: cid, decision: d })} />
                 ))
               )}
             </div>
 
             <div className="rounded-lg border bg-card p-3">
               <div className="text-xs font-semibold text-muted-foreground mb-2">Tailored</div>
-              <ResumeView data={state.tailored} />
+              <div ref={tailRef}><ResumeView data={state.tailored} /></div>
             </div>
           </div>
 

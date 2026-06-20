@@ -161,9 +161,9 @@ You realign an existing résumé to a specific job posting WITHOUT lying. Absolu
 5. Do not change company names, job titles, employers, or dates unless correcting an obvious typo — these are factual anchors.
 
 Return ONLY a JSON object:
-{{"tailored": <the full résumé in the SAME schema as the input>, "notes": [{{"before": "<original text>", "after": "<new text>", "type": "vocabulary|emphasis|reorder|factual", "rationale": "<why>"}}]}}
+{{"tailored": <the full résumé in the SAME schema as the input>, "notes": [{{"before": "<original text>", "after": "<new text>", "type": "vocabulary|emphasis|reorder|factual", "rationale": "<why>", "trigger": "<the exact phrase or requirement FROM THE JOB POSTING that motivated this change — quote it verbatim; leave empty if it's a general improvement not tied to a specific line>"}}]}}
 - "tailored" must match the input schema exactly (contact, summary, skills[], experience[], education[], projects[]).
-- "notes" explains the meaningful changes you made (best-effort; the system also computes its own diff)."""
+- "notes" explains the meaningful changes you made (best-effort; the system also computes its own diff). "trigger" must be copied from the job posting text, never invented."""
 
 # Editable style prompt — the default the user can override on the AI Prompts tab.
 DEFAULT_RESUME_TAILOR_PROMPT = """Tailoring style:
@@ -305,6 +305,7 @@ def diff_structured(original: schemas.ResumeStructured, tailored: schemas.Resume
             "kind": kind,
             "type": _classify(path, note.get("type")),
             "rationale": note.get("rationale", ""),
+            "trigger": note.get("trigger", ""),     # job-posting phrase that motivated it
             "decision": "pending",
         })
     return changes

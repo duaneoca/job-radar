@@ -31,7 +31,8 @@ TAILORED = {
 }
 
 NOTES = [{"before": "Built ETL pipelines", "after": "Engineered ETL data pipelines",
-          "type": "vocabulary", "rationale": "match the JD wording"}]
+          "type": "vocabulary", "rationale": "match the JD wording",
+          "trigger": "experience with ETL data pipelines"}]
 
 JOB = {"title": "Data Eng", "company": "Globex", "url": "https://x/1", "source": "manual"}
 
@@ -52,6 +53,7 @@ def test_diff_finds_changed_leaves():
     assert bullet["after"] == "Engineered ETL data pipelines"
     assert bullet["type"] == "vocabulary"                      # from the matched note
     assert bullet["rationale"] == "match the JD wording"       # note matched by before-text
+    assert bullet["trigger"] == "experience with ETL data pipelines"   # job-posting phrase
 
 
 def test_diff_identical_is_empty():
