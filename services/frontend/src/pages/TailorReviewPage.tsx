@@ -173,16 +173,17 @@ export function TailorReviewPage() {
   const origRef = useRef<HTMLDivElement>(null);
   const tailRef = useRef<HTMLDivElement>(null);
   function locate(path: string) {
+    // Clear any previous highlight — only one located change is highlighted at a time.
+    for (const ref of [origRef, tailRef]) {
+      ref.current?.querySelectorAll(".rt-highlight").forEach((e) => e.classList.remove("rt-highlight"));
+    }
     let found = false;
     for (const ref of [origRef, tailRef]) {
       const el = ref.current?.querySelector(`[data-path="${CSS.escape(path)}"]`) as HTMLElement | null;
       if (!el) continue;
       found = true;
+      el.classList.add("rt-highlight");   // stays until another change is located
       el.scrollIntoView({ behavior: "smooth", block: "center" });
-      el.classList.remove("rt-flash");
-      void el.offsetWidth;            // restart the animation
-      el.classList.add("rt-flash");
-      setTimeout(() => el.classList.remove("rt-flash"), 1600);
     }
     if (!found) toast({ title: "Couldn't locate that change in the résumé" });
   }
@@ -247,7 +248,7 @@ export function TailorReviewPage() {
           </div>
 
           {/* flash highlight used by the locate buttons */}
-          <style>{`@keyframes rtflash{0%{background:rgba(59,130,246,.35)}100%{background:transparent}}.rt-flash{animation:rtflash 1.5s ease-out;border-radius:3px}`}</style>
+          <style>{`.rt-highlight{background:rgba(59,130,246,.20);box-shadow:0 0 0 2px rgba(59,130,246,.30);border-radius:3px}`}</style>
 
           {/* 3-pane: original | changes | tailored */}
           <div className="grid gap-4 lg:grid-cols-[1fr_1.3fr_1fr]">
