@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, Printer, AlertTriangle } from "lucide-react";
@@ -6,18 +6,24 @@ import { Button } from "../components/ui/button";
 import { jobsApi } from "../lib/api";
 import { cn } from "../lib/utils";
 import { effectiveResume } from "../lib/resumeEffective";
-import { ResumeDocument, TEMPLATES, type TemplateId } from "../components/resume-templates/ResumeDocument";
+import { PagedPreview } from "../components/resume-templates/PagedPreview";
+import { TEMPLATES, type TemplateId } from "../components/resume-templates/ResumeDocument";
 import type { TailorState } from "../lib/types";
 
+// Screen chrome for the Paged.js sheets (true page boxes) + print rules. In print the
+// toolbar / tip / off-screen source are hidden; Paged.js itself maps each box to a
+// physical page.
 const CSS = `
 .print-bg{ background:#e9edf2; min-height:100vh; }
-.print-sheet{ background:#fff; margin:24px auto; box-shadow:0 2px 14px rgba(0,0,0,.12); width:8.5in; }
-.print-sheet.pad{ padding:.5in; }
+.paged-target{ padding:24px 0; }
+.paged-target .pagedjs_pages{ margin:0 auto; }
+.paged-target .pagedjs_page{ background:#fff; box-shadow:0 2px 14px rgba(0,0,0,.12); margin:0 auto 24px; }
+.paged-source{ position:absolute; left:-10000px; top:0; width:8.5in; visibility:hidden; pointer-events:none; }
 @media print{
-  #print-toolbar{ display:none !important; }
+  #print-toolbar, .print-tip, .paged-source{ display:none !important; }
   .print-bg{ background:#fff !important; }
-  .print-sheet{ margin:0 !important; box-shadow:none !important; width:auto !important; }
-  .print-sheet.pad{ padding:0 !important; }
+  .paged-target{ padding:0 !important; }
+  .paged-target .pagedjs_page{ box-shadow:none !important; margin:0 auto !important; }
 }
 `;
 
@@ -26,6 +32,7 @@ export function TailorPrintPage() {
   const [template, setTemplate] = useState<TemplateId>(
     () => (localStorage.getItem("jr-resume-template") as TemplateId) || "classic",
   );
+  const [pages, setPages] = useState<number | null>(null);
 
   const { data: state, isLoading } = useQuery<TailorState | null>({
     queryKey: ["tailor", id],
@@ -33,15 +40,19 @@ export function TailorPrintPage() {
     enabled: !!id,
   });
 
+  // Stable identity so Paged.js only re-chunks when the résumé actually changes.
+  const data = useMemo(() => (state ? effectiveResume(state) : null), [state]);
+
   function pick(t: TemplateId) {
     setTemplate(t);
+    setPages(null);
     localStorage.setItem("jr-resume-template", t);
   }
 
   if (isLoading) {
     return <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
   }
-  if (!state) {
+  if (!state || !data) {
     return (
       <div className="max-w-md mx-auto py-20 text-center text-sm text-muted-foreground">
         <AlertTriangle className="h-6 w-6 mx-auto mb-2 opacity-50" />
@@ -49,8 +60,6 @@ export function TailorPrintPage() {
       </div>
     );
   }
-
-  const data = effectiveResume(state);
 
   return (
     <div className="print-bg">
@@ -74,6 +83,9 @@ export function TailorPrintPage() {
             </button>
           ))}
         </div>
+        {pages != null && (
+          <span className="text-xs text-muted-foreground">{pages} page{pages === 1 ? "" : "s"}</span>
+        )}
         <span className="text-xs text-muted-foreground hidden sm:inline">
           {TEMPLATES.find((t) => t.id === template)?.note}
         </span>
@@ -82,14 +94,12 @@ export function TailorPrintPage() {
         </Button>
       </div>
 
-      <p className="text-center text-xs text-muted-foreground pt-3 px-4 print:hidden">
+      <p className="print-tip text-center text-xs text-muted-foreground pt-3 px-4">
         Tip: in the print dialog choose <b>Save as PDF</b>, margins <b>None</b>
         {template === "modern" && <>, and turn <b>Background graphics</b> ON for the sidebar</>}.
       </p>
 
-      <div className={cn("print-sheet", template === "classic" && "pad")}>
-        <ResumeDocument template={template} data={data} />
-      </div>
+      <PagedPreview template={template} data={data} onPages={setPages} />
     </div>
   );
 }
