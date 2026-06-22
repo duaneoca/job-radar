@@ -10,6 +10,9 @@ const CSS = `
   color:var(--ink); line-height:1.42; font-size:calc(10.2pt * var(--scale));
   display:grid; grid-template-columns:2.55in 1fr; width:8.5in; background:#fff;
   -webkit-print-color-adjust:exact; print-color-adjust:exact;
+  /* One-page by design — never let Paged.js fragment the grid across pages (the
+     full-bleed sidebar can't continue, and the split collapses the columns). */
+  break-inside:avoid; page-break-inside:avoid;
 }
 .rt-modern .side{ background:var(--sidebar); color:#fff; padding:calc(.5in * var(--scale)) .34in; }
 .rt-modern .side h1{ font-size:1.85em; line-height:1.05; margin:0 0 .1em; font-weight:700; }
@@ -31,7 +34,7 @@ const CSS = `
 .rt-modern .dates{ color:var(--muted); font-size:.86em; white-space:nowrap; }
 .rt-modern .titles{ font-style:italic; color:var(--muted); font-size:.88em; margin:.05em 0 .35em; }
 .rt-modern .phase{ font-weight:600; color:var(--accent); font-size:.91em; margin:.5em 0 .15em; break-after:avoid; }
-.rt-modern ul{ margin:.25em 0 .35em; padding-left:1.3em; }
+.rt-modern ul{ margin:.25em 0 .35em; padding-left:1.3em; list-style:disc outside; }
 .rt-modern li{ margin:.18em 0; break-inside:avoid; }
 .rt-modern .note{ font-size:.84em; color:var(--muted); margin:.25em 0 0; } .rt-modern .note b{ color:var(--ink); }
 @media print{ @page{ size:letter; margin:0; } }

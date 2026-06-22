@@ -19,14 +19,17 @@ function pageCss(template: TemplateId): string {
 // is single-column and simply paginates across real Paged.js pages, no shrinking.
 function fitOnePageScale(src: HTMLElement): number {
   const PX = 96;
-  const budget = Math.round(10.4 * PX); // ~one letter page of usable height
+  // Modern prints margin:0, so the usable page is ~11in; target a hair under that.
+  const budget = Math.round(10.6 * PX);
   const set = (s: number) => src.style.setProperty("--scale", String(s));
   set(1);
   if (src.scrollHeight <= budget) {
     src.style.removeProperty("--scale");
     return 1;
   }
-  let lo = 0.74, hi = 1, best = 0.74;
+  // Floor is low enough that even a longer résumé still lands on a single page —
+  // fitting (small font) beats a broken second page. Very small = a nudge to trim.
+  let lo = 0.55, hi = 1, best = 0.55;
   for (let i = 0; i < 14; i++) {
     const mid = (lo + hi) / 2;
     set(mid);

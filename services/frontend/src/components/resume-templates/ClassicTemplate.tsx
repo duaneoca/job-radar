@@ -21,7 +21,7 @@ const CSS = `
 .rt-classic .dates{ color:var(--muted); font-size:.9em; white-space:nowrap; }
 .rt-classic .titles{ font-style:italic; color:var(--muted); font-size:.92em; margin:.05em 0 .35em; }
 .rt-classic .phase{ font-weight:600; color:var(--accent); font-size:.95em; margin:.5em 0 .15em; break-after:avoid; }
-.rt-classic ul{ margin:.25em 0 .35em; padding-left:1.4em; }
+.rt-classic ul{ margin:.25em 0 .35em; padding-left:1.4em; list-style:disc outside; }
 .rt-classic li{ margin:.18em 0; break-inside:avoid; }
 .rt-classic .lead{ margin:0 0 .2em; break-after:avoid; }
 .rt-classic .note{ font-size:.86em; color:var(--muted); margin:.25em 0 0; } .rt-classic .note b{ color:var(--ink); }
