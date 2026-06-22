@@ -75,11 +75,19 @@ export function PagedPreview({
       const onePage = root.getAttribute("data-fit") === "one-page";
       const scale = onePage ? fitOnePageScale(root) : 1;
 
-      // Clone Paged.js will chunk: drop the inline <style> (passed as a stylesheet
-      // instead) and bake in the fitted scale.
-      const content = root.cloneNode(true) as HTMLElement;
-      content.querySelector("style")?.remove();
-      content.style.setProperty("--scale", String(scale));
+      // Clone of the template root (.rt-classic / .rt-modern): drop the inline <style>
+      // (passed as a stylesheet instead) and bake in the fitted scale.
+      const inner = root.cloneNode(true) as HTMLElement;
+      inner.querySelector("style")?.remove();
+      inner.style.setProperty("--scale", String(scale));
+
+      // Paged.js flows the *children* of the content root into the page area and drops
+      // the root element itself. Our entire template stylesheet is scoped to
+      // .rt-classic/.rt-modern and the CSS vars live on that element — so we wrap one
+      // level deeper. That keeps .rt-* as a flowed child Paged.js preserves (and
+      // reconstructs on every page split), so the scoped rules + vars actually apply.
+      const content = document.createElement("div");
+      content.appendChild(inner);
 
       target.innerHTML = "";
       try {
