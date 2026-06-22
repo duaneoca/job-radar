@@ -40,6 +40,23 @@ function fitOnePageScale(src: HTMLElement): number {
   return best;
 }
 
+// Remove genuinely-empty trailing page boxes Paged.js may have appended. Walks from
+// the last page back, dropping any whose content area has no text and no media, and
+// stops at the first real page. Returns how many were removed (to fix the page count).
+function stripTrailingBlankPages(target: HTMLElement): number {
+  const pages = Array.from(target.querySelectorAll<HTMLElement>(".pagedjs_page"));
+  let removed = 0;
+  for (let i = pages.length - 1; i > 0; i--) {
+    const area = pages[i].querySelector(".pagedjs_page_content");
+    const hasText = (area?.textContent ?? "").trim().length > 0;
+    const hasMedia = !!area?.querySelector("img, svg, canvas");
+    if (hasText || hasMedia) break;
+    pages[i].remove();
+    removed++;
+  }
+  return removed;
+}
+
 /**
  * Renders the chosen résumé template into real, paginated page boxes via Paged.js.
  * What you see on screen (the `.pagedjs_page` sheets) is exactly what prints — Paged.js
@@ -104,7 +121,11 @@ export function PagedPreview({
           target,
         );
         if (cancelled) return;
-        onPagesRef.current?.(flow.total);
+        // Paged.js appends an empty trailing page when content ends near a page
+        // boundary (a known behaviour, independent of template/content). Strip any
+        // genuinely-blank trailing pages so the preview and the PDF match the content.
+        const kept = flow.total - stripTrailingBlankPages(target);
+        onPagesRef.current?.(Math.max(1, kept));
       } catch (e) {
         if (!cancelled) {
           console.error("Paged.js preview failed", e);
