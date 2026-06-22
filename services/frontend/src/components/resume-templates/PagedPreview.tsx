@@ -128,7 +128,10 @@ export function PagedPreview({
         </p>
       )}
 
-      <div ref={targetRef} className="paged-target" style={rendering ? { display: "none" } : undefined} />
+      {/* Hidden via opacity (NOT display:none) while chunking — Paged.js measures the
+          page boxes it creates with getBoundingClientRect, which needs real layout
+          geometry. display:none would zero that out and make Paged.js throw. */}
+      <div ref={targetRef} className="paged-target" style={rendering ? { opacity: 0, pointerEvents: "none" } : undefined} />
     </div>
   );
 }
