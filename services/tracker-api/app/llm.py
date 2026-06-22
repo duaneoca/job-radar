@@ -274,6 +274,11 @@ def llm_complete(
             messages=full_messages,
             api_key=api_key,
             max_tokens=max_tokens,
+            # Auto-retry transient provider hiccups (429 rate-limit windows, 529
+            # "overloaded", brief timeouts) with exponential backoff. Absorbs the
+            # per-minute spikes that free tiers hit; a hard daily limit still
+            # surfaces cleanly after the retries are exhausted.
+            num_retries=2,
         )
         return response.choices[0].message.content
     except litellm.AuthenticationError:
