@@ -78,6 +78,43 @@ function removeAfterFirstPage(target: HTMLElement): void {
     .forEach((p) => p.remove());
 }
 
+// CSS rules forcing a page break before each marked block. Fed to Paged.js as part of
+// the stylesheet so its native break handler drives the split (Paged.js reads breaks
+// from parsed CSS, not inline styles). Ids are our own simple slugs — guarded anyway.
+function breakCss(active: Set<string>): string {
+  return [...active]
+    .filter((id) => /^[\w-]+$/.test(id))
+    .map((id) => `[data-block-id="${id}"]{ break-before: page; }`)
+    .join("\n");
+}
+
+// After render, drop a clickable break control at the top of each breakable block:
+// a hover-reveal "start on new page" for un-broken blocks, and a labeled removable line
+// for broken ones. Hidden in print. The first block is skipped (a break there would just
+// make a blank leading page). Paged.js split-continuations repeat data-block-id, so we
+// only decorate the first occurrence of each id.
+function decorateBreaks(target: HTMLElement, active: Set<string>, onToggle: (id: string) => void): void {
+  const seen = new Set<string>();
+  target.querySelectorAll<HTMLElement>("[data-block-id]").forEach((block) => {
+    const id = block.getAttribute("data-block-id") || "";
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    const on = active.has(id);
+    if (seen.size === 1 && !on) return; // first block: no break offered
+    block.style.position = "relative";
+    const ctrl = document.createElement("button");
+    ctrl.type = "button";
+    ctrl.className = on ? "rt-break rt-break-on" : "rt-break";
+    ctrl.textContent = on ? "✕  Page break" : "⤓  Start on new page";
+    ctrl.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      onToggle(id);
+    });
+    block.appendChild(ctrl);
+  });
+}
+
 /**
  * Renders the chosen résumé template into real, paginated page boxes via Paged.js.
  * What you see on screen (the `.pagedjs_page` sheets) is exactly what prints — Paged.js
@@ -91,16 +128,20 @@ export function PagedPreview({
   data,
   settings,
   onPages,
+  onToggleBreak,
 }: {
   template: TemplateId;
   data: unknown;
   settings: ResumeSettings;
   onPages?: (n: number) => void;
+  onToggleBreak?: (blockId: string) => void;
 }) {
   const sourceRef = useRef<HTMLDivElement>(null);
   const targetRef = useRef<HTMLDivElement>(null);
   const onPagesRef = useRef(onPages);
   onPagesRef.current = onPages;
+  const onToggleBreakRef = useRef(onToggleBreak);
+  onToggleBreakRef.current = onToggleBreak;
   const [rendering, setRendering] = useState(true);
   const [error, setError] = useState(false);
   const [overflow, setOverflow] = useState(false);
@@ -134,6 +175,7 @@ export function PagedPreview({
       const inner = root.cloneNode(true) as HTMLElement;
       inner.querySelector("style")?.remove();
       inner.style.setProperty("--scale", String(scale));
+      const active = new Set(settings.forceBreakBefore ?? []);
 
       // Paged.js flows the *children* of the content root into the page area and drops
       // the root element itself. Our entire template stylesheet is scoped to
@@ -150,7 +192,7 @@ export function PagedPreview({
         const previewer = new Previewer();
         const flow = await previewer.preview(
           content,
-          [{ resume: `${templateCss}\n${pageCss(template, settings.marginIn)}` }],
+          [{ resume: `${templateCss}\n${pageCss(template, settings.marginIn)}\n${breakCss(active)}` }],
           target,
         );
         if (cancelled) return;
@@ -164,6 +206,9 @@ export function PagedPreview({
           removeAfterFirstPage(target);
           kept = 1;
           setOverflow(true);
+        } else if (!onePage) {
+          // Multi-page templates get the in-doc page-break controls.
+          decorateBreaks(target, active, (bid) => onToggleBreakRef.current?.(bid));
         }
         onPagesRef.current?.(Math.max(1, kept));
       } catch (e) {
