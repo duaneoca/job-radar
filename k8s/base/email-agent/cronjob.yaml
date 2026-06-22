@@ -34,7 +34,7 @@ spec:
             - name: email-agent
               image: ghcr.io/duaneoca/job-radar-agent:latest
               imagePullPolicy: Always
-              command: ["python", "scripts/run_cloud.py"]   # multi-user cloud entrypoint (one pass, then exit)
+              command: ["job-radar-agent", "cloud"]   # multi-user cloud entrypoint (console script; one pass, then exit)
               envFrom:
                 - configMapRef:
                     name: email-agent-config
