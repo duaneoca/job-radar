@@ -10,10 +10,11 @@ const CSS = `
   color:var(--ink); line-height:1.42; font-size:calc(10.2pt * var(--scale));
   display:grid; grid-template-columns:2.55in 1fr; width:8.5in; background:#fff;
   -webkit-print-color-adjust:exact; print-color-adjust:exact;
-  /* One-page by design — never let Paged.js fragment the grid across pages (the
-     full-bleed sidebar can't continue, and the split collapses the columns). */
-  break-inside:avoid; page-break-inside:avoid;
 }
+/* Drop trailing margins on the last block in each column so the grid's measured
+   height doesn't tip a hair past the page and spawn a blank trailing page. */
+.rt-modern .main > *:last-child, .rt-modern .side > *:last-child,
+.rt-modern .entry:last-child, .rt-modern section:last-child{ margin-bottom:0; }
 .rt-modern .side{ background:var(--sidebar); color:#fff; padding:calc(.5in * var(--scale)) .34in; }
 .rt-modern .side h1{ font-size:1.85em; line-height:1.05; margin:0 0 .1em; font-weight:700; }
 .rt-modern .side .role{ color:var(--sidebar-soft); font-size:.88em; margin-bottom:1.1em; }
