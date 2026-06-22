@@ -1,15 +1,18 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, Printer, AlertTriangle } from "lucide-react";
 import { Button } from "../components/ui/button";
-import { jobsApi } from "../lib/api";
+import { jobsApi, profileApi } from "../lib/api";
 import { cn } from "../lib/utils";
 import { effectiveResume } from "../lib/resumeEffective";
 import { PagedPreview } from "../components/resume-templates/PagedPreview";
 import { ResumeKnobs } from "../components/resume-templates/ResumeKnobs";
-import { TEMPLATES, type TemplateId } from "../components/resume-templates/ResumeDocument";
-import { loadSettings, saveSettings, type ResumeSettings } from "../lib/resumeSettings";
+import { TEMPLATES } from "../components/resume-templates/ResumeDocument";
+import {
+  loadSettings, saveSettings, mergeSettings,
+  type ResumeSettings, type TemplateId,
+} from "../lib/resumeSettings";
 import type { TailorState } from "../lib/types";
 
 // Screen chrome for the Paged.js sheets (true page boxes) + print rules. In print the
@@ -31,16 +34,11 @@ const CSS = `
 
 export function TailorPrintPage() {
   const { id } = useParams<{ id: string }>();
-  const [template, setTemplate] = useState<TemplateId>(
-    () => (localStorage.getItem("jr-resume-template") as TemplateId) || "classic",
-  );
   const [pages, setPages] = useState<number | null>(null);
-  const [settings, setSettings] = useState<ResumeSettings>(() => loadSettings());
-
-  function updateSettings(next: ResumeSettings) {
-    setSettings(next);
-    saveSettings(next);
-  }
+  const [settings, setSettings] = useState<ResumeSettings>(() => mergeSettings(loadSettings()));
+  const [savedDefault, setSavedDefault] = useState(false);
+  const seeded = useRef(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const { data: state, isLoading } = useQuery<TailorState | null>({
     queryKey: ["tailor", id],
@@ -48,13 +46,42 @@ export function TailorPrintPage() {
     enabled: !!id,
   });
 
+  // Seed the knobs once the server state arrives: per-résumé override wins, then the
+  // profile default, then this browser's last-used settings, then the hard defaults.
+  useEffect(() => {
+    if (seeded.current || !state) return;
+    seeded.current = true;
+    const local = mergeSettings(loadSettings());
+    const withDefault = mergeSettings(state.default_print_settings, local);
+    setSettings(mergeSettings(state.print_settings, withDefault));
+  }, [state]);
+
   // Stable identity so Paged.js only re-chunks when the résumé actually changes.
   const data = useMemo(() => (state ? effectiveResume(state) : null), [state]);
 
-  function pick(t: TemplateId) {
-    setTemplate(t);
+  function updateSettings(next: ResumeSettings) {
+    setSettings(next);
+    saveSettings(next); // per-browser cross-job seed
+    // Debounced save of this job's override (sliders fire rapidly).
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      jobsApi.put(`/jobs/${id}/tailor-resume/print-settings`, { settings: next }).catch(() => {});
+    }, 700);
+  }
+
+  function setTemplate(t: TemplateId) {
     setPages(null);
-    localStorage.setItem("jr-resume-template", t);
+    updateSettings({ ...settings, template: t });
+  }
+
+  async function saveAsDefault() {
+    try {
+      await profileApi.put("/profile/resume-template-settings", { settings });
+      setSavedDefault(true);
+      setTimeout(() => setSavedDefault(false), 2000);
+    } catch {
+      /* ignore — non-critical */
+    }
   }
 
   if (isLoading) {
@@ -69,6 +96,8 @@ export function TailorPrintPage() {
     );
   }
 
+  const template = settings.template;
+
   return (
     <div className="print-bg">
       <style>{CSS}</style>
@@ -81,7 +110,7 @@ export function TailorPrintPage() {
               key={t.id}
               type="button"
               title={t.note}
-              onClick={() => pick(t.id)}
+              onClick={() => setTemplate(t.id)}
               className={cn(
                 "rounded-md px-2.5 py-1 text-xs border transition-colors",
                 template === t.id ? "bg-accent text-accent-foreground border-accent" : "hover:bg-accent/50",
@@ -103,7 +132,13 @@ export function TailorPrintPage() {
       </div>
 
       <div id="print-knobs" className="sticky top-[49px] z-10 flex items-center border-b bg-background/95 backdrop-blur px-4 py-2">
-        <ResumeKnobs settings={settings} onChange={updateSettings} showMargin={template === "classic"} />
+        <ResumeKnobs
+          settings={settings}
+          onChange={updateSettings}
+          showMargin={template === "classic"}
+          onSetDefault={saveAsDefault}
+          savedDefault={savedDefault}
+        />
       </div>
 
       <p className="print-tip text-center text-xs text-muted-foreground pt-3 px-4">

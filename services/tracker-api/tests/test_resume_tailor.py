@@ -207,3 +207,40 @@ def test_refine_before_tailor_404(client, db):
     _seed(db)
     rid = _scrape(client)
     assert client.post(f"/jobs/{rid}/tailor-resume/refine", json={"instruction": "x"}).status_code == 404
+
+
+# ── Print/format settings (Phase 4 knobs) ─────────────────────
+
+def test_print_settings_persist_and_sanitize(client, db, monkeypatch):
+    _seed(db)
+    rid = _scrape(client)
+    monkeypatch.setattr(resume_tailor, "tailor_resume", lambda *a, **k: (_s(TAILORED), NOTES))
+    client.post(f"/jobs/{rid}/tailor-resume")
+
+    r = client.put(f"/jobs/{rid}/tailor-resume/print-settings", json={"settings": {
+        "template": "modern", "fontPt": 99, "density": "weird",
+        "marginIn": 0.5, "accent": "red; }body{evil}", "forceBreakBefore": ["a", "b"]}})
+    assert r.status_code == 200
+    s = r.json()
+    assert s["template"] == "modern"
+    assert s["fontPt"] == 12.0          # clamped to the max
+    assert s["density"] == "normal"     # invalid → default
+    assert s["accent"] is None          # not a clean hex → dropped (CSS safety)
+    assert s["forceBreakBefore"] == ["a", "b"]
+
+    # Surfaced as the per-résumé override on the tailor GET.
+    got = client.get(f"/jobs/{rid}/tailor-resume").json()
+    assert got["print_settings"]["template"] == "modern"
+    assert got["default_print_settings"] is None     # no profile default set yet
+
+
+def test_profile_default_template_settings(client, db):
+    db.add(models.Profile(user_id=TEST_USER_ID, name="default", is_active=True, resume_text="x"))
+    db.commit()
+    r = client.put("/profile/resume-template-settings", json={"settings": {
+        "template": "classic", "fontPt": 10.5, "density": "compact",
+        "marginIn": 0.6, "accent": "#1f3a5f"}})
+    assert r.status_code == 200
+    assert r.json()["fontPt"] == 10.5
+    assert r.json()["accent"] == "#1f3a5f"           # valid hex kept
+    assert client.get("/profile").json()["resume_template_settings"]["density"] == "compact"

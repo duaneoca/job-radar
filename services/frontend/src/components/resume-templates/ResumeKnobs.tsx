@@ -1,4 +1,4 @@
-import { RotateCcw } from "lucide-react";
+import { Check, RotateCcw, Star } from "lucide-react";
 import { cn } from "../../lib/utils";
 import {
   ACCENTS,
@@ -18,10 +18,14 @@ export function ResumeKnobs({
   settings,
   onChange,
   showMargin,
+  onSetDefault,
+  savedDefault,
 }: {
   settings: ResumeSettings;
   onChange: (next: ResumeSettings) => void;
   showMargin: boolean;
+  onSetDefault?: () => void;
+  savedDefault?: boolean;
 }) {
   const set = (patch: Partial<ResumeSettings>) => onChange({ ...settings, ...patch });
 
@@ -81,12 +85,23 @@ export function ResumeKnobs({
       </div>
 
       <button
-        type="button" onClick={() => onChange({ ...DEFAULT_SETTINGS })}
+        type="button" onClick={() => onChange({ ...DEFAULT_SETTINGS, template: settings.template })}
         className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
-        title="Reset formatting to defaults"
+        title="Reset formatting to defaults (keeps the chosen template)"
       >
         <RotateCcw className="h-3.5 w-3.5" /> Reset
       </button>
+
+      {onSetDefault && (
+        <button
+          type="button" onClick={onSetDefault}
+          className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
+          title="Use these settings as the default for every résumé"
+        >
+          {savedDefault ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Star className="h-3.5 w-3.5" />}
+          {savedDefault ? "Saved" : "Set as default"}
+        </button>
+      )}
     </div>
   );
 }

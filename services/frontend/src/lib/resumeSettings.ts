@@ -3,20 +3,46 @@
 // follow-up. The values are applied as CSS variables (--rt-*) onto the template root.
 
 export type Density = "compact" | "normal" | "roomy";
+export type TemplateId = "classic" | "modern";
 
 export interface ResumeSettings {
+  template: TemplateId; // which template renders
   fontPt: number; // base font in points (autofit's --scale still multiplies this)
   density: Density; // line-height + vertical rhythm
   marginIn: number; // page margin in inches (Classic; Modern is full-bleed)
   accent: string | null; // accent colour, or null = keep the template's own default(s)
+  forceBreakBefore?: string[]; // manual page-break block ids (Phase 4 draggable bar)
 }
 
 export const DEFAULT_SETTINGS: ResumeSettings = {
+  template: "classic",
   fontPt: 10,
   density: "normal",
   marginIn: 0.5,
   accent: null,
 };
+
+// Coerce an untrusted/partial settings object (from the server or storage) into a valid
+// ResumeSettings, filling any missing field from `base` (then DEFAULT_SETTINGS).
+export function mergeSettings(
+  raw: Partial<ResumeSettings> | null | undefined,
+  base: ResumeSettings = DEFAULT_SETTINGS,
+): ResumeSettings {
+  const r = raw ?? {};
+  const template: TemplateId = r.template === "modern" ? "modern" : base.template;
+  const density: Density =
+    r.density === "compact" || r.density === "roomy" || r.density === "normal" ? r.density : base.density;
+  const fontPt = typeof r.fontPt === "number" ? clamp(r.fontPt, FONT_MIN, FONT_MAX) : base.fontPt;
+  const marginIn = typeof r.marginIn === "number" ? clamp(r.marginIn, MARGIN_MIN, MARGIN_MAX) : base.marginIn;
+  const accent = r.accent === null || (typeof r.accent === "string" && /^#[0-9a-fA-F]{6}$/.test(r.accent))
+    ? r.accent
+    : base.accent;
+  return { template, fontPt, density, marginIn, accent, forceBreakBefore: r.forceBreakBefore ?? base.forceBreakBefore };
+}
+
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, n));
+}
 
 // Bounds for the sliders.
 export const FONT_MIN = 8;

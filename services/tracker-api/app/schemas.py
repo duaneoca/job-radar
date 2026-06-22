@@ -6,7 +6,9 @@ from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr
+import re
+
+from pydantic import BaseModel, EmailStr, field_validator
 
 from app.models import (
     AgentEnvironment, AgentRunStatus,
@@ -316,6 +318,7 @@ class ProfileOut(ProfileBase):
     # resume_text via /profile/resume/ingest.
     resume_structured: Optional[dict] = None
     resume_structured_stale: bool = True
+    resume_template_settings: Optional[dict] = None  # Phase 4 default print knobs
     created_at: datetime
     updated_at: datetime
 
@@ -381,6 +384,59 @@ class ResumeIngestOut(BaseModel):
     structured: ResumeStructured
     honesty_facts: dict
     stale: bool = False
+
+
+# ── Print / format settings (Phase 4 knobs) ───────────────────
+
+_HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+class PrintSettings(BaseModel):
+    """User print "knobs" — stored as a profile default and/or per-résumé override.
+    Values are sanitized: bounded numerics, enum'd choices, and accent constrained to a
+    6-digit hex (it is injected into a CSS variable on the client)."""
+    template: Optional[str] = None
+    fontPt: Optional[float] = None
+    density: Optional[str] = None
+    marginIn: Optional[float] = None
+    accent: Optional[str] = None
+    forceBreakBefore: List[str] = []
+
+    @field_validator("template")
+    @classmethod
+    def _template(cls, v):
+        return v if v in (None, "classic", "modern") else "classic"
+
+    @field_validator("density")
+    @classmethod
+    def _density(cls, v):
+        return v if v in (None, "compact", "normal", "roomy") else "normal"
+
+    @field_validator("fontPt")
+    @classmethod
+    def _font(cls, v):
+        return None if v is None else max(8.0, min(12.0, float(v)))
+
+    @field_validator("marginIn")
+    @classmethod
+    def _margin(cls, v):
+        return None if v is None else max(0.35, min(0.85, float(v)))
+
+    @field_validator("accent")
+    @classmethod
+    def _accent(cls, v):
+        # null = "template default"; anything not a clean hex is dropped (CSS safety).
+        return v if (v is None or _HEX_RE.match(v)) else None
+
+    @field_validator("forceBreakBefore")
+    @classmethod
+    def _breaks(cls, v):
+        # Stable block ids only (defensive cap; opaque to the server).
+        return [str(x)[:80] for x in (v or [])][:50]
+
+
+class PrintSettingsIn(BaseModel):
+    settings: PrintSettings
 
 
 class TailorRefineIn(BaseModel):

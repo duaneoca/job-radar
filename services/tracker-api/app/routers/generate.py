@@ -485,6 +485,9 @@ def get_tailored_resume(
     state = dict(review.resume_tailor)
     base = (profile.resume_structured if profile else None)
     state["base_changed"] = bool(base) and base != state.get("original")
+    # Phase 4 print knobs: per-résumé override + the profile default to fall back to.
+    state["print_settings"] = review.resume_print_settings
+    state["default_print_settings"] = profile.resume_template_settings if profile else None
     return state
 
 
@@ -583,3 +586,18 @@ def set_change_decisions(
     flag_modified(review, "resume_tailor")
     db.commit()
     return state
+
+
+@router.put("/{review_id}/tailor-resume/print-settings")
+def set_print_settings(
+    review_id: UUID,
+    payload: schemas.PrintSettingsIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Persist this job's print/format override (template, font, density, margin,
+    accent, manual page breaks). Sanitized server-side. Returns the stored settings."""
+    review = _get_review(review_id, current_user, db)
+    review.resume_print_settings = payload.settings.model_dump()
+    db.commit()
+    return review.resume_print_settings

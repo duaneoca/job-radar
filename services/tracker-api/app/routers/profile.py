@@ -111,6 +111,22 @@ def ingest_resume(
     )
 
 
+@router.put("/resume-template-settings")
+def set_default_template_settings(
+    payload: schemas.PrintSettingsIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Set the user's *default* print knobs (template/font/density/margin/accent) on the
+    active profile. Per-job copies override this. Sanitized server-side."""
+    obj = _active_profile(current_user, db)
+    if not obj:
+        raise HTTPException(status_code=404, detail="No active profile found")
+    obj.resume_template_settings = payload.settings.model_dump()
+    db.commit()
+    return obj.resume_template_settings
+
+
 @router.get("/active", response_model=schemas.ProfileOut)
 def get_active_profile(
     db: Session = Depends(get_db),
