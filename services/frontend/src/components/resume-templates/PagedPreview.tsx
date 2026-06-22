@@ -70,6 +70,14 @@ function stripTrailingBlankPages(target: HTMLElement): number {
   return removed;
 }
 
+// Keep only the first page box, removing any others. Used to enforce the one-page
+// contract for templates whose grid can't fragment cleanly (Modern's sidebar).
+function removeAfterFirstPage(target: HTMLElement): void {
+  Array.from(target.querySelectorAll<HTMLElement>(".pagedjs_page"))
+    .slice(1)
+    .forEach((p) => p.remove());
+}
+
 /**
  * Renders the chosen résumé template into real, paginated page boxes via Paged.js.
  * What you see on screen (the `.pagedjs_page` sheets) is exactly what prints — Paged.js
@@ -95,19 +103,28 @@ export function PagedPreview({
   onPagesRef.current = onPages;
   const [rendering, setRendering] = useState(true);
   const [error, setError] = useState(false);
+  const [overflow, setOverflow] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     const target = targetRef.current;
     setRendering(true);
     setError(false);
+    setOverflow(false);
 
     // Let React paint the hidden source + fonts settle before measuring/chunking.
     const timer = setTimeout(async () => {
       const root = sourceRef.current?.querySelector("[data-resume-doc]") as HTMLElement | null;
       if (!root || !target) return;
 
-      const templateCss = root.querySelector("style")?.textContent ?? "";
+      // Strip the template's own @page rule. Paged.js's print-media handler hoists
+      // rules out of @media print to the END of the sheet, so the template's @page would
+      // land AFTER our pageCss @page and override the margin knob. Removing it makes our
+      // pageCss the sole @page authority, so the margin slider actually takes effect.
+      const templateCss = (root.querySelector("style")?.textContent ?? "").replace(
+        /@page[^{]*\{[^}]*\}/g,
+        "",
+      );
       applySettings(root, settings); // knob vars on the source, before measuring
       const onePage = root.getAttribute("data-fit") === "one-page";
       const scale = onePage ? fitOnePageScale(root) : 1;
@@ -140,7 +157,14 @@ export function PagedPreview({
         // Paged.js appends an empty trailing page when content ends near a page
         // boundary (a known behaviour, independent of template/content). Strip any
         // genuinely-blank trailing pages so the preview and the PDF match the content.
-        const kept = flow.total - stripTrailingBlankPages(target);
+        let kept = flow.total - stripTrailingBlankPages(target);
+        // One-page templates (Modern) must not fragment — extra pages mean the grid
+        // spilled and the sidebar/columns break. Keep page 1, drop the rest, and warn.
+        if (onePage && kept > 1) {
+          removeAfterFirstPage(target);
+          kept = 1;
+          setOverflow(true);
+        }
         onPagesRef.current?.(Math.max(1, kept));
       } catch (e) {
         if (!cancelled) {
@@ -175,6 +199,13 @@ export function PagedPreview({
         <p className="text-center text-sm text-destructive py-10">
           Couldn't render the paged preview. Try reloading.
         </p>
+      )}
+      {overflow && !rendering && (
+        <div className="mx-auto mt-4 max-w-xl rounded-md border border-amber-300 bg-amber-50 px-4 py-2.5 text-xs text-amber-900 print:hidden">
+          This résumé is too long for the one-page layout at these settings — the
+          overflow was trimmed. Lower the <b>font size</b> or <b>density</b>, shorten
+          the content, or switch to the <b>Classic</b> template (which spans multiple pages).
+        </div>
       )}
 
       {/* Hidden via opacity (NOT display:none) while chunking — Paged.js measures the
