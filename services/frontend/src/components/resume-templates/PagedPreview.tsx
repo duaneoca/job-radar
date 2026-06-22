@@ -19,8 +19,9 @@ function pageCss(template: TemplateId): string {
 // is single-column and simply paginates across real Paged.js pages, no shrinking.
 function fitOnePageScale(src: HTMLElement): number {
   const PX = 96;
-  // Modern prints margin:0, so the usable page is ~11in; target a hair under that.
-  const budget = Math.round(10.6 * PX);
+  // Modern prints margin:0 (usable page ~11in), but leave real slack under that so a
+  // trailing margin / sub-pixel rounding can't tip the grid onto a blank second page.
+  const budget = Math.round(10.3 * PX);
   const set = (s: number) => src.style.setProperty("--scale", String(s));
   set(1);
   if (src.scrollHeight <= budget) {
