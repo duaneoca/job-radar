@@ -302,6 +302,9 @@ export interface TailorState {
   total_years: number | null;
   flagged_count: number;
   base_changed?: boolean;
+  // Phase 4 print knobs: per-résumé override + the profile default to fall back to.
+  print_settings?: Partial<import("./resumeSettings").ResumeSettings> | null;
+  default_print_settings?: Partial<import("./resumeSettings").ResumeSettings> | null;
 }
 
 export interface Profile {

@@ -188,6 +188,9 @@ class UserJobReview(Base):
     # Per-job tailored résumé (Phase 2): {original, tailored, changes[], status,
     # model, generated_at, total_years}. Snapshot — not mutated when the base résumé changes.
     resume_tailor        = Column(JSON, nullable=True)
+    # Per-job print/format override (Phase 4): {template, fontPt, density, marginIn,
+    # accent, forceBreakBefore[]}. Falls back to the profile default when null.
+    resume_print_settings = Column(JSON, nullable=True)
 
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -279,6 +282,9 @@ class Profile(Base):
     # changed since the last parse (re-ingest lazily on next tailor).
     resume_structured       = Column(JSON, nullable=True)
     resume_structured_stale = Column(Boolean, nullable=False, default=True)
+    # Default print/format "knobs" (Phase 4): {template, fontPt, density, marginIn,
+    # accent}. Per-job copies (UserJobReview.resume_print_settings) override this.
+    resume_template_settings = Column(JSON, nullable=True)
 
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
