@@ -1,17 +1,30 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { ResumeDocument, type TemplateId } from "./ResumeDocument";
+import { DENSITY, type ResumeSettings } from "../../lib/resumeSettings";
 
 // Page geometry handed to Paged.js as a top-level @page rule. The templates carry their
 // own `@media print { @page {…} }`, but ours is unconditional AND comes last, so it wins
 // in Paged.js's preview context either way. width:auto lets the résumé fill the page's
 // content box (the sheet minus its margins) instead of its fixed screen width.
-function pageCss(template: TemplateId): string {
-  const margin = template === "modern" ? "0" : "0.5in"; // Modern's sidebar bleeds to the edge
+function pageCss(template: TemplateId, marginIn: number): string {
+  // Modern's sidebar bleeds to the edge — always full-bleed, ignore the margin knob.
+  const margin = template === "modern" ? "0" : `${marginIn}in`;
   return `
     @page { size: letter; margin: ${margin}; }
     .rt-classic, .rt-modern { width: auto !important; margin: 0 !important; }
   `;
+}
+
+// Apply the user knobs as CSS variables on the template root. Set on the SOURCE before
+// autofit so the one-page measurement reflects the chosen font; the clone inherits them.
+function applySettings(el: HTMLElement, s: ResumeSettings): void {
+  const { line, gap } = DENSITY[s.density];
+  el.style.setProperty("--rt-font", `${s.fontPt}pt`);
+  el.style.setProperty("--rt-line", String(line));
+  el.style.setProperty("--rt-gap", String(gap));
+  if (s.accent) el.style.setProperty("--rt-accent", s.accent);
+  else el.style.removeProperty("--rt-accent"); // null → template's own default(s)
 }
 
 // Largest --scale (≤1) whose natural height fits a single printable page. Mirrors the
@@ -68,10 +81,12 @@ function stripTrailingBlankPages(target: HTMLElement): number {
 export function PagedPreview({
   template,
   data,
+  settings,
   onPages,
 }: {
   template: TemplateId;
   data: unknown;
+  settings: ResumeSettings;
   onPages?: (n: number) => void;
 }) {
   const sourceRef = useRef<HTMLDivElement>(null);
@@ -93,6 +108,7 @@ export function PagedPreview({
       if (!root || !target) return;
 
       const templateCss = root.querySelector("style")?.textContent ?? "";
+      applySettings(root, settings); // knob vars on the source, before measuring
       const onePage = root.getAttribute("data-fit") === "one-page";
       const scale = onePage ? fitOnePageScale(root) : 1;
 
@@ -117,7 +133,7 @@ export function PagedPreview({
         const previewer = new Previewer();
         const flow = await previewer.preview(
           content,
-          [{ resume: `${templateCss}\n${pageCss(template)}` }],
+          [{ resume: `${templateCss}\n${pageCss(template, settings.marginIn)}` }],
           target,
         );
         if (cancelled) return;
@@ -134,13 +150,13 @@ export function PagedPreview({
       } finally {
         if (!cancelled) setRendering(false);
       }
-    }, 80);
+    }, 120); // debounce: live knob drags re-chunk only after a brief pause
 
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [template, data]);
+  }, [template, data, settings]);
 
   return (
     <div className="paged-wrap">

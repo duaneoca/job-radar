@@ -4,10 +4,12 @@
 // reaches a single page.
 const CSS = `
 .rt-modern{
-  --ink:#23272e; --muted:#5c6573; --sidebar:#16314f; --sidebar-soft:#aebfd4;
-  --accent:#2f6db0; --scale:1;
+  /* --rt-* are the user "knobs". An unset --rt-accent keeps the designed two-tone
+     (dark sidebar + medium-blue accents); picking one themes both to that colour. */
+  --ink:#23272e; --muted:#5c6573; --sidebar:var(--rt-accent,#16314f); --sidebar-soft:#aebfd4;
+  --accent:var(--rt-accent,#2f6db0); --scale:1;
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
-  color:var(--ink); line-height:1.42; font-size:calc(10.2pt * var(--scale));
+  color:var(--ink); line-height:var(--rt-line,1.42); font-size:calc(var(--rt-font,10.2pt) * var(--scale));
   display:grid; grid-template-columns:2.55in 1fr; width:8.5in; background:#fff;
   -webkit-print-color-adjust:exact; print-color-adjust:exact;
 }
@@ -27,16 +29,16 @@ const CSS = `
 .rt-modern .main{ padding:calc(.5in * var(--scale)) .46in; }
 .rt-modern .main h2{ font-size:1.08em; text-transform:uppercase; letter-spacing:1.3px; color:var(--sidebar);
   margin:0 0 .55em; padding-bottom:.2em; border-bottom:2px solid var(--accent); break-after:avoid; }
-.rt-modern section{ margin-bottom:.8em; }
+.rt-modern section{ margin-bottom:calc(.8em * var(--rt-gap,1)); }
 .rt-modern p{ margin:0; }
-.rt-modern .entry{ margin-bottom:.7em; break-inside:avoid; }
+.rt-modern .entry{ margin-bottom:calc(.7em * var(--rt-gap,1)); break-inside:avoid; }
 .rt-modern .entry-head{ display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
 .rt-modern .org{ font-weight:700; font-size:1.04em; }
 .rt-modern .dates{ color:var(--muted); font-size:.86em; white-space:nowrap; }
 .rt-modern .titles{ font-style:italic; color:var(--muted); font-size:.88em; margin:.05em 0 .35em; }
 .rt-modern .phase{ font-weight:600; color:var(--accent); font-size:.91em; margin:.5em 0 .15em; break-after:avoid; }
 .rt-modern ul{ margin:.25em 0 .35em; padding-left:1.3em; list-style:disc outside; }
-.rt-modern li{ margin:.18em 0; break-inside:avoid; }
+.rt-modern li{ margin:calc(.18em * var(--rt-gap,1)) 0; break-inside:avoid; }
 .rt-modern .note{ font-size:.84em; color:var(--muted); margin:.25em 0 0; } .rt-modern .note b{ color:var(--ink); }
 @media print{ @page{ size:letter; margin:0; } }
 `;

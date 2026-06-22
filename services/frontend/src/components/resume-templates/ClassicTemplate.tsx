@@ -3,26 +3,28 @@
 // page, keep-together rules, em-based spacing driven by --scale for autofit).
 const CSS = `
 .rt-classic{
-  --ink:#1a1a1a; --muted:#555; --accent:#1f3a5f; --rule:#c9d3df; --scale:1;
+  /* --rt-* are the user "knobs" (PagedPreview sets them); each falls back to the
+     template's own default so the template still renders standalone. */
+  --ink:#1a1a1a; --muted:#555; --accent:var(--rt-accent,#1f3a5f); --rule:#c9d3df; --scale:1;
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
-  color:var(--ink); line-height:1.4; font-size:calc(10.3pt * var(--scale));
+  color:var(--ink); line-height:var(--rt-line,1.4); font-size:calc(var(--rt-font,10.3pt) * var(--scale));
   width:7.5in; margin:0 auto; overflow-wrap:break-word; background:#fff;
 }
 .rt-classic header{ text-align:center; border-bottom:2px solid var(--accent); padding-bottom:.6em; margin-bottom:.9em; }
 .rt-classic h1{ font-size:2.2em; letter-spacing:.5px; margin:0 0 .15em; color:var(--accent); font-weight:700; }
 .rt-classic .contact{ font-size:.9em; color:var(--muted); }
 .rt-classic h2{ font-size:1.02em; text-transform:uppercase; letter-spacing:1.4px; color:var(--accent);
-  border-bottom:1px solid var(--rule); padding-bottom:.2em; margin:1.1em 0 .55em; break-after:avoid; page-break-after:avoid; }
+  border-bottom:1px solid var(--rule); padding-bottom:.2em; margin:calc(1.1em * var(--rt-gap,1)) 0 .55em; break-after:avoid; page-break-after:avoid; }
 .rt-classic p{ margin:0; }
 .rt-classic .skill{ margin:.24em 0; } .rt-classic .skill b{ color:var(--accent); }
-.rt-classic .entry{ margin-bottom:.7em; break-inside:avoid; page-break-inside:avoid; }
+.rt-classic .entry{ margin-bottom:calc(.7em * var(--rt-gap,1)); break-inside:avoid; page-break-inside:avoid; }
 .rt-classic .entry-head{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
 .rt-classic .org{ font-weight:700; font-size:1.06em; }
 .rt-classic .dates{ color:var(--muted); font-size:.9em; white-space:nowrap; }
 .rt-classic .titles{ font-style:italic; color:var(--muted); font-size:.92em; margin:.05em 0 .35em; }
 .rt-classic .phase{ font-weight:600; color:var(--accent); font-size:.95em; margin:.5em 0 .15em; break-after:avoid; }
 .rt-classic ul{ margin:.25em 0 .35em; padding-left:1.4em; list-style:disc outside; }
-.rt-classic li{ margin:.18em 0; break-inside:avoid; }
+.rt-classic li{ margin:calc(.18em * var(--rt-gap,1)) 0; break-inside:avoid; }
 .rt-classic .lead{ margin:0 0 .2em; break-after:avoid; }
 .rt-classic .note{ font-size:.86em; color:var(--muted); margin:.25em 0 0; } .rt-classic .note b{ color:var(--ink); }
 @media print{ .rt-classic{ width:auto; } @page{ size:letter; margin:.5in; } }

@@ -7,7 +7,9 @@ import { jobsApi } from "../lib/api";
 import { cn } from "../lib/utils";
 import { effectiveResume } from "../lib/resumeEffective";
 import { PagedPreview } from "../components/resume-templates/PagedPreview";
+import { ResumeKnobs } from "../components/resume-templates/ResumeKnobs";
 import { TEMPLATES, type TemplateId } from "../components/resume-templates/ResumeDocument";
+import { loadSettings, saveSettings, type ResumeSettings } from "../lib/resumeSettings";
 import type { TailorState } from "../lib/types";
 
 // Screen chrome for the Paged.js sheets (true page boxes) + print rules. In print the
@@ -20,7 +22,7 @@ const CSS = `
 .paged-target .pagedjs_page{ background:#fff; box-shadow:0 2px 14px rgba(0,0,0,.12); margin:0 auto 24px; }
 .paged-source{ position:absolute; left:-10000px; top:0; width:8.5in; visibility:hidden; pointer-events:none; }
 @media print{
-  #print-toolbar, .print-tip, .paged-source{ display:none !important; }
+  #print-toolbar, #print-knobs, .print-tip, .paged-source{ display:none !important; }
   .print-bg{ background:#fff !important; }
   .paged-target{ padding:0 !important; }
   .paged-target .pagedjs_page{ box-shadow:none !important; margin:0 auto !important; }
@@ -33,6 +35,12 @@ export function TailorPrintPage() {
     () => (localStorage.getItem("jr-resume-template") as TemplateId) || "classic",
   );
   const [pages, setPages] = useState<number | null>(null);
+  const [settings, setSettings] = useState<ResumeSettings>(() => loadSettings());
+
+  function updateSettings(next: ResumeSettings) {
+    setSettings(next);
+    saveSettings(next);
+  }
 
   const { data: state, isLoading } = useQuery<TailorState | null>({
     queryKey: ["tailor", id],
@@ -94,12 +102,19 @@ export function TailorPrintPage() {
         </Button>
       </div>
 
+      <div id="print-knobs" className="sticky top-[49px] z-10 flex items-center border-b bg-background/95 backdrop-blur px-4 py-2">
+        <ResumeKnobs settings={settings} onChange={updateSettings} showMargin={template === "classic"} />
+      </div>
+
       <p className="print-tip text-center text-xs text-muted-foreground pt-3 px-4">
         Tip: in the print dialog choose <b>Save as PDF</b>, margins <b>None</b>
         {template === "modern" && <>, and turn <b>Background graphics</b> ON for the sidebar</>}.
+        {pages != null && pages > 1 && (
+          <> If a blank page appears at the very end, set the print range to <b>1&ndash;{pages}</b> to skip it.</>
+        )}
       </p>
 
-      <PagedPreview template={template} data={data} onPages={setPages} />
+      <PagedPreview template={template} data={data} settings={settings} onPages={setPages} />
     </div>
   );
 }
