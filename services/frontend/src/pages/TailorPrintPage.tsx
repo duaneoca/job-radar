@@ -24,8 +24,21 @@ const CSS = `
 .paged-target .pagedjs_pages{ margin:0 auto; }
 .paged-target .pagedjs_page{ background:#fff; box-shadow:0 2px 14px rgba(0,0,0,.12); margin:0 auto 24px; }
 .paged-source{ position:absolute; left:-10000px; top:0; width:8.5in; visibility:hidden; pointer-events:none; }
+/* In-document page-break controls (added to the rendered blocks by PagedPreview). */
+.rt-break{
+  position:absolute; left:0; top:-1.15em; z-index:6;
+  display:inline-flex; align-items:center; white-space:nowrap;
+  font:600 9px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+  letter-spacing:.3px; padding:3px 7px; border-radius:10px; cursor:pointer;
+  border:1px dashed #9aa7b8; background:#fff; color:#5c6573;
+  opacity:0; transition:opacity .12s;
+}
+[data-block-id]:hover > .rt-break{ opacity:.92; }
+.rt-break:hover{ opacity:1; border-color:#1f3a5f; color:#1f3a5f; }
+.rt-break-on{ opacity:1; border-style:solid; border-color:#1f3a5f; color:#1f3a5f; background:#eef3f9; }
+.rt-break-on::after{ content:""; position:absolute; left:100%; top:50%; width:100vw; margin-left:6px; border-top:1px dashed #1f3a5f; }
 @media print{
-  #print-toolbar, #print-knobs, .print-tip, .paged-source{ display:none !important; }
+  #print-toolbar, #print-knobs, .print-tip, .paged-source, .rt-break{ display:none !important; }
   .print-bg{ background:#fff !important; }
   .paged-target{ padding:0 !important; }
   .paged-target .pagedjs_page{ box-shadow:none !important; margin:0 auto !important; }
@@ -74,6 +87,13 @@ export function TailorPrintPage() {
     updateSettings({ ...settings, template: t });
   }
 
+  function toggleBreak(blockId: string) {
+    const cur = new Set(settings.forceBreakBefore ?? []);
+    if (cur.has(blockId)) cur.delete(blockId);
+    else cur.add(blockId);
+    updateSettings({ ...settings, forceBreakBefore: [...cur] });
+  }
+
   async function saveAsDefault() {
     try {
       await profileApi.put("/profile/resume-template-settings", { settings });
@@ -97,6 +117,7 @@ export function TailorPrintPage() {
   }
 
   const template = settings.template;
+  const breakCount = settings.forceBreakBefore?.length ?? 0;
 
   return (
     <div className="print-bg">
@@ -123,6 +144,15 @@ export function TailorPrintPage() {
         {pages != null && (
           <span className="text-xs text-muted-foreground">{pages} page{pages === 1 ? "" : "s"}</span>
         )}
+        {template === "classic" && breakCount > 0 && (
+          <span className="text-xs text-muted-foreground">
+            · {breakCount} break{breakCount === 1 ? "" : "s"} ·{" "}
+            <button type="button" className="underline hover:text-foreground"
+              onClick={() => updateSettings({ ...settings, forceBreakBefore: [] })}>
+              clear
+            </button>
+          </span>
+        )}
         <span className="text-xs text-muted-foreground hidden sm:inline">
           {TEMPLATES.find((t) => t.id === template)?.note}
         </span>
@@ -147,9 +177,12 @@ export function TailorPrintPage() {
         {pages != null && pages > 1 && (
           <> If a blank page appears at the very end, set the print range to <b>1&ndash;{pages}</b> to skip it.</>
         )}
+        {template === "classic" && (
+          <> Hover a section or job in the preview to <b>start it on a new page</b>.</>
+        )}
       </p>
 
-      <PagedPreview template={template} data={data} settings={settings} onPages={setPages} />
+      <PagedPreview template={template} data={data} settings={settings} onPages={setPages} onToggleBreak={toggleBreak} />
     </div>
   );
 }

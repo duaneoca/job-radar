@@ -45,11 +45,11 @@ export function ClassicTemplate({ data }: { data: any }) {
         <div className="contact">{contactLine(c)}</div>
       </header>
 
-      {data?.summary && (<><h2>Summary</h2><p>{data.summary}</p></>)}
+      {data?.summary && (<><h2 data-block-id="sec-summary">Summary</h2><p>{data.summary}</p></>)}
 
       {data?.skills?.length > 0 && (
         <>
-          <h2>Skills</h2>
+          <h2 data-block-id="sec-skills">Skills</h2>
           {data.skills.map((g: any, i: number) => (
             <div className="skill" key={i}><b>{g.label}:</b> {(g.items ?? []).join(" · ")}</div>
           ))}
@@ -58,9 +58,9 @@ export function ClassicTemplate({ data }: { data: any }) {
 
       {data?.projects?.length > 0 && (
         <>
-          <h2>Projects</h2>
+          <h2 data-block-id="sec-projects">Projects</h2>
           {data.projects.map((pr: any, i: number) => (
-            <div className="entry" key={i}>
+            <div className="entry" data-block-id={`proj-${i}`} key={i}>
               {pr.title && <div className="org" style={{ fontSize: "1em" }}>{pr.title}</div>}
               {pr.bullets?.length > 0 && <ul>{pr.bullets.map((b: string, j: number) => <li key={j}>{b}</li>)}</ul>}
             </div>
@@ -70,9 +70,9 @@ export function ClassicTemplate({ data }: { data: any }) {
 
       {data?.experience?.length > 0 && (
         <>
-          <h2>Experience</h2>
+          <h2 data-block-id="sec-experience">Experience</h2>
           {data.experience.map((e: any, i: number) => (
-            <div className="entry" key={i}>
+            <div className="entry" data-block-id={`exp-${i}`} key={i}>
               <div className="entry-head">
                 <span className="org">{e.company}</span>
                 {(e.start || e.end) && <span className="dates">{e.start}{e.start && e.end ? " – " : ""}{e.end}</span>}
@@ -93,7 +93,7 @@ export function ClassicTemplate({ data }: { data: any }) {
 
       {data?.education?.length > 0 && (
         <>
-          <h2>Education</h2>
+          <h2 data-block-id="sec-education">Education</h2>
           {data.education.map((ed: any, i: number) => (
             <div className="entry-head" key={i}>
               <span className="org">{ed.degree}</span>
