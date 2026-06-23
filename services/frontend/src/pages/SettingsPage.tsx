@@ -17,7 +17,7 @@ import { toast } from "../hooks/useToast";
 import { useConfirmLinks } from "../hooks/useConfirmLinks";
 import { formatDate } from "../lib/utils";
 import { AgentStatsView } from "../components/AgentStatsView";
-import type { APIKey, LLMProvider, AgentApiKey, AgentApiKeyCreated, AgentFolderConfig, EmailCredentialStatus, SlackStatus, SlackChannel } from "../lib/types";
+import type { APIKey, LLMProvider, AgentApiKey, AgentApiKeyCreated, AgentFolderConfig, EmailCredentialStatus, MailboxFolders, SlackStatus, SlackChannel } from "../lib/types";
 
 // ─── Account Details tab ──────────────────────────────────────────────────────
 
@@ -989,6 +989,36 @@ function MailboxConfig({ status, connectedLabel, noun }: {
     setEnabled(status.enabled);
   }, [status]);
 
+  // Live folder/label list from the server → exact-name picker (avoids the typed-name
+  // mismatch where a leaf like "Postings" never matches the server's "Folders/Postings").
+  const { data: avail } = useQuery<MailboxFolders>({
+    queryKey: ["agent-mailbox-folders", status.provider],
+    queryFn: () => agentApi.get("/agent/email-credentials/folders").then((r) => r.data),
+    enabled: status.connected,
+    retry: false,
+    staleTime: 60_000,
+  });
+  const delim = avail?.delimiter || "/";
+  const allFolders = avail?.folders ?? [];
+  const usePicker = allFolders.length > 0;   // fall back to free-text if the list can't load
+  const SUB_KEYS = ["interaction", "postings", "social", "unprocessed"] as const;
+
+  const root = folders.root ?? "";
+  const isChildOfRoot = (n: string) => !!root && n !== root && n.startsWith(root + delim);
+  const childrenOfRoot = allFolders.filter(isChildOfRoot);
+
+  // Changing the root invalidates any sub that no longer lives under it.
+  function setRootFolder(v: string) {
+    setFolders((prev) => {
+      const next = { ...prev, root: v };
+      for (const k of SUB_KEYS) {
+        const val = prev[k];
+        if (val && !(val !== v && val.startsWith(v + delim))) next[k] = "";
+      }
+      return next;
+    });
+  }
+
   const norm = (s: string | null) => (!s || s.trim() === "" ? null : s.trim());
 
   async function persist(nextEnabled: boolean, announce?: string) {
@@ -1065,20 +1095,64 @@ function MailboxConfig({ status, connectedLabel, noun }: {
           <h4 className="text-sm font-medium">{nounCap}</h4>
           <p className="text-xs text-muted-foreground mt-0.5">
             The agent files mail under these {noun}s. <strong>Create the {noun}s yourself first</strong> — the agent never creates {noun}s.
-            {noun === "label" && <> Use the nested name (e.g. <code>Hire Duane/Interaction</code>).</>}
+            {usePicker
+              ? <> Pick the <strong>root</strong> {noun} first; the rest must live under it.</>
+              : noun === "label" && <> Use the nested name (e.g. <code>Hire Duane/Interaction</code>).</>}
           </p>
         </div>
-        {LABEL_FIELDS.map((f) => (
-          <div key={f.key} className="space-y-1">
-            <Label htmlFor={`folder-${f.key}`} className="text-xs">{f.label}</Label>
-            <Input
-              id={`folder-${f.key}`}
-              value={folders[f.key] ?? ""}
-              placeholder={f.hint}
-              onChange={(e) => setFolders((prev) => ({ ...prev, [f.key]: e.target.value }))}
-            />
-          </div>
-        ))}
+
+        {usePicker ? (
+          <>
+            {/* Root first */}
+            <div className="space-y-1">
+              <Label htmlFor="folder-root" className="text-xs">{LABEL_FIELDS[0].label}</Label>
+              <select
+                id="folder-root"
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                value={root}
+                onChange={(e) => setRootFolder(e.target.value)}
+              >
+                <option value="">— select root {noun} —</option>
+                {allFolders.map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            {/* Subs — only folders under the chosen root */}
+            {LABEL_FIELDS.slice(1).map((f) => {
+              const current = folders[f.key] ?? "";
+              const opts = current && !childrenOfRoot.includes(current)
+                ? [current, ...childrenOfRoot] : childrenOfRoot;   // keep a stale value visible
+              return (
+                <div key={f.key} className="space-y-1">
+                  <Label htmlFor={`folder-${f.key}`} className="text-xs">{f.label}</Label>
+                  <select
+                    id={`folder-${f.key}`}
+                    disabled={!root}
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+                    value={current}
+                    onChange={(e) => setFolders((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                  >
+                    <option value="">{root ? `— select ${f.label} —` : "select a root first"}</option>
+                    {opts.map((n) => (
+                      <option key={n} value={n}>{n.startsWith(root + delim) ? n.slice(root.length + delim.length) : n}</option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })}
+          </>
+        ) : (
+          LABEL_FIELDS.map((f) => (
+            <div key={f.key} className="space-y-1">
+              <Label htmlFor={`folder-${f.key}`} className="text-xs">{f.label}</Label>
+              <Input
+                id={`folder-${f.key}`}
+                value={folders[f.key] ?? ""}
+                placeholder={f.hint}
+                onChange={(e) => setFolders((prev) => ({ ...prev, [f.key]: e.target.value }))}
+              />
+            </div>
+          ))
+        )}
       </div>
 
       <Button size="sm" disabled={saving} onClick={saveFolders}>

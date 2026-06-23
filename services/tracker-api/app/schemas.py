@@ -862,6 +862,14 @@ class EmailCredentialUpdateIn(BaseModel):
     enabled: bool
 
 
+# Live folder/label list for the connected mailbox — powers the picker so users
+# choose exact names (incl. hierarchy prefix) instead of typing them.
+class MailboxFoldersOut(BaseModel):
+    provider: Optional[str]            # gmail | imap
+    delimiter: Optional[str] = None    # hierarchy separator the server uses (e.g. "/" or ".")
+    folders: List[str] = []            # full hierarchical names, as the server reports them
+
+
 # IMAP "Other" provider — host/port/user/password/SSL (cloud non-Gmail mailbox).
 # Verified live (connection + folder existence) before storing.
 class ImapCredentialsIn(BaseModel):
