@@ -1225,30 +1225,23 @@ function ImapPanel() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [useSsl, setUseSsl] = useState(true);
-  const [folders, setFolders] = useState<AgentFolderConfig>(EMPTY_FOLDERS);
   const [saving, setSaving] = useState(false);
 
   async function saveImap() {
     setSaving(true);
     try {
-      const norm = (s: string | null) => (!s || s.trim() === "" ? null : s.trim());
-      // One verified call: the backend tests the connection + that the folders
-      // exist before storing anything.
+      // Connect verifies the login only; folders are chosen next (you can't list
+      // folders until the mailbox is stored).
       await agentApi.put("/agent/email-credentials/imap", {
         host: host.trim(), port: Number(port) || 993, username: username.trim(), password, use_ssl: useSsl,
-        folders: {
-          root: norm(folders.root), interaction: norm(folders.interaction),
-          postings: norm(folders.postings), social: norm(folders.social),
-          unprocessed: norm(folders.unprocessed),
-        },
       });
       setPassword("");
       qc.invalidateQueries({ queryKey: ["agent-email-credentials"] });
-      toast({ title: "IMAP mailbox connected" });
+      toast({ title: "Mailbox connected — now pick your folders below" });
     } catch (err: any) {
       toast({
         title: "Couldn't connect to that mailbox",
-        description: err?.response?.data?.detail ?? "Check the host, port, credentials, and folder names.",
+        description: err?.response?.data?.detail ?? "Check the host, port, and credentials.",
         variant: "destructive",
       });
     } finally {
@@ -1258,7 +1251,6 @@ function ImapPanel() {
 
   if (isLoading) return <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />;
   const connected = status?.connected && status.provider === "imap";
-  const foldersComplete = LABEL_FIELDS.every((f) => (folders[f.key] ?? "").trim() !== "");
 
   if (connected) {
     return (
@@ -1273,9 +1265,8 @@ function ImapPanel() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Connect any IMAP mailbox; Job Radar's hosted agent reads and files it. We test the connection
-        and that your folders exist before saving; credentials are stored encrypted. (Cloud-IMAP
-        processing ships with the agent's IMAP provider — your config is saved and ready.)
+        Connect any IMAP mailbox; Job Radar's hosted agent reads and files it. We test the connection,
+        store your credentials encrypted, then you pick your folders from the mailbox (no typing names).
       </p>
       <div className="space-y-3">
         <div className="grid grid-cols-3 gap-2">
@@ -1301,30 +1292,12 @@ function ImapPanel() {
           <Label htmlFor="imap-ssl" className="text-sm">Use SSL/TLS</Label>
         </div>
 
-        <div className="space-y-3 pt-2 border-t">
-          <div>
-            <h4 className="text-sm font-medium">Folders <span className="text-muted-foreground font-normal">(all required)</span></h4>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              The agent reads new mail from the root and files it into the others.{" "}
-              <strong>Create all five folders yourself first</strong> — the agent never creates folders, and a missing one breaks it at runtime. We check each exists before saving.
-            </p>
-          </div>
-          {LABEL_FIELDS.map((f) => (
-            <div key={f.key} className="space-y-1">
-              <Label htmlFor={`imap-folder-${f.key}`} className="text-xs">{f.label}</Label>
-              <Input
-                id={`imap-folder-${f.key}`}
-                value={folders[f.key] ?? ""}
-                placeholder={f.hint}
-                onChange={(e) => setFolders((prev) => ({ ...prev, [f.key]: e.target.value }))}
-              />
-            </div>
-          ))}
-        </div>
-
-        <Button size="sm" disabled={saving || !host || !username || !password || !foldersComplete} onClick={saveImap}>
+        <Button size="sm" disabled={saving || !host || !username || !password} onClick={saveImap}>
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Connect mailbox"}
         </Button>
+        <p className="text-xs text-muted-foreground">
+          Next: pick your <strong>root</strong> folder and the four sub-folders from your mailbox. Create them yourself first — the agent never creates folders.
+        </p>
       </div>
     </div>
   );
