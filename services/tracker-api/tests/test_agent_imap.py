@@ -46,24 +46,30 @@ def test_imap_stores_folders_in_one_call(client, no_verify, monkeypatch):
     assert r.json()["folders"]["unprocessed"] == "JobRadar/Unprocessed"
 
 
-def test_imap_requires_all_folders(client, no_verify, monkeypatch):
+def test_imap_connects_without_folders(client, no_verify, monkeypatch):
+    """Connect verifies the login only — folders are chosen afterwards via the picker
+    (you can't list folders until creds are stored). New mailbox starts disabled."""
     monkeypatch.setattr(settings, "encryption_key", Fernet.generate_key().decode())
-    # missing social + unprocessed → 400, nothing stored
+    r = client.put("/agent/email-credentials/imap", json={k: v for k, v in IMAP.items() if k != "folders"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["connected"] is True
+    assert body["enabled"] is False                 # disabled until folders are set + verified
+    assert body["folders"]["root"] is None
+
+
+def test_imap_partial_folders_ok_at_connect(client, no_verify, monkeypatch):
+    """A partial folder layout no longer blocks connect — it's just stored, still
+    disabled, to be completed/verified when the user enables."""
+    monkeypatch.setattr(settings, "encryption_key", Fernet.generate_key().decode())
     r = client.put("/agent/email-credentials/imap", json={
         **IMAP,
         "folders": {"root": "JobRadar", "interaction": "x", "postings": "y",
                     "social": "", "unprocessed": None},
     })
-    assert r.status_code == 400
-    assert "Social" in r.json()["detail"] and "Unprocessed" in r.json()["detail"]
-    assert client.get("/agent/email-credentials").json()["connected"] is False
-
-
-def test_imap_no_folders_rejected(client, no_verify, monkeypatch):
-    monkeypatch.setattr(settings, "encryption_key", Fernet.generate_key().decode())
-    r = client.put("/agent/email-credentials/imap", json={k: v for k, v in IMAP.items() if k != "folders"})
-    assert r.status_code == 400
-    assert "required" in r.json()["detail"].lower()
+    assert r.status_code == 200
+    assert r.json()["connected"] is True
+    assert r.json()["enabled"] is False
 
 
 def test_imap_config_injection(client, db, test_user, no_verify, monkeypatch):

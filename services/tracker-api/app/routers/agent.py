@@ -695,26 +695,15 @@ def set_imap_credentials(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
-    """Verify (connection + all folders) then store IMAP mailbox credentials ("Other"
-    provider). All five folders are required — the agent reads from the root and files
-    into the sub-folders, so a partial layout breaks it at runtime. Encrypted; the
-    password is never returned."""
-    f = payload.folders
-    _FOLDER_LABELS = {
-        "root": "Root", "interaction": "Interaction", "postings": "Postings",
-        "social": "Social", "unprocessed": "Unprocessed",
-    }
-    vals = {k: ((getattr(f, k) or "").strip() if f else "") for k in _FOLDER_LABELS}
-    missing = [_FOLDER_LABELS[k] for k, v in vals.items() if not v]
-    if missing:
-        raise HTTPException(
-            status_code=400,
-            detail="All folders are required so the agent can read and file mail. Missing: " + ", ".join(missing),
-        )
-
+    """Store IMAP mailbox credentials ("Other" provider) after verifying the
+    *connection* (host/login) only. Folders are chosen afterwards via the picker
+    (GET /agent/email-credentials/folders) — you can't list folders until creds are
+    stored. A new mailbox starts disabled until its folders are set + verified (via
+    PUT /email-credentials). Encrypted; the password is never returned."""
+    # Connection/login check only — passing no folder names skips folder verification.
     _verify_imap(
         payload.host.strip(), payload.port, payload.username.strip(),
-        payload.password, payload.use_ssl, list(vals.values()),
+        payload.password, payload.use_ssl, [],
     )
 
     blob = encrypt_api_key(json.dumps({
@@ -731,15 +720,18 @@ def set_imap_credentials(
         .first()
     )
     if not cred:
-        cred = models.EmailCredential(user_id=user.id, enabled=True)
+        cred = models.EmailCredential(user_id=user.id, enabled=False)
         db.add(cred)
     cred.provider = models.EmailProvider.IMAP
     cred.encrypted_blob = blob
-    cred.folder_root = vals["root"]
-    cred.folder_interaction = vals["interaction"]
-    cred.folder_postings = vals["postings"]
-    cred.folder_social = vals["social"]
-    cred.folder_unprocessed = vals["unprocessed"]
+    # Folders are optional here (the picker sets them next); store any provided as-is.
+    if payload.folders is not None:
+        f = payload.folders
+        cred.folder_root = (f.root or "").strip() or None
+        cred.folder_interaction = (f.interaction or "").strip() or None
+        cred.folder_postings = (f.postings or "").strip() or None
+        cred.folder_social = (f.social or "").strip() or None
+        cred.folder_unprocessed = (f.unprocessed or "").strip() or None
     db.commit()
     db.refresh(cred)
     return _credential_status(cred)
