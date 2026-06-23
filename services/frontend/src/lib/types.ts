@@ -47,6 +47,11 @@ export interface AgentFolderConfig {
   social: string | null;
   unprocessed: string | null;
 }
+export interface MailboxFolders {
+  provider: "gmail" | "imap" | null;
+  delimiter: string | null;
+  folders: string[];
+}
 export interface EmailCredentialStatus {
   provider: "gmail" | "imap" | null;
   connected: boolean;

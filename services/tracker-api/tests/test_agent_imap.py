@@ -98,6 +98,16 @@ def test_imap_folder_name_parsing():
     assert _imap_folder_name(b'(\\HasChildren) "." Folders') == "Folders"
 
 
+def test_parse_imap_list_line_delimiter_and_name():
+    from app.routers.agent import _parse_imap_list_line
+    # "/" delimiter, prefixed name (the Proton-style case that broke leaf matching)
+    assert _parse_imap_list_line(b'(\\HasNoChildren) "/" "Folders/Postings"') == ("/", "Folders/Postings")
+    # "." delimiter (Dovecot/Courier), unquoted name
+    assert _parse_imap_list_line(b'(\\HasChildren) "." INBOX.Postings') == (".", "INBOX.Postings")
+    # NIL delimiter (flat namespace) → None
+    assert _parse_imap_list_line(b'(\\Noselect) NIL "Archive"') == (None, "Archive")
+
+
 def test_assert_public_host_blocks_private(monkeypatch):
     # host resolves to a loopback/private address → rejected (SSRF guard)
     monkeypatch.setattr(agent_router.socket, "getaddrinfo",

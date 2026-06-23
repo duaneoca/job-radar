@@ -486,14 +486,24 @@ def _assert_public_host(host: str) -> None:
             raise HTTPException(status_code=400, detail="IMAP host must be a public mail server.")
 
 
-def _imap_folder_name(line: bytes) -> str:
-    """Extract the mailbox name from an IMAP LIST response line."""
+def _parse_imap_list_line(line) -> tuple[Optional[str], str]:
+    """Parse an IMAP LIST line `(flags) "<delim>" <name>` → (delimiter, full name).
+    delimiter is the server's hierarchy separator (e.g. "/" or "."), or None for NIL."""
     decoded = line.decode("utf-8", errors="replace") if isinstance(line, bytes) else str(line)
-    m = re.match(r'^\([^)]*\)\s+(?:"[^"]*"|\S+)\s+(.*)$', decoded)
-    name = (m.group(1).strip() if m else "").strip()
+    m = re.match(r'^\(([^)]*)\)\s+(NIL|"[^"]*"|\S+)\s+(.*)$', decoded)
+    if not m:
+        return None, ""
+    delim_raw = m.group(2)
+    delim = None if delim_raw == "NIL" else delim_raw.strip('"')
+    name = m.group(3).strip()
     if len(name) >= 2 and name[0] == '"' and name[-1] == '"':
         name = name[1:-1]
-    return name
+    return delim, name
+
+
+def _imap_folder_name(line: bytes) -> str:
+    """Extract just the mailbox name from an IMAP LIST line."""
+    return _parse_imap_list_line(line)[1]
 
 
 def _verify_imap(host, port, username, password, use_ssl, folder_names):
@@ -580,6 +590,103 @@ def _verify_gmail_labels(cred: models.EmailCredential, label_names) -> None:
             status_code=400,
             detail="These Gmail labels don't exist (create them first): " + ", ".join(missing),
         )
+
+
+def _imap_list_folders(cred: models.EmailCredential) -> tuple[Optional[str], list[str]]:
+    """List the mailbox's folders (full hierarchical names) + the server's delimiter,
+    using the user's already-stored IMAP creds. Powers the folder picker."""
+    try:
+        blob = json.loads(decrypt_api_key(cred.encrypted_blob))
+    except Exception:
+        raise HTTPException(status_code=400, detail="IMAP connection is invalid — reconnect it.")
+    host = (blob.get("host") or "").strip()
+    port = int(blob.get("port") or 993)
+    use_ssl = bool(blob.get("use_ssl", True))
+    _assert_public_host(host)
+    try:
+        conn = (imaplib.IMAP4_SSL(host, port, timeout=10) if use_ssl
+                else imaplib.IMAP4(host, port, timeout=10))
+    except (socket.timeout, TimeoutError):
+        raise HTTPException(status_code=400, detail=f"Timed out connecting to {host}:{port}.")
+    except (ConnectionRefusedError, OSError):
+        raise HTTPException(status_code=400, detail=f"Couldn't connect to {host}:{port}.")
+    try:
+        try:
+            conn.login((blob.get("username") or "").strip(), blob.get("password") or "")
+        except imaplib.IMAP4.error:
+            raise HTTPException(status_code=400, detail="Login failed — reconnect the mailbox.")
+        typ, data = conn.list()
+        if typ != "OK":
+            raise HTTPException(status_code=400, detail="Connected, but couldn't list folders on the server.")
+        delimiter = None
+        names: list[str] = []
+        for line in data:
+            if not line:
+                continue
+            d, name = _parse_imap_list_line(line)
+            if delimiter is None and d:
+                delimiter = d
+            if name:
+                names.append(name)
+        return delimiter, sorted(set(names))
+    finally:
+        try:
+            conn.logout()
+        except Exception:
+            pass
+
+
+def _gmail_list_labels(cred: models.EmailCredential) -> list[str]:
+    """List the user's Gmail labels (user-created only) for the picker."""
+    if not (settings.google_oauth_client_id and settings.google_oauth_client_secret):
+        return []
+    try:
+        refresh_token = json.loads(decrypt_api_key(cred.encrypted_blob)).get("refresh_token")
+    except Exception:
+        refresh_token = None
+    if not refresh_token:
+        raise HTTPException(status_code=400, detail="Gmail connection is invalid — reconnect it.")
+    try:
+        tok = httpx.post(GOOGLE_TOKEN_URL, data={
+            "grant_type": "refresh_token", "refresh_token": refresh_token,
+            "client_id": settings.google_oauth_client_id,
+            "client_secret": settings.google_oauth_client_secret,
+        }, timeout=15)
+        tok.raise_for_status()
+        access = tok.json().get("access_token")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Couldn't reach Gmail. Try again in a moment.")
+    if not access:
+        raise HTTPException(status_code=400, detail="Gmail authorization expired — reconnect it.")
+    try:
+        resp = httpx.get(GMAIL_LABELS_URL, headers={"Authorization": f"Bearer {access}"}, timeout=15)
+        resp.raise_for_status()
+        labels = resp.json().get("labels", [])
+    except Exception:
+        raise HTTPException(status_code=400, detail="Couldn't list your Gmail labels. Try again.")
+    return sorted(lab["name"] for lab in labels if lab.get("type") == "user" and lab.get("name"))
+
+
+@router.get("/email-credentials/folders", response_model=schemas.MailboxFoldersOut)
+def list_mailbox_folders(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Live-list the connected mailbox's folders/labels (full names + delimiter) so the
+    UI can offer an exact-name picker. Requires a connected mailbox."""
+    cred = (
+        db.query(models.EmailCredential)
+        .filter(models.EmailCredential.user_id == user.id)
+        .first()
+    )
+    if not cred:
+        raise HTTPException(status_code=404, detail="No mailbox connected")
+    if cred.provider == models.EmailProvider.GMAIL:
+        return schemas.MailboxFoldersOut(provider="gmail", delimiter="/", folders=_gmail_list_labels(cred))
+    if cred.provider == models.EmailProvider.IMAP:
+        delimiter, folders = _imap_list_folders(cred)
+        return schemas.MailboxFoldersOut(provider="imap", delimiter=delimiter, folders=folders)
+    raise HTTPException(status_code=400, detail="Unsupported mailbox provider.")
 
 
 @router.put("/email-credentials/imap", response_model=schemas.EmailCredentialStatusOut)
