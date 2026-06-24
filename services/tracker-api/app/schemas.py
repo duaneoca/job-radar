@@ -651,7 +651,7 @@ class AgentInteractionIn(BaseModel):
     confidence: float
     langfuse_trace_id: Optional[str] = None
     matched_review_id: Optional[UUID] = None
-    match_confidence: float = 0.0
+    match_confidence: Optional[float] = None   # null = no match (paired with matched_review_id: null)
     new_status: Optional[JobStatus] = None
     timeline_note: Optional[str] = None
 

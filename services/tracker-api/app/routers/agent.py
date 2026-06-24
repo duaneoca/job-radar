@@ -1052,7 +1052,12 @@ def record_interaction(
     if not needs_review:
         # Validate ownership before writing (H1)
         review = _get_review_owned(payload.matched_review_id, user, db)
-        note = payload.timeline_note or f"Status updated by email agent (confidence {payload.match_confidence:.0%})"
+        if payload.timeline_note:
+            note = payload.timeline_note
+        elif payload.match_confidence is not None:
+            note = f"Status updated by email agent (confidence {payload.match_confidence:.0%})"
+        else:
+            note = "Status updated by email agent"
         apply_status_change(review, payload.new_status, note, db)
         applied_status = payload.new_status.value
 
