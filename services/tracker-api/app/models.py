@@ -478,7 +478,7 @@ class InboxInteraction(Base):
     inbox_email_id = Column(Uuid(), ForeignKey("inbox_emails.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id        = Column(Uuid(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     matched_review_id = Column(Uuid(), ForeignKey("user_job_reviews.id", ondelete="SET NULL"), nullable=True)
-    match_confidence  = Column(Float, nullable=False, default=0.0)
+    match_confidence  = Column(Float, nullable=True)   # null = no match
     previous_status   = Column(Enum(JobStatus), nullable=True)
     new_status        = Column(Enum(JobStatus), nullable=True)  # writable subset enforced in API (C1)
     applied_at        = Column(DateTime(timezone=True), nullable=True)
