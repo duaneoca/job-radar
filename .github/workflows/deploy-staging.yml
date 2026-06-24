@@ -98,6 +98,7 @@ jobs:
 
       - name: Update image tags
         run: |
+          set -euo pipefail
           for svc in tracker-api scraper ai-reviewer mcp-writer frontend; do
             kubectl set image deployment/jobradar-${svc} \
               ${svc}=${{ env.IMAGE_PREFIX }}-${svc}:${{ github.sha }} \
@@ -105,6 +106,9 @@ jobs:
           done
 
       - name: Wait for rollout
+        # Verify EVERY service rolls out, so a stuck/stale service fails the deploy.
         run: |
-          kubectl rollout status deployment/jobradar-tracker-api -n jobradar-staging --timeout=180s
-          kubectl rollout status deployment/jobradar-frontend -n jobradar-staging --timeout=180s
+          set -euo pipefail
+          for svc in tracker-api scraper ai-reviewer mcp-writer frontend; do
+            kubectl rollout status deployment/jobradar-${svc} -n jobradar-staging --timeout=180s
+          done
