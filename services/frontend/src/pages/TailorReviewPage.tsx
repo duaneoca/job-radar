@@ -94,6 +94,8 @@ function ChangeCard({ c, onDecide, onLocate, busy }: {
       <div className="flex flex-wrap items-center gap-1.5">
         <Badge variant="outline" className="text-[10px] capitalize">{c.section}</Badge>
         <Badge variant="outline" className={cn("text-[10px] capitalize", flagged ? "border-amber-500/40 text-amber-700 dark:text-amber-400" : "text-muted-foreground")}>{c.type}</Badge>
+        {c.kind === "removed" && <Badge variant="outline" className="text-[10px] border-rose-400/40 text-rose-600 dark:text-rose-400">removed</Badge>}
+        {c.kind === "added" && <Badge variant="outline" className="text-[10px] border-emerald-400/40 text-emerald-700 dark:text-emerald-400">added</Badge>}
         {flagged && <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-700 dark:text-amber-400"><AlertTriangle className="h-3 w-3" />review carefully</span>}
         <button
           type="button"
@@ -117,6 +119,12 @@ function ChangeCard({ c, onDecide, onLocate, busy }: {
 
       {c.before && <p className="text-rose-600 dark:text-rose-400 line-through decoration-rose-400/50">{c.before}</p>}
       {c.after && <p className="text-emerald-700 dark:text-emerald-400">{c.after}</p>}
+      {c.kind === "removed" && !c.after && (
+        <p className="text-[11px] text-muted-foreground">No replacement — this line was removed or its content merged into another bullet.</p>
+      )}
+      {c.kind === "added" && !c.before && (
+        <p className="text-[11px] text-muted-foreground">New line — not in your original résumé.</p>
+      )}
       {c.rationale && <p className="text-muted-foreground italic">{c.rationale}</p>}
       <div className="flex gap-1.5 pt-0.5">
         <Button size="sm" variant={c.decision === "accepted" ? "default" : "outline"} className="h-7 px-2" disabled={busy} onClick={() => onDecide(c.id, "accepted")}>

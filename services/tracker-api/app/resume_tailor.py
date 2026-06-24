@@ -170,7 +170,7 @@ You realign an existing résumé to a specific job posting WITHOUT lying. Your e
 2. MEET-OR-EXCEED, NEVER INFLATE: you may phrase a qualification to meet or exceed a requirement ONLY when the candidate's true value already clears it. The candidate's true total experience is {total_years} years (earliest {earliest}, latest {latest}). If the posting asks for 8 years, "8+ years" is allowed; if it asks for 30, you must NOT claim 30 — keep the truth.
 3. NEVER invent, inflate, or fabricate skills, technologies, employers, job titles, dates, durations, certifications, or accomplishments not present in the source résumé. In particular, you MUST NOT introduce any technology, platform, tool, framework, or product name that does not already appear in the source — even if the posting requires it. The named technologies and platforms in your output must be a SUBSET of those in the source résumé.
 4. LEAVE GAPS ALONE: where the posting asks for something the résumé does not show, and the gap cannot be closed by a true synonym for what the candidate already did, leave the gap. Do NOT fill it, imply it, or hint at exposure the candidate does not have. A missing match stays missing.
-5. SURGICAL, MINIMAL CHANGES: change only the wording that needs to change to align with the posting; any bullet, skill, or line that already reads well passes through UNCHANGED. Prefer the smallest edit. Keep the SAME sections, the SAME jobs in the same order, and the SAME NUMBER of bullets per job/section — do NOT add or remove bullets, jobs, skills groups, or sections. (Trimming for length is a later step, not yours.)
+5. SURGICAL, MINIMAL CHANGES: change only the wording that needs to change to align with the posting; any bullet, skill, or line that already reads well passes through UNCHANGED. Prefer the smallest edit. Edit each bullet INDEPENDENTLY in place — NEVER merge two bullets into one or split one into two. Keep the SAME sections, the SAME jobs in the same order, and the SAME NUMBER of bullets per job/section — do NOT add or remove bullets, jobs, skills groups, or sections. (Trimming for length is a later step, not yours.)
 6. Do not change company names, job titles, employers, or dates unless correcting an obvious typo — these are factual anchors.
 
 Return ONLY a JSON object:
@@ -284,18 +284,29 @@ def _change_id(path: str) -> str:
     return hashlib.sha1(path.encode()).hexdigest()[:12]
 
 
+def _norm_text(s) -> str:
+    """Whitespace-collapsed, case-folded text for fuzzy note↔change matching."""
+    return " ".join(str(s or "").split()).casefold()
+
+
 def diff_structured(original: schemas.ResumeStructured, tailored: schemas.ResumeStructured,
                     notes=None) -> list[dict]:
     """Authoritative change list: walk matching leaf paths and record differences.
-    Model `notes` (matched by before-text) enrich type/rationale; the diff itself
-    is computed, not trusted to the model."""
-    note_by_before = {}
+    Model `notes` enrich type/rationale/trigger; the diff itself is computed, not
+    trusted to the model. Notes are matched primarily by the model's `after` text
+    (exactly what it wrote = what the diff sees as the new value), with `before` as a
+    fallback — far more reliable than before-only matching."""
+    note_by_after, note_by_before = {}, {}
     for n in (notes or []):
-        if isinstance(n, dict) and n.get("before"):
-            note_by_before[str(n["before"]).strip()] = n
+        if not isinstance(n, dict):
+            continue
+        if n.get("after"):
+            note_by_after.setdefault(_norm_text(n["after"]), n)
+        if n.get("before"):
+            note_by_before.setdefault(_norm_text(n["before"]), n)
 
     o, t = _leaves(original), _leaves(tailored)
-    changes = []
+    changes, matched = [], 0
     for path in sorted(set(o) | set(t)):
         before = o.get(path, (None, None))[1]
         after = t.get(path, (None, None))[1]
@@ -303,7 +314,9 @@ def diff_structured(original: schemas.ResumeStructured, tailored: schemas.Resume
             continue
         section = (o.get(path) or t.get(path))[0]
         kind = "modified" if (path in o and path in t) else ("removed" if path in o else "added")
-        note = note_by_before.get((before or "").strip(), {})
+        note = note_by_after.get(_norm_text(after)) or note_by_before.get(_norm_text(before)) or {}
+        if note:
+            matched += 1
         changes.append({
             "id": _change_id(path),
             "path": path,
@@ -316,6 +329,7 @@ def diff_structured(original: schemas.ResumeStructured, tailored: schemas.Resume
             "trigger": note.get("trigger", ""),     # job-posting phrase that motivated it
             "decision": "pending",
         })
+    logger.info("Tailor diff: %d changes, %d/%d model notes matched", len(changes), matched, len(notes or []))
     return changes
 
 
