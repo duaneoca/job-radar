@@ -164,13 +164,14 @@ def derive_honesty_facts(structured: schemas.ResumeStructured) -> dict:
 # "meet-or-exceed, never inflate" against ground truth.
 HONESTY_CORE = """# RÉSUMÉ TAILORING — HONESTY CONTRACT (ALWAYS ENFORCED — overrides any style guidance below)
 
-You realign an existing résumé to a specific job posting WITHOUT lying. Absolute rules:
+You realign an existing résumé to a specific job posting WITHOUT lying. Your edits are SURGICAL — change only what must change to match the posting, and leave everything else exactly as written. Absolute rules:
 
-1. You MAY: rephrase, realign vocabulary and technology names (e.g. "React.js"→"React"), reorder, and re-emphasize the candidate's REAL skills and experience to match the posting's language.
+1. You MAY: rephrase, reorder, and re-emphasize the candidate's REAL skills and experience, and rename a technology to the posting's wording ONLY when it is the SAME technology the candidate already used (e.g. "React.js"→"React").
 2. MEET-OR-EXCEED, NEVER INFLATE: you may phrase a qualification to meet or exceed a requirement ONLY when the candidate's true value already clears it. The candidate's true total experience is {total_years} years (earliest {earliest}, latest {latest}). If the posting asks for 8 years, "8+ years" is allowed; if it asks for 30, you must NOT claim 30 — keep the truth.
-3. NEVER invent, inflate, or fabricate: skills, technologies, employers, job titles, dates, durations, certifications, or accomplishments not present in the source résumé.
-4. PRESERVE STRUCTURE: keep the SAME sections, the SAME jobs in the same order, and the SAME NUMBER of bullets per job/section. Rewrite each bullet in place. Do NOT add or remove bullets, jobs, skills groups, or sections. (Trimming for length is a later step, not yours.)
-5. Do not change company names, job titles, employers, or dates unless correcting an obvious typo — these are factual anchors.
+3. NEVER invent, inflate, or fabricate skills, technologies, employers, job titles, dates, durations, certifications, or accomplishments not present in the source résumé. In particular, you MUST NOT introduce any technology, platform, tool, framework, or product name that does not already appear in the source — even if the posting requires it. The named technologies and platforms in your output must be a SUBSET of those in the source résumé.
+4. LEAVE GAPS ALONE: where the posting asks for something the résumé does not show, and the gap cannot be closed by a true synonym for what the candidate already did, leave the gap. Do NOT fill it, imply it, or hint at exposure the candidate does not have. A missing match stays missing.
+5. SURGICAL, MINIMAL CHANGES: change only the wording that needs to change to align with the posting; any bullet, skill, or line that already reads well passes through UNCHANGED. Prefer the smallest edit. Keep the SAME sections, the SAME jobs in the same order, and the SAME NUMBER of bullets per job/section — do NOT add or remove bullets, jobs, skills groups, or sections. (Trimming for length is a later step, not yours.)
+6. Do not change company names, job titles, employers, or dates unless correcting an obvious typo — these are factual anchors.
 
 Return ONLY a JSON object:
 {{"tailored": <the full résumé in the SAME schema as the input>, "notes": [{{"before": "<original text>", "after": "<new text>", "type": "vocabulary|emphasis|reorder|factual", "rationale": "<why>", "trigger": "<the VERBATIM sentence or requirement line FROM THE JOB POSTING that inspired this change — quote enough to stand on its own (a full phrase or sentence, not a single word); leave empty only if no specific line in the posting applies>"}}]}}
@@ -179,9 +180,10 @@ Return ONLY a JSON object:
 
 # Editable style prompt — the default the user can override on the AI Prompts tab.
 DEFAULT_RESUME_TAILOR_PROMPT = """Tailoring style:
-- Mirror the posting's terminology and priorities; lead each role with the experience most relevant to THIS job.
-- Prefer the posting's exact technology names where they're a true synonym for what the candidate used.
-- Keep the candidate's voice; concise, results-first bullets. Don't pad."""
+- Edit surgically: change wording only where it materially improves the match to THIS posting; leave already-strong bullets untouched.
+- Mirror the posting's terminology only for skills and tools the candidate actually has.
+- Lead each role with the candidate's most relevant real experience for this job.
+- Keep the candidate's voice; concise, results-first bullets. Never pad or add scope."""
 
 # Paths whose change touches a factual claim (flagged "review carefully").
 _FACTUAL_TOKENS = ("/company", "/titles", "/start", "/end", "/degree", "/school", "/dates")

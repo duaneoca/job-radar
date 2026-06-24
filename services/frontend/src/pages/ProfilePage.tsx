@@ -54,16 +54,18 @@ Overall score = evenly weighted average of the five ranks, rounded to one decima
 // The locked honesty contract, shown read-only above the editable style prompt so
 // the user sees exactly what's always enforced (the real enforcement is server-side).
 const HONESTY_CONTRACT_DISPLAY = `Always enforced — cannot be edited (here for your protection):
+• Surgical edits — only wording that needs to change is changed; lines that already work are left untouched.
 • Meet-or-exceed, never inflate — a qualification may be phrased to meet/exceed a posting only when your true value already clears it (e.g. "8+ years" if you have at least 8); never claim beyond reality.
-• Never invent or fabricate skills, technologies, employers, titles, dates, durations, or certifications not in your résumé.
-• Keep factual anchors — company names, job titles, employers, and dates are not changed.
-• Preserve structure — rephrase in place; don't add or remove bullets, jobs, or sections.
+• Never invent skills, technologies, employers, titles, dates, or certifications not in your résumé — and no platform or tool is added that isn't already there, even if the posting asks for it.
+• Leave gaps alone — if the posting wants something your résumé doesn't show, the gap stays; it's never filled or implied.
+• Keep factual anchors & structure — company names, titles, employers, dates, and the set of bullets/jobs/sections are preserved.
 Changes that touch a factual claim are flagged for your review in the diff.`;
 
 const DEFAULT_RESUME_TAILOR_PROMPT = `Tailoring style:
-- Mirror the posting's terminology and priorities; lead each role with the experience most relevant to THIS job.
-- Prefer the posting's exact technology names where they're a true synonym for what you used.
-- Keep your voice; concise, results-first bullets. Don't pad.`;
+- Edit surgically: change wording only where it materially improves the match to THIS posting; leave already-strong bullets untouched.
+- Mirror the posting's terminology only for skills and tools you actually have.
+- Lead each role with your most relevant real experience for this job.
+- Keep your voice; concise, results-first bullets. Never pad or add scope.`;
 
 const DEFAULT_RESEARCH_PROMPT =
   `Summarize this company based on the job posting:\n1. What they do and their market position\n2. Culture and work environment signals from the posting\n3. Growth stage / stability signals\n4. Why this role could be a good fit given the candidate's background`;
