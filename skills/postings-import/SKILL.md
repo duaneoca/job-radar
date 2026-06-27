@@ -63,16 +63,38 @@ straight from the running app, don't hardcode a copy.
 python3 imap_fetch.py list
 ```
 
-Returns JSON: `[{uid, subject, sender, date, links: [...]}]`. Listing uses
-`BODY.PEEK` and a read-only SELECT, so it **never** marks anything seen. Junk
-(unsubscribe/settings/social) is already filtered; `links` are candidate postings.
+Listing uses `BODY.PEEK` and a read-only SELECT, so it **never** marks anything
+seen. The script classifies every link deterministically (no inference) and
+returns, per email:
 
-### 2. Per email → per link: open + capture (Claude drives, no inference)
+```jsonc
+[{
+  "uid", "subject", "sender", "date",
+  "jobs": [            // the worklist — already deduped
+    {"source":"linkedin","external_id":"4432694739",
+     "url":"https://www.linkedin.com/jobs/view/4432694739","via":"canonical"},
+    {"source":"monster","external_id":null,
+     "url":"https://click.monster.com/f/a/…","via":"opaque"}
+  ],
+  "unsupported": [     // destinations the bookmarklet can't read — DO NOT import
+    {"url":"https://www.glassdoor.com/…","domain":"www.glassdoor.com"}
+  ],
+  "junk_count": 14     // footer/settings/social already dropped
+}]
+```
 
-For each email, for each `link`:
+- `via:"canonical"` — id was in the email; `url` is a clean direct posting URL.
+- `via:"opaque"` — a tracker URL; navigating it (step 2) resolves to a supported
+  site. Opaque providers (Indeed/Dice/Monster/ZipRecruiter) **over-list**: some
+  entries are footer links wearing the same tracker domain. That's expected — the
+  bookmarklet rejects them on arrival (a "no import request", not an error).
 
-1. **Navigate** the Chrome tab to `link`. Your session resolves the tracking
-   redirect to the real posting URL.
+### 2. Per email → per job: open + capture (Claude drives, no inference)
+
+For each email, for each entry in **`jobs`** (ignore `unsupported` — that's step 4):
+
+1. **Navigate** the Chrome tab to `job.url`. (`canonical` loads the posting
+   directly; `opaque` resolves the tracker redirect to it.)
 2. **Clear network log**, then **eval `BMARK`** in that tab (`javascript_tool`).
    The bookmarklet extracts the posting and `window.open(...)`s
    `https://job-radar.net/jobs/add#<data>`, which POSTs to `/jobs/manual`.
@@ -83,17 +105,19 @@ For each email, for each `link`:
    ```
    - HTTP **201** → imported ✅
    - HTTP **200** → already tracked, skipped ⏭ (server dedups on `external_id`)
-   - **No `/jobs/manual` request at all** → the bookmarklet bailed (unsupported
-     site or a non-`/jobs/view/` page). This is the exception branch → step 5.
+   - **No `/jobs/manual` request** → the bookmarklet bailed (an opaque link that
+     resolved to a footer/non-`/jobs/view/` page). Count it and move on — this is
+     normal noise for opaque providers, **not** the exception branch unless the
+     whole email yields nothing.
 4. Close the `/jobs/add` tab and continue.
 
-Track per-email outcomes. A LinkedIn digest with 10 links is normal; most will be
-200s (already tracked) — that's the dedup working, not an error.
+Most entries on a re-run will be **200s** (already tracked) — that's dedup
+working, not an error.
 
 ### 3. Mark the email done (the only mutating IMAP call)
 
-Once **every** link in an email is resolved (imported, skipped-as-dup, or logged
-as unsupported):
+Once **every** `jobs` entry is resolved (imported, skipped-as-dup, or bailed) and
+`unsupported` has been logged:
 
 ```bash
 python3 imap_fetch.py mark-seen <uid>
@@ -104,25 +128,30 @@ run retries, and tell the user.
 
 ### 4. Summarize
 
-Report: N emails processed, X imported, Y already-tracked, Z unsupported/skipped.
-List the unsupported destinations (sender → URL) — that's the data that tells us
-which sites to teach the bookmarklet next.
+Report: N emails processed, X imported (201), Y already-tracked (200), Z bailed
+(no import request). Then list the **`unsupported` destinations grouped by sender
+domain** — that's the data that tells us which sites to teach the bookmarklet next
+(e.g. Glassdoor, Lenny's Jobs / trueup.io). Don't try to import those.
 
 ### 5. Exception branch (the only place you infer)
 
-When a link produces **no `/jobs/manual` request**, or an email's links are
-ambiguous/none, **do not silently write anything.** Stop and show the user what
-you found (sender, the URL, where it resolved) and ask how to proceed. Never
-hand-craft a `/jobs/manual` POST to force an import past the bookmarklet's guards.
+This is for *genuine* surprises, not routine opaque-link bailing:
+- an **entire email** yields zero imports and zero recognizable jobs, or
+- the script returns something malformed / a provider whose links you can't make
+  sense of at all.
+
+Then **do not silently write anything.** Stop and show the user what you found
+(sender, the URLs, where they resolved) and ask how to proceed. Never hand-craft a
+`/jobs/manual` POST to force an import past the bookmarklet's guards.
 
 ## State machine (summary)
 
 ```
-UNSEEN  ──peek+harvest──►  per-link: navigate → eval BMARK → read 200/201/none
-   ▲                                                    │
-   └── any error ── leave UNSEEN, report ───────────────┤
-                                                        ▼
-                              all links resolved ──► mark \Seen
+UNSEEN ──peek+classify──► per JOB: navigate → eval BMARK → read 200/201/none
+   ▲                                                   │   (unsupported[] logged, skipped)
+   └── any error ── leave UNSEEN, report ──────────────┤
+                                                       ▼
+                            all jobs resolved ──► mark \Seen
 ```
 
 ## Notes

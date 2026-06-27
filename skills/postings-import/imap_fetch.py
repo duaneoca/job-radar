@@ -19,7 +19,9 @@ Config via environment (see env.example):
   JR_IMAP_SEC     one of starttls | ssl | plain   (default starttls — Proton Bridge)
 
 Usage:
-  imap_fetch.py list            -> JSON: [{uid, subject, sender, date, links: [...]}]
+  imap_fetch.py list            -> JSON per email: {uid, subject, sender, date,
+                                   jobs:[{source,external_id,url,via}],
+                                   unsupported:[{url,domain}], junk_count}
   imap_fetch.py mark-seen UID   -> marks message \\Seen (mutating)
 
 Output is JSON on stdout; diagnostics go to stderr.
@@ -35,6 +37,7 @@ import ssl
 import sys
 from email.header import decode_header, make_header
 from html.parser import HTMLParser
+from urllib.parse import unquote, urlparse
 
 # --- config -----------------------------------------------------------------
 
@@ -45,18 +48,34 @@ PASS = os.environ.get("JR_IMAP_PASS", "")
 FOLDER = os.environ.get("JR_IMAP_FOLDER", "Job Postings")
 SEC = os.environ.get("JR_IMAP_SEC", "starttls").lower()
 
-# Links we never want to open — settings/footer/social/auth, not job postings.
-# This is only a *cost* filter (skip opening a browser tab); the real
-# "is this a job?" decision happens at the destination via the bookmarklet's
-# own URL guards. Keep it conservative so we never drop a real posting.
+# The 6 destination sites the Job Radar bookmarklet can extract from.
+SUPPORTED_SITES = ("linkedin", "dice", "builtin", "monster", "ziprecruiter", "indeed")
+
+# Footer / settings / social / search links — never postings. Substring match on
+# the (unwrapped) lowercased URL. Conservative: better to let a stray non-job
+# reach the bookmarklet (which rejects it) than to drop a real posting.
 JUNK_SUBSTRINGS = (
-    "unsubscribe", "/preferences", "email_preferences", "manage-preferences",
-    "manage_preferences", "notification-settings", "optout", "opt-out",
-    "/settings", "/account", "privacy", "/terms", "list-manage.com",
-    "signin", "sign-in", "/login", "help.", "support.",
-    "facebook.com", "twitter.com", "instagram.com", "youtube.com",
-    "apps.apple.com", "play.google.com",
+    "unsubscribe", "/preferences", "email-settings", "email_settings",
+    "email_preferences", "manage-preferences", "manage_preferences",
+    "notification", "optout", "opt-out", "/settings", "/account", "privacy",
+    "/terms", "/help", "/login", "signin", "sign-in",
+    "jobs/search", "jobs/alerts", "/jobs?", "/widgets/", "/profile/",
+    "/feed", "/mynetwork", "/messaging", "jotform.com", "/company/",
 )
+# Hosts that are always junk regardless of path (social, app stores, app links,
+# and email-management endpoints that masquerade as content links).
+JUNK_HOSTS = (
+    "facebook.com", "twitter.com", "x.com", "instagram.com", "youtube.com",
+    "apps.apple.com", "play.google.com", "onelink.me", "engage.indeed.com",
+)
+# Opaque per-provider click trackers: the destination is hidden behind a token,
+# so we can't canonicalize — but the tracker domain tells us which supported
+# site it lands on. These are navigated in the browser to resolve. host -> source.
+OPAQUE_TRACKERS = {
+    "cts.indeed.com": "indeed",
+    "click.monster.com": "monster",
+    "elinks.dice.com": "dice",
+}
 
 
 def log(*a):
@@ -107,17 +126,10 @@ class _AnchorHarvester(HTMLParser):
 _URL_RE = re.compile(r"https?://[^\s<>\"'\])}]+", re.IGNORECASE)
 
 
-def _is_junk(url: str) -> bool:
-    lu = url.lower()
-    if not lu.startswith("http"):
-        return True
-    return any(s in lu for s in JUNK_SUBSTRINGS)
-
-
-def harvest_links(msg: email.message.Message) -> list[str]:
-    """Pull candidate links from the email: prefer <a href> in the HTML part,
-    fall back to bare URLs in the plain-text part. Dedup, preserve order,
-    drop obvious junk."""
+def harvest_raw_links(msg: email.message.Message) -> list[str]:
+    """All http(s) links in the email, deduped, order-preserved: prefer
+    <a href> in the HTML part, fall back to bare URLs in the plain-text part.
+    No classification here — that's classify_link's job."""
     html_parts: list[str] = []
     text_parts: list[str] = []
     for part in msg.walk():
@@ -132,10 +144,7 @@ def harvest_links(msg: email.message.Message) -> list[str]:
             decoded = payload.decode(charset, errors="replace")
         except Exception:
             continue
-        if ctype == "text/html":
-            html_parts.append(decoded)
-        else:
-            text_parts.append(decoded)
+        (html_parts if ctype == "text/html" else text_parts).append(decoded)
 
     raw: list[str] = []
     for html in html_parts:
@@ -152,13 +161,98 @@ def harvest_links(msg: email.message.Message) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []
     for url in raw:
-        if _is_junk(url):
-            continue
-        if url in seen:
-            continue
-        seen.add(url)
-        out.append(url)
+        if url.lower().startswith("http") and url not in seen:
+            seen.add(url)
+            out.append(url)
     return out
+
+
+def _unwrap(url: str) -> str:
+    """Undo click-tracker wrappers that embed the real, percent-encoded URL.
+    AWS SES (Built In) wraps it after `/L0/`, up to the next unencoded slash."""
+    if "awstrack.me/" in url and "/L0/" in url:
+        enc = url.split("/L0/", 1)[1].split("/", 1)[0]
+        dec = unquote(enc)
+        if dec.lower().startswith("http"):
+            return dec
+    return url
+
+
+def classify_link(raw: str) -> dict | None:
+    """Map one harvested link to a job, an unsupported destination, or junk.
+
+    Returns one of:
+      {"kind": "job", "source", "external_id"|None, "url", "via": "canonical"|"opaque"}
+      {"kind": "unsupported", "url", "domain"}
+      None                                                # junk / not a posting
+
+    Deterministic, no network. `canonical` links carry an id and a clean URL
+    (deduped downstream); `opaque` links are tracker URLs that must be opened in
+    the browser to resolve — the bookmarklet classifies them on arrival.
+    """
+    if not raw.lower().startswith("http"):
+        return None
+    url = _unwrap(raw)
+    low = url.lower()
+    host = urlparse(low).netloc
+
+    # 1. Canonicalizable job patterns (id visible in the URL) ------------------
+    m = re.search(r"linkedin\.com/(?:comm/)?jobs/view/(\d+)", low)
+    if m:
+        jid = m.group(1)
+        return {"kind": "job", "source": "linkedin", "external_id": jid,
+                "url": f"https://www.linkedin.com/jobs/view/{jid}", "via": "canonical"}
+    m = re.search(r"builtin\.com/job/([^/?#]+)/(\d+)", low)
+    if m:
+        slug, jid = m.group(1), m.group(2)
+        return {"kind": "job", "source": "builtin", "external_id": jid,
+                "url": f"https://builtin.com/job/{slug}/{jid}", "via": "canonical"}
+    m = re.search(r"[?&]jk=([0-9a-f]+)", low)
+    if "indeed.com" in host and m:
+        return {"kind": "job", "source": "indeed", "external_id": m.group(1),
+                "url": f"https://www.indeed.com/viewjob?jk={m.group(1)}", "via": "canonical"}
+
+    # 2. Junk (settings/footer/social/search) — before opaque-tracker mapping --
+    if any(h in host for h in JUNK_HOSTS):
+        return None
+    if any(s in low for s in JUNK_SUBSTRINGS):
+        return None
+
+    # 3. Opaque trackers that redirect to a supported site -> navigate ---------
+    for dom, src in OPAQUE_TRACKERS.items():
+        if host == dom or host.endswith("." + dom):
+            return {"kind": "job", "source": src, "external_id": None,
+                    "url": raw, "via": "opaque"}
+    if host.endswith("ziprecruiter.com") and re.search(r"/e?km/", low):
+        return {"kind": "job", "source": "ziprecruiter", "external_id": None,
+                "url": raw, "via": "opaque"}
+
+    # 4. Anything else is an unsupported destination (logged, not imported) ----
+    return {"kind": "unsupported", "url": url, "domain": host or "?"}
+
+
+def group_links(raw_links: list[str]) -> dict:
+    """Classify a message's links into jobs / unsupported / junk count.
+    Canonical jobs dedup by (source, id); opaque jobs dedup by url."""
+    jobs: list[dict] = []
+    seen_jobs: set[tuple] = set()
+    unsupported: list[dict] = []
+    seen_unsup: set[str] = set()
+    junk = 0
+    for link in raw_links:
+        c = classify_link(link)
+        if c is None:
+            junk += 1
+        elif c["kind"] == "job":
+            key = (c["source"], c["external_id"]) if c["external_id"] else ("url", c["url"])
+            if key not in seen_jobs:
+                seen_jobs.add(key)
+                jobs.append(c)
+        else:  # unsupported
+            if c["url"] not in seen_unsup:
+                seen_unsup.add(c["url"])
+                unsupported.append(c)
+    return {"jobs": jobs, "unsupported": unsupported, "junk_count": junk}
 
 
 # --- commands ---------------------------------------------------------------
@@ -180,12 +274,13 @@ def cmd_list() -> int:
                 log(f"WARN: fetch failed for uid {uid!r}")
                 continue
             msg = email.message_from_bytes(fetched[0][1])
+            grouped = group_links(harvest_raw_links(msg))
             results.append({
                 "uid": uid.decode(),
                 "subject": _decode(msg.get("Subject")),
                 "sender": _decode(msg.get("From")),
                 "date": _decode(msg.get("Date")),
-                "links": harvest_links(msg),
+                **grouped,
             })
         print(json.dumps(results, indent=2))
         return 0
