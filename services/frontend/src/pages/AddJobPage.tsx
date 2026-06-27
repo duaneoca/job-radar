@@ -81,7 +81,11 @@ export function AddJobPage() {
       };
       const res = await jobsApi.post("/jobs/manual", payload);
       const review = res.data;
-      toast({ title: "Job added!", description: "AI review has been queued." });
+      if (res.status === 200) {
+        toast({ title: "Already in your list", description: "This job was already saved — not re-added." });
+      } else {
+        toast({ title: "Job added!", description: "AI review has been queued." });
+      }
       navigate(`/jobs/${review.id}`);
     } catch (err: any) {
       toast({
