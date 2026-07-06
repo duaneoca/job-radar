@@ -2,10 +2,11 @@
 Auth router — signup, login, logout, me, change-password.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
-from app import models, schemas
+from app import models, ratelimit, schemas
+from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
 from app.email import notify_new_account
@@ -14,7 +15,13 @@ from app.security import create_access_token, hash_password, verify_password
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 _COOKIE = "access_token"
-_COOKIE_OPTS = dict(httponly=True, samesite="lax", secure=False)  # secure=True in prod
+# Secure flag is on in production (HTTPS via Cloudflare) so the session cookie is
+# never sent over plaintext HTTP; off in dev where the app runs on http://localhost.
+_COOKIE_OPTS = dict(
+    httponly=True,
+    samesite="lax",
+    secure=settings.environment == "production",
+)
 
 
 @router.post("/signup", status_code=status.HTTP_201_CREATED)
@@ -45,12 +52,25 @@ def signup(payload: schemas.SignupRequest, db: Session = Depends(get_db)):
 @router.post("/login", response_model=schemas.TokenOut)
 def login(
     payload: schemas.LoginRequest,
+    request: Request,
     response: Response,
     db: Session = Depends(get_db),
 ):
+    rl_key = ratelimit.client_ip(request.headers, request.client)
+    if not ratelimit.is_allowed(rl_key):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts. Please try again later.",
+        )
+
     user = db.query(models.User).filter(models.User.email == payload.email).first()
     if not user or not verify_password(payload.password, user.password_hash):
+        ratelimit.record_failure(rl_key)
         raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    # Correct credentials — not a brute-force attempt; clear the counter even if
+    # the account isn't approved yet.
+    ratelimit.reset(rl_key)
     if not user.is_approved:
         raise HTTPException(status_code=403, detail="Account pending approval")
 
