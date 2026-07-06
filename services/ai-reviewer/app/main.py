@@ -20,6 +20,18 @@ logger = logging.getLogger(__name__)
 app = Celery("ai-reviewer", broker=settings.redis_url, backend=settings.redis_url)
 
 
+def _internal_headers(user_id: str | None = None) -> dict:
+    """Auth headers for internal tracker-api calls: X-Internal-Token when
+    configured (tracker-api enforces it in a later phase), plus X-Internal-User-Id
+    when acting on behalf of a specific user."""
+    h: dict[str, str] = {}
+    if settings.agent_internal_token:
+        h["X-Internal-Token"] = settings.agent_internal_token
+    if user_id:
+        h["X-Internal-User-Id"] = user_id
+    return h
+
+
 @app.task(name="app.tasks.review_job", queue="review", bind=True, max_retries=3)
 def review_job(self, job_id: str, user_id: str):
     """
@@ -30,7 +42,8 @@ def review_job(self, job_id: str, user_id: str):
 
     # 1. Fetch the job (internal endpoint — no auth required)
     try:
-        resp = httpx.get(f"{base}/jobs/internal/{job_id}", timeout=10)
+        resp = httpx.get(f"{base}/jobs/internal/{job_id}", timeout=10,
+                         headers=_internal_headers())
         if resp.status_code == 404:
             logger.warning("Job %s not found — skipping", job_id)
             return
@@ -43,7 +56,7 @@ def review_job(self, job_id: str, user_id: str):
     # 2. Fetch user's active criteria
     try:
         resp = httpx.get(f"{base}/criteria/active", timeout=10,
-                         headers={"X-Internal-User-Id": user_id})
+                         headers=_internal_headers(user_id))
         if resp.status_code == 404:
             logger.warning("No active criteria for user %s — skipping", user_id)
             return
@@ -56,7 +69,7 @@ def review_job(self, job_id: str, user_id: str):
     # 3. Fetch user's active profile (optional — degrade gracefully)
     try:
         resp = httpx.get(f"{base}/profile/active", timeout=10,
-                         headers={"X-Internal-User-Id": user_id})
+                         headers=_internal_headers(user_id))
         profile = resp.json() if resp.status_code == 200 else {}
     except Exception as exc:
         logger.warning("Could not fetch profile for user %s: %s", user_id, exc)
@@ -64,7 +77,8 @@ def review_job(self, job_id: str, user_id: str):
 
     # 4. Fetch user's best available LLM key
     try:
-        resp = httpx.get(f"{base}/keys/internal/{user_id}/llm", timeout=10)
+        resp = httpx.get(f"{base}/keys/internal/{user_id}/llm", timeout=10,
+                         headers=_internal_headers())
         if resp.status_code == 404:
             logger.warning("No AI key configured for user %s — skipping review", user_id)
             return
@@ -113,6 +127,7 @@ def review_job(self, job_id: str, user_id: str):
             f"{base}/jobs/{job_id}/ai-review",
             json=payload,
             params={"user_id": user_id},
+            headers=_internal_headers(),
             timeout=15,
         )
         resp.raise_for_status()
