@@ -34,6 +34,14 @@ logger = logging.getLogger(__name__)
 
 app = Celery("scraper", broker=settings.redis_url, backend=settings.redis_url)
 
+
+def _internal_headers() -> dict:
+    """X-Internal-Token for internal tracker-api calls when configured
+    (tracker-api enforces it in a later phase; empty = header omitted)."""
+    if settings.agent_internal_token:
+        return {"X-Internal-Token": settings.agent_internal_token}
+    return {}
+
 app.conf.beat_schedule = {
     "scrape-all-sources": {
         "task": "app.tasks.scrape_all",
@@ -72,7 +80,7 @@ def cleanup_jobs():
     """
     url = f"{settings.tracker_api_url}/admin/internal/cleanup"
     try:
-        resp = httpx.post(url, timeout=30)
+        resp = httpx.post(url, timeout=30, headers=_internal_headers())
         resp.raise_for_status()
         result = resp.json()
         logger.info(
@@ -93,7 +101,7 @@ def expire_jobs():
     """
     url = f"{settings.tracker_api_url}/admin/internal/expire"
     try:
-        resp = httpx.post(url, timeout=30)
+        resp = httpx.post(url, timeout=30, headers=_internal_headers())
         resp.raise_for_status()
         result = resp.json()
         logger.info(
@@ -200,7 +208,7 @@ def _fetch_user_configs() -> list[dict] | None:
     """Return per-user scrape configs (criteria + decrypted Adzuna creds)."""
     url = f"{settings.tracker_api_url}/criteria/scraper/user-configs"
     try:
-        resp = httpx.get(url, timeout=10)
+        resp = httpx.get(url, timeout=10, headers=_internal_headers())
         resp.raise_for_status()
         return resp.json()
     except Exception:
@@ -236,7 +244,8 @@ def _post_job(raw: RawJob, user_id: str) -> str | None:
     url = f"{settings.tracker_api_url}/jobs"
     params = {"user_id": user_id}
     try:
-        resp = httpx.post(url, json=payload, params=params, timeout=15)
+        resp = httpx.post(url, json=payload, params=params, timeout=15,
+                          headers=_internal_headers())
         resp.raise_for_status()
         if resp.status_code == 201:
             return resp.json()["id"]

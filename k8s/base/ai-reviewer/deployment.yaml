@@ -24,6 +24,14 @@ spec:
           envFrom:
             - configMapRef:
                 name: tracker-api-config   # shares REDIS_URL and TRACKER_API_URL
+          env:
+            # Least-privilege: pull only the shared internal token (not the whole
+            # tracker-api-secrets) to authenticate internal calls to tracker-api.
+            - name: AGENT_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: tracker-api-secrets
+                  key: AGENT_INTERNAL_TOKEN
           resources:
             requests:
               cpu: "50m"

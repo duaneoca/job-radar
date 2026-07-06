@@ -27,6 +27,14 @@ spec:
                 name: tracker-api-config   # REDIS_URL + TRACKER_API_URL
             - secretRef:
                 name: scraper-secrets      # ADZUNA_APP_ID, ADZUNA_APP_KEY (optional)
+          env:
+            # Least-privilege: pull only the shared internal token (not the whole
+            # tracker-api-secrets) to authenticate internal calls to tracker-api.
+            - name: AGENT_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: tracker-api-secrets
+                  key: AGENT_INTERNAL_TOKEN
           resources:
             requests:
               cpu: "50m"
