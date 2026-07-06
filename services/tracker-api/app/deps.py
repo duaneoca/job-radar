@@ -18,6 +18,7 @@ from app.security import decode_access_token, hash_agent_key
 def get_current_user(
     access_token: str = Cookie(default=None),
     x_internal_user_id: str = Header(default=None, alias="X-Internal-User-Id"),
+    x_internal_token: str = Header(default=None, alias="X-Internal-Token"),
     db: Session = Depends(get_db),
 ) -> User:
     """Require a valid JWT cookie. Raises 401 if missing or invalid."""
@@ -27,8 +28,12 @@ def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
 
-    # Internal service-to-service calls bypass JWT (ai-reviewer, scraper)
+    # Internal service-to-service calls bypass JWT (ai-reviewer, scraper) — but
+    # only when they present the shared internal token. This path can act as ANY
+    # user, so it is token-gated app-side (previously nginx-strip only).
     if x_internal_user_id:
+        if not _valid_internal_token(x_internal_token):
+            raise credentials_exception
         user = db.query(User).filter(User.id == x_internal_user_id).first()
         if user and user.is_approved:
             return user

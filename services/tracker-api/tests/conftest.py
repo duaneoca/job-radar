@@ -11,6 +11,10 @@ import uuid
 
 # Override DB URL before any app modules are imported
 os.environ["DATABASE_URL"] = "sqlite:///./test.db"
+# Internal service-to-service token — the `client` fixture sends this on every
+# request so internal endpoints (now token-gated) accept it. Must be set before
+# app.config builds Settings.
+os.environ["AGENT_INTERNAL_TOKEN"] = "test-internal-token"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -25,6 +29,7 @@ from app.security import hash_password  # noqa: E402
 
 TEST_DATABASE_URL = "sqlite:///./test.db"
 TEST_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
+INTERNAL_TOKEN = "test-internal-token"  # matches AGENT_INTERNAL_TOKEN above
 
 engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -79,5 +84,9 @@ def client(db, test_user):
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_current_user] = override_get_current_user
     with TestClient(app) as c:
+        # Internal endpoints are token-gated; send the shared token by default so
+        # business-logic tests keep exercising them. Per-request headers override
+        # this (e.g. enforcement tests that omit or fake the token).
+        c.headers.update({"X-Internal-Token": INTERNAL_TOKEN})
         yield c
     app.dependency_overrides.clear()

@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app import models, schemas
 from app.config import settings
 from app.database import get_db
-from app.deps import get_current_admin
+from app.deps import get_current_admin, require_internal_token
 from app.email import notify_account_approved
 from app.security import hash_password
 
@@ -260,8 +260,11 @@ def cleanup_jobs_endpoint(
 
 
 @router.post("/internal/cleanup", include_in_schema=False)
-def cleanup_jobs_internal(db: Session = Depends(get_db)):
-    """Called by the scraper's daily Celery Beat task — no user auth required."""
+def cleanup_jobs_internal(
+    db: Session = Depends(get_db),
+    _it: None = Depends(require_internal_token),
+):
+    """Called by the scraper's daily Celery Beat task — internal-token auth."""
     return _do_cleanup(db)
 
 
@@ -280,8 +283,11 @@ def expire_jobs_endpoint(
 
 
 @router.post("/internal/expire", include_in_schema=False)
-def expire_jobs_internal(db: Session = Depends(get_db)):
-    """Called by the scraper's daily Celery Beat task — no user auth required."""
+def expire_jobs_internal(
+    db: Session = Depends(get_db),
+    _it: None = Depends(require_internal_token),
+):
+    """Called by the scraper's daily Celery Beat task — internal-token auth."""
     return _do_expire(db)
 
 
