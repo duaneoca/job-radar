@@ -84,12 +84,20 @@ def log(*a):
 
 # --- connection -------------------------------------------------------------
 
+_LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
 def connect() -> imaplib.IMAP4:
     if not USER or not PASS:
         log("ERROR: JR_IMAP_USER / JR_IMAP_PASS must be set (see env.example)")
         sys.exit(2)
-    # Proton Bridge serves a self-signed cert on localhost — don't verify there.
-    ctx = ssl._create_unverified_context()
+    # Proton Bridge serves a self-signed cert on localhost — skip verification
+    # there only. For any non-local host, verify the cert (avoid a silent MITM
+    # if JR_IMAP_HOST is ever pointed at a remote server).
+    if HOST in _LOCAL_HOSTS:
+        ctx = ssl._create_unverified_context()
+    else:
+        ctx = ssl.create_default_context()
     if SEC == "ssl":
         conn: imaplib.IMAP4 = imaplib.IMAP4_SSL(HOST, PORT, ssl_context=ctx)
     else:

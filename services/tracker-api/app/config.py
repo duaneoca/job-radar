@@ -73,8 +73,17 @@ class Settings(BaseSettings):
     slack_oauth_redirect_uri: str = ""  # e.g. https://job-radar.net/api/agent/slack/oauth/callback
     slack_bot_scopes: str = "chat:write,chat:write.public,channels:read"
 
+    # CORS — comma-separated allowed origins. Dev default is the Vite dev server.
+    # In production the SPA is same-origin (served by nginx, /api proxied), so this
+    # only needs a value if a cross-origin client is ever added.
+    cors_origins: str = "http://localhost:3000"
+
     class Config:
         env_file = ".env"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
 
 settings = Settings()
