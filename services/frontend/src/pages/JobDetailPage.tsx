@@ -613,7 +613,10 @@ export function JobDetailPage() {
 
       {/* Tabs */}
       <Tabs defaultValue="description">
-        <TabsList>
+        {/* Mobile: full-width flex that wraps so the 7 tabs don't run off the
+            right edge (h-auto lets the wrapped rows grow). Desktop (sm+): restore
+            the original compact inline pill, single row, unchanged. */}
+        <TabsList className="flex w-full flex-wrap justify-start h-auto gap-1 sm:inline-flex sm:w-auto sm:flex-nowrap sm:justify-center sm:h-9 sm:gap-0">
           <TabsTrigger value="description">Description</TabsTrigger>
           <TabsTrigger value="research">Research</TabsTrigger>
           <TabsTrigger value="application">Application</TabsTrigger>
