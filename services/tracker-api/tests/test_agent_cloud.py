@@ -63,6 +63,7 @@ def test_internal_token_correct_passes(monkeypatch):
 # ── GET /agent/cloud/users ────────────────────────────────────
 
 def test_cloud_users_requires_token(client):
+    client.headers.pop("X-Internal-Token", None)  # genuinely send no token
     assert client.get("/agent/cloud/users").status_code == 401
 
 
@@ -116,6 +117,7 @@ def test_reviews_accepts_internal_token(client, monkeypatch):
 
 
 def test_reviews_rejects_no_auth(client):
+    client.headers.pop("X-Internal-Token", None)  # genuinely send no token
     assert client.get("/agent/reviews").status_code == 401
 
 

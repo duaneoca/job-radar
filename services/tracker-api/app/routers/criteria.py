@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app import models, schemas
 from app.config import settings
 from app.database import get_db
-from app.deps import get_current_user
+from app.deps import get_current_user, require_internal_token
 from app.security import decrypt_api_key
 
 logger = logging.getLogger(__name__)
@@ -171,7 +171,10 @@ def delete_criteria(
     response_model=list[schemas.ScraperUserConfig],
     include_in_schema=False,
 )
-def scraper_user_configs(db: Session = Depends(get_db)):
+def scraper_user_configs(
+    db: Session = Depends(get_db),
+    _it: None = Depends(require_internal_token),
+):
     """
     Internal — used by the per-user scraper (BYOK). Returns each approved user's
     active criteria plus their decrypted Adzuna credentials (or null if they

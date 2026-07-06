@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session, joinedload
 from app import models, schemas
 from app.config import settings
 from app.database import get_db
-from app.deps import get_current_user
+from app.deps import get_current_user, require_internal_token
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +116,7 @@ def create_job(
     response: Response,
     user_id: UUID = Query(..., description="Per-user scrape attribution (BYOK)"),
     db: Session = Depends(get_db),
+    _it: None = Depends(require_internal_token),
 ):
     """
     Called by the per-user scraper. Deduplicates the shared Job by
@@ -156,6 +157,7 @@ def create_job(
 def get_job_internal(
     job_id: UUID,
     db: Session = Depends(get_db),
+    _it: None = Depends(require_internal_token),
 ):
     """
     Called by the ai-reviewer worker.  Returns raw job data by Job.id.
@@ -325,6 +327,7 @@ def post_ai_review(
     payload: schemas.JobAIUpdate,
     user_id: UUID = Query(..., description="User this review belongs to"),
     db: Session = Depends(get_db),
+    _it: None = Depends(require_internal_token),
 ):
     """
     Called by the ai-reviewer Celery worker.  Identified by job_id (the raw

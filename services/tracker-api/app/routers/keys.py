@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.database import get_db
-from app.deps import get_current_user
+from app.deps import get_current_user, require_internal_token
 from app.security import decrypt_api_key, encrypt_api_key
 
 router = APIRouter(prefix="/keys", tags=["api-keys"])
@@ -229,7 +229,11 @@ def delete_key(
 # so FastAPI matches the literal "llm" segment before the dynamic enum parameter.
 
 @router.get("/internal/{user_id}/llm", include_in_schema=False)
-def get_best_llm_key(user_id: str, db: Session = Depends(get_db)):
+def get_best_llm_key(
+    user_id: str,
+    db: Session = Depends(get_db),
+    _it: None = Depends(require_internal_token),
+):
     """
     Returns the decrypted API key and LiteLLM model string for the user's *active*
     LLM key — the explicit selection, else priority order. Called by ai-reviewer.
@@ -250,6 +254,7 @@ def get_key_for_service(
     user_id: str,
     provider: models.LLMProvider,
     db: Session = Depends(get_db),
+    _it: None = Depends(require_internal_token),
 ):
     """
     Returns the decrypted API key for a given user+provider.
