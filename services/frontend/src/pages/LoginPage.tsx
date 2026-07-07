@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { Briefcase } from "lucide-react";
+import { Radar } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -42,7 +42,7 @@ export function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-sm space-y-6">
         <div className="flex flex-col items-center gap-2">
-          <Briefcase className="h-10 w-10 text-primary" />
+          <Radar className="h-10 w-10 text-primary" />
           <h1 className="text-2xl font-bold">Job Radar</h1>
           <p className="text-sm text-muted-foreground">Sign in to your account</p>
         </div>
