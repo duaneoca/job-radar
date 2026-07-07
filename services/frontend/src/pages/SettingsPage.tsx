@@ -209,7 +209,7 @@ function ModelSelector({ provider, existing, onSave }: {
 }
 
 function KeyInput({
-  provider, placeholder, existing, onSave, onDelete,
+  placeholder, existing, onSave, onDelete,
 }: {
   provider: string;
   placeholder: string;
@@ -730,7 +730,6 @@ function BookmarkletTab() {
         <p className="text-xs text-muted-foreground text-center">
           Drag this button to your bookmarks bar
         </p>
-        {/* eslint-disable-next-line jsx-a11y/anchor-is-valid */}
         <a
           ref={linkRef}
           href="#"

@@ -20,7 +20,7 @@ import {
 } from "../components/ui/dialog";
 import { jobsApi } from "../lib/api";
 import {
-  formatDate, formatSalary, formatSource, scoreColor, statusBadgeVariant,
+  formatDate, formatSalary, formatSource, scoreColor,
   STATUS_OPTIONS, SOURCE_OPTIONS,
 } from "../lib/utils";
 import { toast } from "../hooks/useToast";
