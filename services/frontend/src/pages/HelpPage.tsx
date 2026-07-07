@@ -263,6 +263,20 @@ function ApplicationToolsTab() {
 
       <Separator />
 
+      <H2>Tailor résumé</H2>
+      <P>The Tailor résumé tab rewrites your résumé to line up with a specific posting.
+        The AI proposes targeted edits — reworded bullets, re-ordered skills, emphasis
+        shifts — and shows them as a <strong>line-by-line diff you accept or reject</strong>,
+        so you stay in control of every change.</P>
+      <P>It's deliberately <strong>honest</strong>: a locked guideline stops it from
+        inventing experience, tools, or titles you don't have. If there's a genuine gap
+        between you and the role, it leaves the gap rather than papering over it.</P>
+      <P>When you're happy, export a clean, templated <strong>PDF</strong> — pick a template,
+        adjust font/density/margins, and print or download. Your tailored version is saved
+        with the job, so you can come back to it later.</P>
+
+      <Separator />
+
       <H2>Timeline</H2>
       <P>The Timeline tab keeps a running log of everything that happens with a job.
         Status changes (New → Applied → Interviewing etc.) and AI review scores are
@@ -326,6 +340,59 @@ function PromptsTab() {
   );
 }
 
+function InboxRecruitersTab() {
+  return (
+    <div className="max-w-2xl space-y-4">
+      <P>Beyond scraping and scoring, Job Radar can watch your inbox, keep a recruiter
+        contact list, and ping you on Slack — so nothing falls through the cracks.</P>
+
+      <Separator />
+
+      <H2>Inbox &amp; the email agent</H2>
+      <P>Connect a mailbox and the email agent reads your job-related email, sorts each
+        message into a category (application confirmation, recruiter outreach, interview
+        request, rejection, and so on), and matches it back to the job in your pipeline —
+        logging the update on that job's timeline automatically.</P>
+      <P>Anything it isn't sure about is escalated to <strong>needs review</strong>: the
+        amber badge on the <strong>Inbox</strong> tab shows how many items are waiting for
+        your call. It never quietly changes a status it isn't confident about.</P>
+      <H3>Connecting a mailbox</H3>
+      <P>Go to <strong>Settings → Email Agent</strong>. There are two ways to run it:</P>
+      <ul className="list-disc list-inside space-y-1 ml-2">
+        <Li><strong>Cloud (Gmail)</strong> — connect Gmail with one click via Google sign-in;
+          Job Radar processes it for you on a schedule.</Li>
+        <Li><strong>Local self-host</strong> — run the agent on your own machine against any
+          IMAP mailbox; your mail credentials never leave your computer. See{" "}
+          <strong>Settings → Email Agent → local setup</strong> for the walkthrough.</Li>
+      </ul>
+      <Callout>
+        Your decrypted mail credentials never leave the cluster (cloud) or your machine
+        (local). The agent only writes back status updates and suggestions — you stay in
+        control.
+      </Callout>
+
+      <Separator />
+
+      <H2>Recruiters</H2>
+      <P>The <strong>Recruiters</strong> tab is a lightweight CRM for the people reaching out
+        to you. Track each recruiter's name, employer, whether they're agency or in-house,
+        the companies they represent, and your status with them — and link a recruiter to
+        the jobs they sent you.</P>
+      <P>When the email agent spots recruiter outreach, it offers <strong>suggestions</strong>
+        pre-filled from the message. Nothing is added automatically — you review and confirm
+        each contact before it's saved.</P>
+
+      <Separator />
+
+      <H2>Slack notifications</H2>
+      <P>Connect Slack (<strong>Settings → Slack</strong>, "Add to Slack") to get a nudge in
+        your workspace when the agent needs a decision or flags something worth your
+        attention — handy when you're not sitting in Job Radar all day. The connection is
+        per-user and scoped to your own workspace.</P>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 function ApiKeysTab() {
@@ -382,8 +449,9 @@ export function HelpPage() {
       <h1 className="text-xl font-bold">Help</h1>
       <Callout>
         Job Radar is a personal AI-assisted job hunting tool. It scrapes job boards, scores
-        each posting against your profile and criteria, and helps you apply — all driven by
-        your own AI API key.
+        each posting against your profile and criteria, helps you research, tailor your
+        résumé, and apply, tracks recruiters, and can watch your inbox — all driven by your
+        own AI API key.
       </Callout>
       <Tabs defaultValue={defaultTab}>
         <TabsList className="flex-wrap h-auto gap-1">
@@ -392,6 +460,7 @@ export function HelpPage() {
           <TabsTrigger value="pipeline">Job pipeline</TabsTrigger>
           <TabsTrigger value="scoring">Scoring</TabsTrigger>
           <TabsTrigger value="tools">Application tools</TabsTrigger>
+          <TabsTrigger value="inbox">Inbox &amp; recruiters</TabsTrigger>
           <TabsTrigger value="prompts">Prompts</TabsTrigger>
         </TabsList>
         <TabsContent value="start"    className="mt-6"><GettingStartedTab /></TabsContent>
@@ -399,6 +468,7 @@ export function HelpPage() {
         <TabsContent value="pipeline" className="mt-6"><JobPipelineTab /></TabsContent>
         <TabsContent value="scoring"  className="mt-6"><ScoringTab /></TabsContent>
         <TabsContent value="tools"    className="mt-6"><ApplicationToolsTab /></TabsContent>
+        <TabsContent value="inbox"    className="mt-6"><InboxRecruitersTab /></TabsContent>
         <TabsContent value="prompts"  className="mt-6"><PromptsTab /></TabsContent>
       </Tabs>
     </div>
