@@ -4,6 +4,7 @@ import { useDarkMode } from "./hooks/useDarkMode";
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "./components/layout/Layout";
 import { Toaster } from "./components/ui/toaster";
+import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
 import { SignupPage } from "./pages/SignupPage";
 import { JobsPage } from "./pages/JobsPage";
@@ -52,6 +53,12 @@ function RequireAdmin({ children }: { children: React.ReactNode }) {
   const { user } = useAuthStore();
   if (!user?.is_admin) return <Navigate to="/jobs" replace />;
   return <>{children}</>;
+}
+
+// Root: public marketing page for logged-out visitors, jobs for logged-in users.
+function RootRoute() {
+  const { isAuthenticated } = useAuthStore();
+  return isAuthenticated() ? <Navigate to="/jobs" replace /> : <LandingPage />;
 }
 
 export default function App() {
@@ -186,7 +193,7 @@ export default function App() {
         />
 
         {/* Default */}
-        <Route path="/" element={<Navigate to="/jobs" replace />} />
+        <Route path="/" element={<RootRoute />} />
         <Route path="*" element={<Navigate to="/jobs" replace />} />
       </Routes>
       <Toaster />

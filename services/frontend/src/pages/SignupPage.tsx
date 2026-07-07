@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Briefcase } from "lucide-react";
+import { Radar } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -36,7 +36,7 @@ export function SignupPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         <div className="w-full max-w-sm space-y-4 text-center">
-          <Briefcase className="h-10 w-10 text-primary mx-auto" />
+          <Radar className="h-10 w-10 text-primary mx-auto" />
           <h1 className="text-2xl font-bold">Request received!</h1>
           <p className="text-muted-foreground text-sm">
             Your account is pending admin approval. You'll be able to sign in once it's approved.
@@ -53,7 +53,7 @@ export function SignupPage() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-sm space-y-6">
         <div className="flex flex-col items-center gap-2">
-          <Briefcase className="h-10 w-10 text-primary" />
+          <Radar className="h-10 w-10 text-primary" />
           <h1 className="text-2xl font-bold">Request Access</h1>
           <p className="text-sm text-muted-foreground">An admin will approve your account</p>
         </div>
