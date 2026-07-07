@@ -8,11 +8,21 @@ const client = axios.create({
   withCredentials: true, // send httpOnly JWT cookie on every request
 });
 
-// Redirect to /login on 401 (except when already on /login)
+// Redirect to /login on 401 — but NOT for the `/auth/me` session probe (a 401
+// there just means "logged out", a valid answer the app handles), and NOT while
+// on a public route (landing / signup / login), so logged-out visitors see the
+// marketing page instead of being bounced to /login.
+const PUBLIC_PATHS = new Set(["/", "/login", "/signup"]);
 client.interceptors.response.use(
   (r) => r,
   (err) => {
-    if (err.response?.status === 401 && window.location.pathname !== "/login") {
+    const url: string = err.config?.url ?? "";
+    const isAuthProbe = url.includes("/auth/me");
+    if (
+      err.response?.status === 401 &&
+      !isAuthProbe &&
+      !PUBLIC_PATHS.has(window.location.pathname)
+    ) {
       window.location.href = "/login";
     }
     return Promise.reject(err);

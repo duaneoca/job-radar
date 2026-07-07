@@ -56,9 +56,25 @@ function RequireAdmin({ children }: { children: React.ReactNode }) {
 }
 
 // Root: public marketing page for logged-out visitors, jobs for logged-in users.
+// Validate the session with the server rather than trusting a possibly-stale
+// persisted user, so an expired/absent session correctly shows the landing page
+// (not a bounce to /login).
 function RootRoute() {
-  const { isAuthenticated } = useAuthStore();
-  return isAuthenticated() ? <Navigate to="/jobs" replace /> : <LandingPage />;
+  const setUser = useAuthStore((s) => s.setUser);
+  const { data, isLoading, isError } = useQuery<User>({
+    queryKey: ["me"],
+    queryFn: () => authApi.get("/auth/me").then((r) => r.data),
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+
+  useEffect(() => {
+    if (data) setUser(data);
+    else if (isError) setUser(null); // clear a stale persisted session
+  }, [data, isError, setUser]);
+
+  if (isLoading) return null; // brief — avoids flashing the wrong view
+  return data ? <Navigate to="/jobs" replace /> : <LandingPage />;
 }
 
 export default function App() {
