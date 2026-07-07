@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, ExternalLink, Star, Building2, MapPin, DollarSign,
   UserCheck, Users, Loader2, Calendar, Sparkles, MessageSquarePlus, Plus, AlertTriangle,
-  Clock, Send, Trash2, Wand2, FileText,
+  Send, Trash2, Wand2, FileText,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";

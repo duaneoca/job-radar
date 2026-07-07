@@ -350,7 +350,7 @@ export interface LinkedInConnection {
   created_at: string;
 }
 
-export interface AdminUser extends User {}
+export type AdminUser = User;
 
 export interface PaginatedUsers {
   total: number;
