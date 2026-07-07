@@ -12,12 +12,12 @@ import {
 import { Button } from "../components/ui/button";
 import { BrowserFrame } from "../components/marketing/BrowserFrame";
 
-/** Screenshots live in /public/marketing (placeholders until real captures land). */
+/** Screenshots live in /public/marketing (real dark-mode captures of the app). */
 const SHOTS = {
-  jobs: "/marketing/jobs-list.svg",
-  detail: "/marketing/job-detail.svg",
-  tailor: "/marketing/resume-tailor.svg",
-  capture: "/marketing/capture.svg",
+  jobs: "/marketing/jobs-list.png",
+  detail: "/marketing/job-detail.png",
+  tailor: "/marketing/resume-tailor.png",
+  capture: "/marketing/capture.png",
 };
 
 type Feature = {
