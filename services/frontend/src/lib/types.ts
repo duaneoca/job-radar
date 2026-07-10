@@ -4,7 +4,9 @@ export type JobStatus =
 
 export type JobSource =
   | "adzuna" | "the_muse" | "remotive" | "linkedin"
-  | "indeed" | "glassdoor" | "dice" | "manual";
+  | "indeed" | "glassdoor" | "dice" | "builtin"
+  | "monster" | "ziprecruiter" | "ashby" | "greenhouse"
+  | "manual";
 
 export type LLMProvider = "anthropic" | "openai" | "google" | "groq" | "tavily" | "adzuna";
 

@@ -49,7 +49,8 @@ FOLDER = os.environ.get("JR_IMAP_FOLDER", "Job Postings")
 SEC = os.environ.get("JR_IMAP_SEC", "starttls").lower()
 
 # The 6 destination sites the Job Radar bookmarklet can extract from.
-SUPPORTED_SITES = ("linkedin", "dice", "builtin", "monster", "ziprecruiter", "indeed")
+SUPPORTED_SITES = ("linkedin", "dice", "builtin", "monster", "ziprecruiter",
+                   "indeed", "ashby", "greenhouse")
 
 # Footer / settings / social / search links — never postings. Substring match on
 # the (unwrapped) lowercased URL. Conservative: better to let a stray non-job
@@ -219,6 +220,21 @@ def classify_link(raw: str) -> dict | None:
     if "indeed.com" in host and m:
         return {"kind": "job", "source": "indeed", "external_id": m.group(1),
                 "url": f"https://www.indeed.com/viewjob?jk={m.group(1)}", "via": "canonical"}
+    # Ashby ATS: jobs.ashbyhq.com/{Company}/{uuid}. Keep original-case URL — the
+    # company slug is case-sensitive; the uuid is the dedup id.
+    m = re.search(r"jobs\.ashbyhq\.com/[^/?#]+/([0-9a-f-]{36})", low)
+    if m:
+        clean = url.split("?", 1)[0].split("#", 1)[0]
+        return {"kind": "job", "source": "ashby", "external_id": m.group(1),
+                "url": clean, "via": "canonical"}
+    # Greenhouse board-hosted: job-boards.greenhouse.io/{company}/jobs/{id}. Only
+    # the job-boards host — legacy boards.greenhouse.io often 302s to a generic
+    # company careers page, so it stays unsupported.
+    m = re.search(r"job-boards\.greenhouse\.io/[^/?#]+/jobs/(\d+)", low)
+    if m:
+        clean = url.split("?", 1)[0].split("#", 1)[0]
+        return {"kind": "job", "source": "greenhouse", "external_id": m.group(1),
+                "url": clean, "via": "canonical"}
 
     # 2. Junk (settings/footer/social/search) — before opaque-tracker mapping --
     if any(h in host for h in JUNK_HOSTS):

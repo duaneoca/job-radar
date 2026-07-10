@@ -126,6 +126,8 @@ function JobPipelineTab() {
         <Li><strong>Monster</strong> — fully supported</Li>
         <Li><strong>ZipRecruiter</strong> — fully supported</Li>
         <Li><strong>Indeed</strong> — fully supported</Li>
+        <Li><strong>Ashby</strong> (jobs.ashbyhq.com) — fully supported</Li>
+        <Li><strong>Greenhouse</strong> (job&#8288;-&#8288;boards.greenhouse.io) — fully supported</Li>
       </ul>
 
       <Separator />

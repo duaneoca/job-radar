@@ -53,6 +53,8 @@ class JobSource(str, enum.Enum):
     BUILTIN   = "builtin"
     MONSTER      = "monster"
     ZIPRECRUITER = "ziprecruiter"
+    ASHBY        = "ashby"
+    GREENHOUSE   = "greenhouse"
     MANUAL       = "manual"
 
 

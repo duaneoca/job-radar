@@ -36,7 +36,8 @@ do not categorize; just run the loop.
 - You are also **logged into the job sites** (LinkedIn, etc.) in that same Chrome,
   so postings render past login/Cloudflare walls.
 - Supported destinations are exactly: **LinkedIn, Dice, BuiltIn, Monster,
-  ZipRecruiter, Indeed.** Anything else is logged and skipped (step 5).
+  ZipRecruiter, Indeed, Ashby (`jobs.ashbyhq.com`), and Greenhouse
+  (`job-boards.greenhouse.io`).** Anything else is logged and skipped (step 5).
 
 ## The loop
 

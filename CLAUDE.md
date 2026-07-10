@@ -160,7 +160,15 @@ self-configure from `.env`; only in-cluster (cloud) agents fetch decrypted confi
 
 ## Bookmarklet
 
-Supported sites: LinkedIn, Dice, BuiltIn, Monster, ZipRecruiter, Indeed.
+Supported sites: LinkedIn, Dice, BuiltIn, Monster, ZipRecruiter, Indeed, Ashby
+(`jobs.ashbyhq.com`), Greenhouse (`job-boards.greenhouse.io`). Ashby/Greenhouse are
+ATS platforms (many companies) rather than job boards; extraction reads the static
+job page (`h1` title; company from the URL path or `document.title`). Company-branded
+Greenhouse embeds (e.g. `careers.<company>.com`) and legacy `boards.greenhouse.io`
+(which 302s to a generic careers page) are **not** matched. `source` is a
+`VARCHAR(50)` column validated against the `JobSource` enum in code — adding a source
+needs the enum value in `models.py` + frontend `types.ts`/`SOURCE_LABELS`, **no DB
+migration**.
 
 **LinkedIn specifics:**
 - URL guard: aborts with a helpful message if URL does not contain `/jobs/view/` (search/list pages give bad data)
