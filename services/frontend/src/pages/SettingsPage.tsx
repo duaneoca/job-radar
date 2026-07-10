@@ -664,8 +664,47 @@ var re=/remote/i.test(lo)||/remote/i.test(de.substring(0,500));
 var indeedUrl='https://www.indeed.com/viewjob?jk='+id;
 if(!ti){alert('Job Radar: Could not read this Indeed page.\\nNavigate to a specific job posting.');return;}
 data={title:ti,company:co,location:lo,description:de,url:indeedUrl,external_id:id,remote:re,source:'indeed',salary_min:salMin,salary_max:salMax};
+}else if(host.includes('ashbyhq.com')){
+var pth=window.location.pathname.split('/').filter(Boolean);
+var ti=tc('h1');
+var co=pth[0]?decodeURIComponent(pth[0]).replace(/[-_]/g,' ').trim():'';
+var id=pth[1]||'';
+var bodyTxt=(document.body.innerText||'');
+var de=longest(['[class*="_descriptionText"]','[class*="jobDescription"]','main','article']);
+if(!de){de=bodyTxt.replace(/\\s+/g,' ').trim().substring(0,4000);}
+var loM=bodyTxt.match(/Location\\s*\\n+\\s*([^\\n]+)/);
+var lo=loM?loM[1].trim():'';
+var salM=bodyTxt.match(/\\$([\\d,]+)(K?)\\s*[-\\u2013\\u2014]\\s*\\$([\\d,]+)(K?)/i);
+var salMin=salM?Math.round(parseFloat(salM[1].replace(/,/g,''))*(salM[2].toUpperCase()==='K'?1000:1)):null;
+var salMax=salM?Math.round(parseFloat(salM[3].replace(/,/g,''))*(salM[4].toUpperCase()==='K'?1000:1)):null;
+var re=/remote/i.test(lo)||/remote/i.test(de.substring(0,300));
+var ashUrl=window.location.href.split('?')[0];
+if(!ti){alert('Job Radar: Could not read this Ashby page.\\nNavigate to a specific job posting.');return;}
+data={title:ti,company:co,location:lo,description:de,url:ashUrl,external_id:id,remote:re,source:'ashby',salary_min:salMin,salary_max:salMax};
+}else if(host.includes('greenhouse.io')){
+var ti=tc('h1');
+var dt=document.title||'';
+var atM=dt.match(/\\sat\\s+(.+?)\\s*$/);
+var co=atM?atM[1].trim():'';
+var pth=window.location.pathname.split('/').filter(Boolean);
+if(!co&&pth[0]){co=decodeURIComponent(pth[0]).replace(/[-_]/g,' ').trim();}
+var idM=window.location.pathname.match(/jobs\\/(\\d+)/);
+var id=idM?idM[1]:'';
+var bodyTxt=(document.body.innerText||'');
+var de=longest(['#content','#job_description','[class*="job-post"]','[class*="description"]','main','article']);
+if(!de){de=bodyTxt.replace(/\\s+/g,' ').trim().substring(0,4000);}
+var afterTi=ti?(bodyTxt.split(ti)[1]||''):'';
+var loM=afterTi.match(/\\n\\s*([^\\n]+)/);
+var lo=loM?loM[1].trim():'';
+var salM=bodyTxt.match(/\\$([\\d,]+)(K?)\\s*[-\\u2013\\u2014]\\s*\\$([\\d,]+)(K?)/i);
+var salMin=salM?Math.round(parseFloat(salM[1].replace(/,/g,''))*(salM[2].toUpperCase()==='K'?1000:1)):null;
+var salMax=salM?Math.round(parseFloat(salM[3].replace(/,/g,''))*(salM[4].toUpperCase()==='K'?1000:1)):null;
+var re=/remote/i.test(lo)||/remote/i.test(de.substring(0,300));
+var ghUrl=window.location.href.split('?')[0];
+if(!ti){alert('Job Radar: Could not read this Greenhouse page.\\nOpen a specific job posting (some company links redirect to a generic careers page).');return;}
+data={title:ti,company:co,location:lo,description:de,url:ghUrl,external_id:id,remote:re,source:'greenhouse',salary_min:salMin,salary_max:salMax};
 }else{
-alert('Job Radar: This site is not yet supported.\\nSupported: LinkedIn, Dice, BuiltIn, Monster, ZipRecruiter, Indeed.');
+alert('Job Radar: This site is not yet supported.\\nSupported: LinkedIn, Dice, BuiltIn, Monster, ZipRecruiter, Indeed, Ashby, Greenhouse.');
 return;
 }
 window.open('${appOrigin}/jobs/add#'+btoa(unescape(encodeURIComponent(JSON.stringify(data)))),'_blank');
@@ -721,7 +760,7 @@ function BookmarkletTab() {
           page to add it to Job Radar instantly.
         </p>
         <p className="text-sm text-muted-foreground">
-          <strong>Supported:</strong> LinkedIn, Dice, BuiltIn, Monster, ZipRecruiter, Indeed
+          <strong>Supported:</strong> LinkedIn, Dice, BuiltIn, Monster, ZipRecruiter, Indeed, Ashby, Greenhouse
         </p>
       </div>
 

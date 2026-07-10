@@ -128,6 +128,16 @@ def test_manual_job_dedup_by_url(client):
     assert r1.json()["id"] == r2.json()["id"]
 
 
+def test_manual_job_ats_sources(client):
+    """ATS sources (ashby, greenhouse) added for the bookmarklet are accepted."""
+    for i, source in enumerate(("ashby", "greenhouse")):
+        payload = {**JOB_PAYLOAD, "source": source,
+                   "url": f"https://example.com/{source}/{i}"}
+        with patch("app.routers.jobs._celery"):
+            resp = client.post("/jobs/manual", json=payload)
+        assert resp.status_code == 201, resp.text
+
+
 # ── AI review endpoint (internal, no auth) ───────────────────
 
 def test_ai_review(client):

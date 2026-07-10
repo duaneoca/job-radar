@@ -67,6 +67,8 @@ export const SOURCE_LABELS: Record<string, string> = {
   builtin:     "BuiltIn",
   monster:     "Monster",
   ziprecruiter:"ZipRecruiter",
+  ashby:       "Ashby",
+  greenhouse:  "Greenhouse",
   manual:      "Manual",
 };
 
