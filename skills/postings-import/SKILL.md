@@ -35,9 +35,15 @@ do not categorize; just run the loop.
   session).
 - You are also **logged into the job sites** (LinkedIn, etc.) in that same Chrome,
   so postings render past login/Cloudflare walls.
-- Supported destinations are exactly: **LinkedIn, Dice, BuiltIn, Monster,
-  ZipRecruiter, Indeed, Ashby (`jobs.ashbyhq.com`), and Greenhouse
-  (`job-boards.greenhouse.io`).** Anything else is logged and skipped (step 5).
+- Supported destinations the bookmarklet can extract from: **LinkedIn, Dice,
+  BuiltIn, Monster, ZipRecruiter, Indeed, Ashby (`jobs.ashbyhq.com`), and
+  Greenhouse (`job-boards.greenhouse.io`).** Anything else is logged/skipped (step 5).
+- **Routine scope:** the loop only processes the clean, deterministic sources —
+  LinkedIn + the ATS platforms (Ashby, Greenhouse, BuiltIn) + canonical Indeed.
+  Emails from **Monster, Dice, and Glassdoor are ignored wholesale** (`imap_fetch.py`
+  flags them `"ignore": true`; see step 1). They're ~half the folder but nearly all
+  redundant with LinkedIn/ATS, and their extraction is fuzzy/fragile enough to
+  produce silent bad data — so they're out of the automatic path.
 
 ## The loop
 
@@ -73,9 +79,7 @@ returns, per email:
   "uid", "subject", "sender", "date",
   "jobs": [            // the worklist — already deduped
     {"source":"linkedin","external_id":"4432694739",
-     "url":"https://www.linkedin.com/jobs/view/4432694739","via":"canonical"},
-    {"source":"monster","external_id":null,
-     "url":"https://click.monster.com/f/a/…","via":"opaque"}
+     "url":"https://www.linkedin.com/jobs/view/4432694739","via":"canonical"}
   ],
   "unsupported": [     // destinations the bookmarklet can't read — DO NOT import
     {"url":"https://www.glassdoor.com/…","domain":"www.glassdoor.com"}
@@ -85,10 +89,22 @@ returns, per email:
 ```
 
 - `via:"canonical"` — id was in the email; `url` is a clean direct posting URL.
+  This is the routine, deterministic path (LinkedIn, Ashby, Greenhouse, BuiltIn,
+  and canonical Indeed `jk=` links).
 - `via:"opaque"` — a tracker URL; navigating it (step 2) resolves to a supported
-  site. Opaque providers (Indeed/Dice/Monster/ZipRecruiter) **over-list**: some
-  entries are footer links wearing the same tracker domain. That's expected — the
-  bookmarklet rejects them on arrival (a "no import request", not an error).
+  site. Only Indeed (`cts.indeed.com`) still opaque-lists; some entries are footer
+  links wearing the same tracker domain — the bookmarklet rejects those on arrival
+  (a "no import request", not an error).
+- **`"ignore": true`** — the email is from a deprecated digest source
+  (Monster/Dice/Glassdoor, see `IGNORE_SENDERS`). **Do not process it**: just
+  `mark-seen <uid>` and move on. `jobs` is empty for these. These were dropped
+  from the routine loop because they're high-effort, low-yield, and heavily
+  redundant with LinkedIn/ATS — Monster's per-job search needs fuzzy company
+  matching (which silently mis-titled imports), its `/job-openings/` URLs don't
+  render on direct navigation, Dice's `elinks` trackers 500, and Glassdoor isn't
+  a bookmarklet destination. `monster.com`/`dice.com` **search** stays available
+  as a *manual* rescue for a specifically-named job from another source (e.g. a
+  Glassdoor listing) — this only removes them from the automatic path.
 
 ### 2. Per email → per job: open + capture (Claude drives, no inference)
 
