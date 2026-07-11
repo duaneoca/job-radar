@@ -8,6 +8,8 @@ Supported sources:
   - Adzuna       (free tier, requires app_id/app_key — BYOK per user)
   - The Muse     (public, no auth)
   - Remotive     (public, no auth, remote-only)
+  - JSearch      (RapidAPI, BYOK per user — Google-for-Jobs index, hard
+                 monthly quota so heavily budgeted: see scrapers/jsearch.py)
   - ATS boards   (public, no auth): Greenhouse / Ashby / Lever — watch the
                  user's target_companies directly, prefiltered by job titles
 
@@ -30,7 +32,8 @@ from celery.schedules import crontab
 from app.config import settings
 from app.scrapers.adzuna import AdzunaScraper
 from app.scrapers.ats_boards import AshbyScraper, GreenhouseScraper, LeverScraper
-from app.scrapers.base import BaseScraper, CompanyBoardScraper, RawJob
+from app.scrapers.base import BaseScraper, CompanyBoardScraper, Creds, RawJob
+from app.scrapers.jsearch import JSearchScraper
 from app.scrapers.remotive import RemotiveScraper
 from app.scrapers.the_muse import TheMuseScraper
 
@@ -70,6 +73,7 @@ SCRAPERS: list[BaseScraper] = [
     AdzunaScraper(),
     TheMuseScraper(),
     RemotiveScraper(),
+    JSearchScraper(),
 ]
 
 # Company-board watchers: run once per user against their target_companies
@@ -169,15 +173,14 @@ def _scrape_for_config(cfg: dict) -> tuple[int, int]:
     if not keywords:
         return 0, 0
     locations = _ensure_remote_pass(cfg.get("search_locations") or ["Remote"])
-    adzuna_creds = cfg.get("adzuna")  # {app_id, app_key} or None
 
     seen = created = 0
     for scraper in SCRAPERS:
-        # Adzuna is BYOK — skip entirely for users without a key.
-        if scraper.source_name == "adzuna" and not adzuna_creds:
+        # BYOK sources are skipped entirely for users without a key.
+        should_run, creds = _creds_for(scraper, cfg)
+        if not should_run:
             continue
-        creds = adzuna_creds if scraper.source_name == "adzuna" else None
-        for location in locations:
+        for location in _locations_for(scraper, locations):
             try:
                 raw_jobs = asyncio.run(scraper.scrape(keywords, location, creds))
             except Exception:
@@ -209,6 +212,34 @@ def _scrape_for_config(cfg: dict) -> tuple[int, int]:
 # ── Helpers ───────────────────────────────────────────────────
 
 _REMOTE_ALIASES = {"remote", "anywhere"}
+
+# JSearch's free tier is a hard monthly quota; cap the location fan-out.
+_JSEARCH_MAX_LOCATIONS = 3
+
+
+def _creds_for(scraper: BaseScraper, cfg: dict) -> tuple[bool, Creds]:
+    """(should_run, creds) for one scraper given a user's config.
+
+    BYOK sources return should_run=False when the user has no key; public
+    sources always run with creds=None.
+    """
+    if scraper.source_name == "adzuna":
+        creds = cfg.get("adzuna")  # {app_id, app_key} or None
+        return bool(creds), creds
+    if scraper.source_name == "jsearch":
+        key = cfg.get("jsearch_api_key")
+        if not key:
+            return False, None
+        # user_id rides along for the per-user 24h throttle key.
+        return True, {"api_key": key, "user_id": str(cfg.get("user_id"))}
+    return True, None
+
+
+def _locations_for(scraper: BaseScraper, locations: list[str]) -> list[str]:
+    """Quota-bound sources get a capped location list; others get all of them."""
+    if scraper.source_name == "jsearch":
+        return locations[:_JSEARCH_MAX_LOCATIONS]
+    return locations
 
 
 def _ensure_remote_pass(locations: list[str]) -> list[str]:

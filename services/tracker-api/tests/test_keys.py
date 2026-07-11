@@ -62,3 +62,28 @@ def test_llm_provider_selected_alongside_adzuna(client, db, test_user):
     client.put("/keys", json={"provider": "anthropic", "api_key": "sk-ant-abcd"})
     api_key, _model = get_llm_provider(test_user.id, db)
     assert api_key == "sk-ant-abcd"
+
+
+def test_jsearch_upsert_generic_key(client):
+    """JSearch is a plain single-string key (generic path)."""
+    resp = client.put("/keys", json={"provider": "jsearch", "api_key": "rapidapiKEY5555"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["provider"] == "jsearch"
+    assert body["key_hint"].endswith("5555")
+
+    resp = client.delete("/keys/jsearch")
+    assert resp.status_code in (200, 204)
+
+
+def test_jsearch_never_selected_as_llm(client, db, test_user):
+    """A JSearch key alone must NOT satisfy the LLM-key requirement, and
+    can't be made the active LLM provider."""
+    from app.llm import get_llm_provider
+
+    client.put("/keys", json={"provider": "jsearch", "api_key": "rapidapiKEY5555"})
+    with pytest.raises(HTTPException):
+        get_llm_provider(test_user.id, db)
+
+    resp = client.put("/keys/active", json={"provider": "jsearch"})
+    assert resp.status_code == 400
