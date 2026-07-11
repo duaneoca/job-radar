@@ -24,7 +24,7 @@ from sqlalchemy.orm import sessionmaker  # noqa: E402
 from app.database import Base, get_db  # noqa: E402
 from app.deps import get_current_user  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import User  # noqa: E402
+from app.models import AppSetting, User  # noqa: E402
 from app.security import hash_password  # noqa: E402
 
 TEST_DATABASE_URL = "sqlite:///./test.db"
@@ -38,6 +38,15 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 @pytest.fixture(autouse=True)
 def setup_db():
     Base.metadata.create_all(bind=engine)
+    # The email-agent feature flag defaults OFF in production; enable it as the
+    # test baseline so existing agent-endpoint tests exercise real behavior.
+    # Disabled-state tests flip it off explicitly (test_admin_settings.py).
+    session = TestingSessionLocal()
+    try:
+        session.add(AppSetting(key="email_agent_enabled", value=True))
+        session.commit()
+    finally:
+        session.close()
     yield
     Base.metadata.drop_all(bind=engine)
 

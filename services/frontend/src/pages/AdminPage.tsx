@@ -7,12 +7,18 @@ import {
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Badge } from "../components/ui/badge";
+import { Switch } from "../components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { adminApi } from "../lib/api";
 import { formatDate } from "../lib/utils";
 import { toast } from "../hooks/useToast";
 import { AgentStatsView } from "../components/AgentStatsView";
+import { useAuthStore } from "../store/auth";
 import type { PaginatedUsers, AdminUser } from "../lib/types";
+
+interface AppSettings {
+  email_agent_enabled: boolean;
+}
 
 // ─── Inline password reset form ──────────────────────────────────────────────
 function ResetPasswordRow({ user, onDone }: { user: AdminUser; onDone: () => void }) {
@@ -240,6 +246,33 @@ function SystemTab() {
   const [scraping, setScraping] = useState(false);
   const [evaluating, setEvaluating] = useState(false);
   const [cleaning, setCleaning] = useState(false);
+  const queryClient = useQueryClient();
+  const { user, setUser } = useAuthStore();
+
+  // Global feature flags (app_settings) — source of truth for the toggle state.
+  const { data: appSettings } = useQuery<AppSettings>({
+    queryKey: ["admin-settings"],
+    queryFn: () => adminApi.get("/admin/settings").then((r) => r.data),
+  });
+
+  const toggleAgent = useMutation({
+    mutationFn: (enabled: boolean) =>
+      adminApi.put("/admin/settings", { email_agent_enabled: enabled }).then((r) => r.data as AppSettings),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["admin-settings"], data);
+      // Keep the session user's flag in sync so the nav/Settings react immediately.
+      if (user) setUser({ ...user, email_agent_enabled: data.email_agent_enabled });
+      toast({
+        title: data.email_agent_enabled ? "Email agent enabled" : "Email agent disabled",
+        description: data.email_agent_enabled
+          ? "Inbox and agent settings are visible again; the cloud agent will resume on its next run."
+          : "Inbox and agent settings are hidden; the cloud agent's runs become no-ops.",
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to update setting", description: err?.response?.data?.detail, variant: "destructive" });
+    },
+  });
 
   async function triggerScrape() {
     setScraping(true);
@@ -285,6 +318,25 @@ function SystemTab() {
   return (
     <div className="space-y-6 max-w-md">
       <div className="rounded-lg border p-4 space-y-3">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="font-medium">Email agent</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Globally enable or disable the email-agent feature. When off, the Inbox
+              and Email Agent settings are hidden for all users and the server-side
+              agent workflow (cloud and self-hosted) is refused.
+            </p>
+          </div>
+          <Switch
+            checked={appSettings?.email_agent_enabled ?? false}
+            disabled={!appSettings || toggleAgent.isPending}
+            onCheckedChange={(v) => toggleAgent.mutate(v)}
+            aria-label="Toggle email agent feature"
+          />
+        </div>
+      </div>
+
+      <div className="rounded-lg border p-4 space-y-3">
         <div>
           <h3 className="font-medium">Manual scrape</h3>
           <p className="text-sm text-muted-foreground mt-1">
@@ -329,6 +381,8 @@ function SystemTab() {
 }
 
 export function AdminPage() {
+  const { user } = useAuthStore();
+  const agentEnabled = !!user?.email_agent_enabled;
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-bold">Admin</h1>
@@ -336,7 +390,7 @@ export function AdminPage() {
         <TabsList>
           <TabsTrigger value="pending">Pending approval</TabsTrigger>
           <TabsTrigger value="approved">Approved users</TabsTrigger>
-          <TabsTrigger value="agent">Email Agent</TabsTrigger>
+          {agentEnabled && <TabsTrigger value="agent">Email Agent</TabsTrigger>}
           <TabsTrigger value="system">System</TabsTrigger>
         </TabsList>
         <TabsContent value="pending" className="mt-6">
@@ -345,17 +399,19 @@ export function AdminPage() {
         <TabsContent value="approved" className="mt-6">
           <UserTable approved={true} />
         </TabsContent>
-        <TabsContent value="agent" className="mt-6">
-          <div className="max-w-lg space-y-3">
-            <div>
-              <h3 className="font-medium">Email Agent — all users</h3>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                Global agent activity across every user. Detailed LLM traces live in Langfuse.
-              </p>
+        {agentEnabled && (
+          <TabsContent value="agent" className="mt-6">
+            <div className="max-w-lg space-y-3">
+              <div>
+                <h3 className="font-medium">Email Agent — all users</h3>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Global agent activity across every user. Detailed LLM traces live in Langfuse.
+                </p>
+              </div>
+              <AgentStatsView scope="global" />
             </div>
-            <AgentStatsView scope="global" />
-          </div>
-        </TabsContent>
+          </TabsContent>
+        )}
         <TabsContent value="system" className="mt-6">
           <SystemTab />
         </TabsContent>

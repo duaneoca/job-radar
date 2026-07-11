@@ -579,3 +579,15 @@ class AgentRun(Base):
     error_summary         = Column(Text, nullable=True)
 
     user = relationship("User", back_populates="agent_runs")
+
+
+class AppSetting(Base):
+    """Global runtime-mutable key/value settings (admin-controlled feature flags).
+
+    Absent key ⇒ the flag's code-level default applies (see app/feature_flags.py),
+    so no seed rows are needed and new flags require no migration.
+    """
+    __tablename__ = "app_settings"
+
+    key   = Column(String(100), primary_key=True)
+    value = Column(JSON, nullable=False)

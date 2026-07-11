@@ -25,7 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session, joinedload
 
-from app import models, schemas
+from app import feature_flags, models, schemas
 from app.config import settings
 from app.database import get_db
 from app.llm import get_active_llm_key
@@ -226,6 +226,8 @@ def get_agent_config(
         user.id,
         request.client.host if request.client else "unknown",
     )
+    if not feature_flags.email_agent_enabled(db):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Email agent disabled")
     return _build_agent_config(user, db)
 
 
@@ -243,6 +245,11 @@ def cloud_list_users(
         "AUDIT /agent/cloud/users ip=%s",
         request.client.host if request.client else "unknown",
     )
+    # Feature toggled off → enumerate nobody. The cloud CronJob keeps firing on
+    # its k8s schedule but discovers zero users, making the whole run a no-op —
+    # this is the app-level lever since the app can't touch k8s.
+    if not feature_flags.email_agent_enabled(db):
+        return []
     rows = (
         db.query(models.EmailCredential)
         .filter(models.EmailCredential.enabled == True)  # noqa: E712
@@ -268,6 +275,8 @@ def cloud_get_config(
         user_id,
         request.client.host if request.client else "unknown",
     )
+    if not feature_flags.email_agent_enabled(db):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Email agent disabled")
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user or not user.is_approved:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")

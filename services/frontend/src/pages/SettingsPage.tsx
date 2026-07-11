@@ -1521,9 +1521,13 @@ function EmailAgentTab() {
 
 export function SettingsPage() {
   const [searchParams] = useSearchParams();
+  const { user: sessionUser } = useAuthStore();
+  const agentEnabled = !!sessionUser?.email_agent_enabled;
   const gmail = searchParams.get("gmail");
   const slack = searchParams.get("slack");
-  const defaultTab = (gmail || slack) ? "agent" : (searchParams.get("tab") ?? "account");
+  const requestedTab = (gmail || slack) ? "agent" : (searchParams.get("tab") ?? "account");
+  // Never land on a hidden tab when the email agent is globally off.
+  const defaultTab = !agentEnabled && requestedTab === "agent" ? "account" : requestedTab;
 
   useEffect(() => {
     if (!gmail) return;
@@ -1556,12 +1560,14 @@ export function SettingsPage() {
         <TabsList className="flex-wrap h-auto gap-1">
           <TabsTrigger value="account">Account Details</TabsTrigger>
           <TabsTrigger value="keys">API Keys</TabsTrigger>
-          <TabsTrigger value="agent">Email Agent</TabsTrigger>
+          {agentEnabled && <TabsTrigger value="agent">Email Agent</TabsTrigger>}
           <TabsTrigger value="bookmarklet">Bookmarklet</TabsTrigger>
         </TabsList>
         <TabsContent value="account"     className="mt-6"><AccountTab /></TabsContent>
         <TabsContent value="keys"        className="mt-6"><KeysTab /></TabsContent>
-        <TabsContent value="agent"       className="mt-6"><EmailAgentTab /></TabsContent>
+        {agentEnabled && (
+          <TabsContent value="agent" className="mt-6"><EmailAgentTab /></TabsContent>
+        )}
         <TabsContent value="bookmarklet" className="mt-6"><BookmarkletTab /></TabsContent>
       </Tabs>
     </div>

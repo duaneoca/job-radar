@@ -127,7 +127,16 @@ def get_agent_writer(
         user_id is trustworthy *because* the caller holds the internal token behind
         the NetworkPolicy, and nginx strips X-Internal-Token/X-User-Id from public
         requests so the cloud path is unreachable externally.
+
+    When the global email-agent flag is off, all agent writes are refused —
+    belt-and-suspenders on top of the /agent/config and /agent/cloud/users gates,
+    so a runner holding a cached config still can't write.
     """
+    from app import feature_flags  # local import — deps is imported early at startup
+
+    if not feature_flags.email_agent_enabled(db):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Email agent disabled")
+
     if x_agent_key:
         return _user_from_agent_key(x_agent_key, db)
 
