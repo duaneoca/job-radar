@@ -490,6 +490,7 @@ class ScraperUserConfig(BaseModel):
     job_titles: List[str] = []
     search_locations: List[str] = []
     work_style: str = "any"
+    target_companies: List[str] = []  # drives the ATS board watcher
     adzuna: Optional[ScraperAdzunaCreds] = None
 
 

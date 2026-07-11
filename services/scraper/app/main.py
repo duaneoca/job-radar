@@ -5,13 +5,16 @@ Celery worker that queries public jobs APIs on a schedule and pushes
 new listings to the tracker-api via HTTP.
 
 Supported sources:
-  - Adzuna    (free tier, requires app_id/app_key)
-  - The Muse  (public, no auth)
-  - Remotive  (public, no auth, remote-only)
+  - Adzuna       (free tier, requires app_id/app_key — BYOK per user)
+  - The Muse     (public, no auth)
+  - Remotive     (public, no auth, remote-only)
+  - ATS boards   (public, no auth): Greenhouse / Ashby / Lever — watch the
+                 user's target_companies directly, prefiltered by job titles
 
 HTML scraping was abandoned after Phase 2a because every Cloudflare-
 protected board (Indeed, LinkedIn, Glassdoor) blocks datacenter IPs on
-first contact. See `memory/project_scraping_strategy.md`.
+first contact. The ATS board endpoints are official public JSON APIs,
+consistent with that stance. See `memory/project_scraping_strategy.md`.
 
 Run locally:
   celery -A app.main worker --loglevel=info --beat
@@ -26,7 +29,8 @@ from celery.schedules import crontab
 
 from app.config import settings
 from app.scrapers.adzuna import AdzunaScraper
-from app.scrapers.base import BaseScraper, RawJob
+from app.scrapers.ats_boards import AshbyScraper, GreenhouseScraper, LeverScraper
+from app.scrapers.base import BaseScraper, CompanyBoardScraper, RawJob
 from app.scrapers.remotive import RemotiveScraper
 from app.scrapers.the_muse import TheMuseScraper
 
@@ -66,6 +70,14 @@ SCRAPERS: list[BaseScraper] = [
     AdzunaScraper(),
     TheMuseScraper(),
     RemotiveScraper(),
+]
+
+# Company-board watchers: run once per user against their target_companies
+# (no location dimension — a board is a board). Same dedup as above.
+COMPANY_SCRAPERS: list[CompanyBoardScraper] = [
+    GreenhouseScraper(),
+    AshbyScraper(),
+    LeverScraper(),
 ]
 
 
@@ -170,6 +182,22 @@ def _scrape_for_config(cfg: dict) -> tuple[int, int]:
                 raw_jobs = asyncio.run(scraper.scrape(keywords, location, creds))
             except Exception:
                 logger.exception("scraper %s crashed for user %s", scraper.source_name, user_id)
+                continue
+            seen += len(raw_jobs)
+            for raw in raw_jobs:
+                if _post_job(raw, user_id=user_id):
+                    created += 1
+
+    # Company-board pass: once per user, not per location. Boards return ALL of
+    # a company's roles; the scrapers prefilter titles against `keywords`.
+    companies: list[str] = cfg.get("target_companies") or []
+    if companies:
+        for scraper in COMPANY_SCRAPERS:
+            try:
+                raw_jobs = asyncio.run(scraper.scrape_companies(companies, keywords))
+            except Exception:
+                logger.exception("company scraper %s crashed for user %s",
+                                 scraper.source_name, user_id)
                 continue
             seen += len(raw_jobs)
             for raw in raw_jobs:

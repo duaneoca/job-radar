@@ -218,6 +218,7 @@ def scraper_user_configs(
                 job_titles=c.job_titles or [],
                 search_locations=c.search_locations or c.locations or [],
                 work_style=c.work_style or "any",
+                target_companies=c.target_companies or [],
                 adzuna=adzuna,
             )
         )

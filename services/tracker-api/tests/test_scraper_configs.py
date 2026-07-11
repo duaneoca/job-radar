@@ -79,3 +79,21 @@ def test_inactive_criteria_excluded(client, db, test_user):
 
     resp = client.get("/criteria/scraper/user-configs")
     assert all(cfg["user_id"] != str(TEST_USER_ID) for cfg in resp.json())
+
+
+def test_user_config_includes_target_companies(client, db, test_user):
+    c = _make_criteria(db, ["Platform Engineer"], ["Remote"])
+    c.target_companies = ["Ramp", "Anthropic"]
+    db.commit()
+
+    resp = client.get("/criteria/scraper/user-configs")
+    cfg = next(c for c in resp.json() if c["user_id"] == str(TEST_USER_ID))
+    assert cfg["target_companies"] == ["Ramp", "Anthropic"]
+
+
+def test_user_config_target_companies_defaults_empty(client, db, test_user):
+    _make_criteria(db, ["Platform Engineer"], ["Remote"])
+
+    resp = client.get("/criteria/scraper/user-configs")
+    cfg = next(c for c in resp.json() if c["user_id"] == str(TEST_USER_ID))
+    assert cfg["target_companies"] == []

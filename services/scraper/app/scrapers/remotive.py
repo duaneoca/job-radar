@@ -10,12 +10,14 @@ returns the full list (typically 1–2k entries), which is cheap and easy.
 """
 
 import logging
-import re as _re
 from typing import List, Optional
 
 import httpx
 
 from app.scrapers.base import BaseScraper, Creds, RawJob
+from app.scrapers.filtering import keyword_tokens as _keyword_tokens
+from app.scrapers.filtering import matches_any_token as _matches_any_token
+from app.scrapers.filtering import strip_html as _strip_html
 
 logger = logging.getLogger(__name__)
 
@@ -76,31 +78,6 @@ class RemotiveScraper(BaseScraper):
         return jobs
 
 
-# Words that are too generic to be useful as a standalone match.
-_STOPWORDS = {"senior", "junior", "staff", "lead", "principal", "engineer", "developer"}
-
-
-def _keyword_tokens(keywords: List[str]) -> set[str]:
-    tokens: set[str] = set()
-    for kw in keywords or []:
-        for tok in kw.lower().split():
-            if len(tok) >= 3 and tok not in _STOPWORDS:
-                tokens.add(tok)
-    return tokens
-
-
-def _matches_any_token(item: dict, tokens: set[str]) -> bool:
-    title = (item.get("title") or "").lower()
-    tags = [t.lower() for t in (item.get("tags") or [])]
-    for tok in tokens:
-        if tok in title:
-            return True
-        for tag in tags:
-            if tok in tag:
-                return True
-    return False
-
-
 def _to_raw_job(item: dict) -> Optional[RawJob]:
     try:
         ext_id = str(item["id"])
@@ -120,13 +97,3 @@ def _to_raw_job(item: dict) -> Optional[RawJob]:
         url=item.get("url") or "",
         date_posted=item.get("publication_date"),
     )
-
-
-_HTML_TAG_RE = _re.compile(r"<[^>]+>")
-_WHITESPACE_RE = _re.compile(r"\s+")
-
-
-def _strip_html(text: str) -> str:
-    if not text:
-        return ""
-    return _WHITESPACE_RE.sub(" ", _HTML_TAG_RE.sub(" ", text)).strip()

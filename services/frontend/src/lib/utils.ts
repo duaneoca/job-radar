@@ -69,6 +69,7 @@ export const SOURCE_LABELS: Record<string, string> = {
   ziprecruiter:"ZipRecruiter",
   ashby:       "Ashby",
   greenhouse:  "Greenhouse",
+  lever:       "Lever",
   manual:      "Manual",
 };
 

@@ -6,7 +6,7 @@ export type JobSource =
   | "adzuna" | "the_muse" | "remotive" | "linkedin"
   | "indeed" | "glassdoor" | "dice" | "builtin"
   | "monster" | "ziprecruiter" | "ashby" | "greenhouse"
-  | "manual";
+  | "lever" | "manual";
 
 export type LLMProvider = "anthropic" | "openai" | "google" | "groq" | "tavily" | "adzuna";
 
