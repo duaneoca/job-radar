@@ -35,6 +35,17 @@ export function formatDate(iso?: string | null): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+export function formatAge(iso?: string | null): string {
+  if (!iso) return "—";
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 0) return "today";
+  const days = Math.floor(ms / 86_400_000);
+  if (days === 0) return "today";
+  if (days < 7) return `${days}d`;
+  if (days < 60) return `${Math.floor(days / 7)}w`;
+  return `${Math.floor(days / 30)}mo`;
+}
+
 export function scoreColor(score?: number | null) {
   if (score == null) return "text-muted-foreground";
   if (score >= 7) return "text-emerald-600 dark:text-emerald-400";

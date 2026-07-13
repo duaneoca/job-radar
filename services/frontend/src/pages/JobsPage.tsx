@@ -20,7 +20,7 @@ import {
 } from "../components/ui/dialog";
 import { jobsApi } from "../lib/api";
 import {
-  formatDate, formatSalary, formatSource, scoreColor,
+  formatAge, formatDate, formatSalary, formatSource, scoreColor,
   STATUS_OPTIONS, SOURCE_OPTIONS,
 } from "../lib/utils";
 import { toast } from "../hooks/useToast";
@@ -303,6 +303,7 @@ export function JobsPage() {
               <th className="text-left px-3 py-2.5 font-medium">Job</th>
               <th className="text-left px-3 py-2.5 font-medium hidden md:table-cell">Location</th>
               <th className="text-left px-3 py-2.5 font-medium hidden lg:table-cell">Salary</th>
+              <th className="text-left px-3 py-2.5 font-medium hidden md:table-cell w-16">Posted</th>
               <th className="text-center px-3 py-2.5 font-medium w-16">Score</th>
               <th className="text-center px-3 py-2.5 font-medium w-20">
                 <ColumnFilter label="Contact" options={CONTACT_OPTIONS}
@@ -322,14 +323,14 @@ export function JobsPage() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={8} className="text-center py-12 text-muted-foreground">
+                <td colSpan={9} className="text-center py-12 text-muted-foreground">
                   <Loader2 className="h-5 w-5 animate-spin inline mr-2" />
                   Loading…
                 </td>
               </tr>
             ) : jobs.length === 0 ? (
               <tr>
-                <td colSpan={8} className="text-center py-12 text-muted-foreground">
+                <td colSpan={9} className="text-center py-12 text-muted-foreground">
                   No jobs found. Try adjusting your filters.
                 </td>
               </tr>
@@ -359,6 +360,12 @@ export function JobsPage() {
                   </td>
                   <td className="px-3 py-2.5 hidden lg:table-cell text-xs text-muted-foreground">
                     {formatSalary(job.salary_min, job.salary_max)}
+                  </td>
+                  <td
+                    className="px-3 py-2.5 hidden md:table-cell text-xs text-muted-foreground"
+                    title={`Posted ${formatDate(job.date_posted)} · added ${formatDate(job.date_scraped)}`}
+                  >
+                    {formatAge(job.date_posted)}
                   </td>
                   <td className="px-3 py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
                     {job.ai_score != null ? (
