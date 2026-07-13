@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 from app import main
 from app.scrapers.jsearch import (
-    JSearchScraper, RunThrottle, _RUN_GRACE, _build_query, _to_raw_job,
+    JSearchScraper, RunThrottle, _RUN_GRACE, _build_query, _extract_items, _to_raw_job,
 )
 
 ITEM = {
@@ -60,6 +60,14 @@ def test_query_or_combined_with_location():
     # /search-v2 is cursor-paginated; we take the first page by sending neither
     # a cursor nor the retired page/num_pages params.
     assert not {"cursor", "page", "num_pages"} & params.keys()
+
+
+def test_extract_items_accepts_both_data_shapes():
+    assert _extract_items({"data": [ITEM]}) == [ITEM]                    # bare array
+    assert _extract_items({"data": {"jobs": [ITEM], "cursor": "x"}}) == [ITEM]
+    assert _extract_items({"data": {"postings": [ITEM]}}) == [ITEM]     # unknown key
+    assert _extract_items({"data": {"cursor": "x"}}) == []
+    assert _extract_items({}) == []
 
 
 def test_url_falls_back_to_apply_options():

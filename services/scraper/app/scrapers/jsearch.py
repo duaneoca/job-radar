@@ -109,6 +109,7 @@ class JSearchScraper(BaseScraper):
         headers = {
             "X-RapidAPI-Key": api_key,
             "X-RapidAPI-Host": _HOST,
+            "Content-Type": "application/json",  # matches the vendor's sample request
             "User-Agent": "JobRadar/1.0 (+https://job-radar.net)",
         }
         logger.info("JSearch: '%s'", query)
@@ -131,7 +132,7 @@ class JSearchScraper(BaseScraper):
             logger.warning("JSearch returned %d: %s", resp.status_code, resp.text[:200])
             return []
 
-        items = (resp.json() or {}).get("data") or []
+        items = _extract_items(resp.json() or {})
         jobs: List[RawJob] = []
         seen: set = set()
         for item in items[:_MAX_TOTAL]:
@@ -141,6 +142,28 @@ class JSearchScraper(BaseScraper):
                 jobs.append(job)
         logger.info("JSearch '%s' → %d jobs", query, len(jobs))
         return jobs
+
+
+def _extract_items(body: dict) -> list:
+    """Job dicts from a v2 response.
+
+    job-details-style responses keep `data` as a bare array; /search-v2 wraps
+    it in an object (jobs list + pagination cursor). The job objects themselves
+    share one schema, so accept either wrapper.
+    """
+    data = body.get("data")
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        for key in ("jobs", "results", "items", "data"):
+            val = data.get(key)
+            if isinstance(val, list):
+                return val
+        for val in data.values():
+            if isinstance(val, list) and val and isinstance(val[0], dict):
+                return val
+        logger.warning("JSearch: no job list under data keys %s", sorted(data.keys()))
+    return []
 
 
 def _build_query(keywords: List[str], location: str) -> tuple[str, dict]:
