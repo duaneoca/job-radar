@@ -55,9 +55,17 @@ def test_hourly_salary_not_annualized():
 def test_query_or_combined_with_location():
     query, params = _build_query(["FDE", "Solutions Architect"], "Austin, TX")
     assert params["query"] == "FDE OR Solutions Architect in Austin, TX"
-    assert params["num_pages"] == 1
     assert params["date_posted"] == "week"
     assert "work_from_home" not in params
+    # /search-v2 is cursor-paginated; we take the first page by sending neither
+    # a cursor nor the retired page/num_pages params.
+    assert not {"cursor", "page", "num_pages"} & params.keys()
+
+
+def test_url_falls_back_to_apply_options():
+    item = {**ITEM, "job_apply_link": None,
+            "apply_options": [{"publisher": "LinkedIn", "apply_link": "https://li.example/1"}]}
+    assert _to_raw_job(item).url == "https://li.example/1"
 
 
 def test_query_remote_uses_flag_not_location():

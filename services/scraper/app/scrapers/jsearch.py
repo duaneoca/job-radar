@@ -9,7 +9,7 @@ The free tier is a HARD 200 requests/month, so this scraper is aggressively
 budgeted:
   - ONE request per location: all job titles OR-combined into a single query
   - locations are capped upstream (main.py) at 3 per user
-  - num_pages=1, date_posted=week
+  - first page only (no cursor sent), date_posted=week
   - a redis-backed 24h per-user throttle skips runs entirely between windows
     (the 6h Beat schedule would otherwise burn 4x the budget)
   ⇒ worst case ≈ 3 requests/day/user ≈ 90/month, inside the free tier.
@@ -28,7 +28,10 @@ from app.scrapers.base import BaseScraper, Creds, RawJob
 
 logger = logging.getLogger(__name__)
 
-_BASE = "https://jsearch.p.rapidapi.com/search"
+# /search was retired in favor of cursor-paginated /search-v2 (the old path
+# 404s with "Endpoint '/search' does not exist"). We only ever take the first
+# page, so we simply never send a cursor.
+_BASE = "https://jsearch.p.rapidapi.com/search-v2"
 _HOST = "jsearch.p.rapidapi.com"
 _TIMEOUT = 20.0
 _MAX_TOTAL = 60           # per call — one page is ~10, this is a safety cap
@@ -143,10 +146,10 @@ class JSearchScraper(BaseScraper):
 def _build_query(keywords: List[str], location: str) -> tuple[str, dict]:
     """One OR-combined query per location — the whole budget design."""
     query = " OR ".join(keywords)
+    # /search-v2 paginates by cursor only (no page/num_pages); omitting the
+    # cursor returns the first page, which is all the budget allows anyway.
     params = {
         "query": query,
-        "page": 1,
-        "num_pages": 1,
         "date_posted": "week",
         "country": "us",
     }
@@ -171,6 +174,16 @@ def _to_raw_job(item: dict) -> Optional[RawJob]:
         salary_min = _to_int(item.get("job_min_salary"))
         salary_max = _to_int(item.get("job_max_salary"))
 
+    # v2 responses sometimes carry the link under apply_options instead of
+    # job_apply_link; fall back through the known variants.
+    apply_options = item.get("apply_options") or []
+    url = (
+        item.get("job_apply_link")
+        or (apply_options[0].get("apply_link") if apply_options else None)
+        or item.get("job_google_link")
+        or ""
+    )
+
     return RawJob(
         external_id=str(ext_id),
         source="jsearch",
@@ -179,7 +192,7 @@ def _to_raw_job(item: dict) -> Optional[RawJob]:
         location=location_text,
         remote=bool(item.get("job_is_remote")),
         description=item.get("job_description") or "",
-        url=item.get("job_apply_link") or "",
+        url=url,
         salary_min=salary_min,
         salary_max=salary_max,
         date_posted=item.get("job_posted_at_datetime_utc"),

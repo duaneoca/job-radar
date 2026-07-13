@@ -88,6 +88,10 @@ export const SOURCE_OPTIONS: { value: string; label: string }[] = [
   { value: "adzuna",      label: "Adzuna" },
   { value: "the_muse",    label: "The Muse" },
   { value: "remotive",    label: "Remotive" },
+  { value: "jsearch",     label: "JSearch" },
+  { value: "ashby",       label: "Ashby" },
+  { value: "greenhouse",  label: "Greenhouse" },
+  { value: "lever",       label: "Lever" },
   { value: "manual",      label: "Manual" },
 ];
 
