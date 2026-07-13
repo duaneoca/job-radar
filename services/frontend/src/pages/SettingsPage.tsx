@@ -346,6 +346,8 @@ function AdzunaKeyInput({
 
 function KeysTab() {
   const qc = useQueryClient();
+  const { user } = useAuthStore();
+  const agentEnabled = !!user?.email_agent_enabled;
   const { data: keys = [] } = useQuery<APIKey[]>({
     queryKey: ["keys"],
     queryFn: () => keysApi.get("/keys").then((r) => r.data),
@@ -448,8 +450,8 @@ function KeysTab() {
         <div>
           <h3 className="font-medium">AI model provider</h3>
           <p className="text-sm text-muted-foreground mt-0.5">
-            The <span className="font-medium">active</span> key is used by job scoring, research,
-            and the email agent. Click the dot to switch. If you don't pick one, it falls back to
+            The <span className="font-medium">active</span> key is used by job scoring{agentEnabled
+              ? ", research, and the email agent" : " and research"}. Click the dot to switch. If you don't pick one, it falls back to
             Anthropic → OpenAI → Google → Groq. Click a row to add or edit its key.
           </p>
         </div>
@@ -472,7 +474,11 @@ function KeysTab() {
                   <button
                     type="button"
                     aria-label={isActive ? `${label} is the active model` : `Set ${label} as active`}
-                    title={existing ? "Use this key for scoring, research, and the email agent" : "Add a key first"}
+                    title={existing
+                      ? agentEnabled
+                        ? "Use this key for scoring, research, and the email agent"
+                        : "Use this key for scoring and research"
+                      : "Add a key first"}
                     disabled={!existing}
                     onClick={(e) => { e.stopPropagation(); if (existing) setActive(value); }}
                     className={`h-4 w-4 rounded-full border-2 shrink-0 flex items-center justify-center ${

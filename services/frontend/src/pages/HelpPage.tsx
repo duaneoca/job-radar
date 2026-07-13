@@ -1,6 +1,7 @@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { Separator } from "../components/ui/separator";
 import { useSearchParams } from "react-router-dom";
+import { useAuthStore } from "../store/auth";
 
 // ─── Section heading helpers ──────────────────────────────────────────────────
 
@@ -342,39 +343,50 @@ function PromptsTab() {
   );
 }
 
-function InboxRecruitersTab() {
+function InboxRecruitersTab({ agentEnabled }: { agentEnabled: boolean }) {
   return (
     <div className="max-w-2xl space-y-4">
-      <P>Beyond scraping and scoring, Job Radar can watch your inbox, keep a recruiter
-        contact list, and ping you on Slack — so nothing falls through the cracks.</P>
+      {agentEnabled ? (
+        <P>Beyond scraping and scoring, Job Radar can watch your inbox, keep a recruiter
+          contact list, and ping you on Slack — so nothing falls through the cracks.</P>
+      ) : (
+        <P>Beyond scraping and scoring, Job Radar keeps a recruiter contact list so
+          nothing falls through the cracks. (There's also an optional email agent that
+          watches your inbox — it's currently disabled by the administrator, so those
+          features are hidden.)</P>
+      )}
 
-      <Separator />
+      {agentEnabled && (
+        <>
+          <Separator />
 
-      <H2>Inbox &amp; the email agent</H2>
-      <P>Connect a mailbox and the email agent reads your job-related email, sorts each
-        message into a category (application confirmation, recruiter outreach, interview
-        request, rejection, and so on), and matches it back to the job in your pipeline —
-        logging the update on that job's timeline automatically.</P>
-      <P>The email agent is an optional feature the administrator can turn on or off
-        globally. When it's off, the Inbox tab and the Email Agent settings are hidden —
-        the Recruiters contact list below stays available either way.</P>
-      <P>Anything it isn't sure about is escalated to <strong>needs review</strong>: the
-        amber badge on the <strong>Inbox</strong> tab shows how many items are waiting for
-        your call. It never quietly changes a status it isn't confident about.</P>
-      <H3>Connecting a mailbox</H3>
-      <P>Go to <strong>Settings → Email Agent</strong>. There are two ways to run it:</P>
-      <ul className="list-disc list-inside space-y-1 ml-2">
-        <Li><strong>Cloud (Gmail)</strong> — connect Gmail with one click via Google sign-in;
-          Job Radar processes it for you on a schedule.</Li>
-        <Li><strong>Local self-host</strong> — run the agent on your own machine against any
-          IMAP mailbox; your mail credentials never leave your computer. See{" "}
-          <strong>Settings → Email Agent → local setup</strong> for the walkthrough.</Li>
-      </ul>
-      <Callout>
-        Your decrypted mail credentials never leave the cluster (cloud) or your machine
-        (local). The agent only writes back status updates and suggestions — you stay in
-        control.
-      </Callout>
+          <H2>Inbox &amp; the email agent</H2>
+          <P>Connect a mailbox and the email agent reads your job-related email, sorts each
+            message into a category (application confirmation, recruiter outreach, interview
+            request, rejection, and so on), and matches it back to the job in your pipeline —
+            logging the update on that job's timeline automatically.</P>
+          <P>The email agent is an optional feature the administrator can turn on or off
+            globally. When it's off, the Inbox tab and the Email Agent settings are hidden —
+            the Recruiters contact list below stays available either way.</P>
+          <P>Anything it isn't sure about is escalated to <strong>needs review</strong>: the
+            amber badge on the <strong>Inbox</strong> tab shows how many items are waiting for
+            your call. It never quietly changes a status it isn't confident about.</P>
+          <H3>Connecting a mailbox</H3>
+          <P>Go to <strong>Settings → Email Agent</strong>. There are two ways to run it:</P>
+          <ul className="list-disc list-inside space-y-1 ml-2">
+            <Li><strong>Cloud (Gmail)</strong> — connect Gmail with one click via Google sign-in;
+              Job Radar processes it for you on a schedule.</Li>
+            <Li><strong>Local self-host</strong> — run the agent on your own machine against any
+              IMAP mailbox; your mail credentials never leave your computer. See{" "}
+              <strong>Settings → Email Agent → local setup</strong> for the walkthrough.</Li>
+          </ul>
+          <Callout>
+            Your decrypted mail credentials never leave the cluster (cloud) or your machine
+            (local). The agent only writes back status updates and suggestions — you stay in
+            control.
+          </Callout>
+        </>
+      )}
 
       <Separator />
 
@@ -383,17 +395,23 @@ function InboxRecruitersTab() {
         to you. Track each recruiter's name, employer, whether they're agency or in-house,
         the companies they represent, and your status with them — and link a recruiter to
         the jobs they sent you.</P>
-      <P>When the email agent spots recruiter outreach, it offers <strong>suggestions</strong>
-        pre-filled from the message. Nothing is added automatically — you review and confirm
-        each contact before it's saved.</P>
+      {agentEnabled && (
+        <P>When the email agent spots recruiter outreach, it offers <strong>suggestions</strong>
+          pre-filled from the message. Nothing is added automatically — you review and confirm
+          each contact before it's saved.</P>
+      )}
 
-      <Separator />
+      {agentEnabled && (
+        <>
+          <Separator />
 
-      <H2>Slack notifications</H2>
-      <P>Connect Slack (<strong>Settings → Slack</strong>, "Add to Slack") to get a nudge in
-        your workspace when the agent needs a decision or flags something worth your
-        attention — handy when you're not sitting in Job Radar all day. The connection is
-        per-user and scoped to your own workspace.</P>
+          <H2>Slack notifications</H2>
+          <P>Connect Slack (<strong>Settings → Slack</strong>, "Add to Slack") to get a nudge in
+            your workspace when the agent needs a decision or flags something worth your
+            attention — handy when you're not sitting in Job Radar all day. The connection is
+            per-user and scoped to your own workspace.</P>
+        </>
+      )}
     </div>
   );
 }
@@ -448,6 +466,8 @@ function ApiKeysTab() {
 export function HelpPage() {
   const [searchParams] = useSearchParams();
   const defaultTab = searchParams.get("tab") ?? "start";
+  const { user } = useAuthStore();
+  const agentEnabled = !!user?.email_agent_enabled;
 
   return (
     <div className="space-y-4">
@@ -455,8 +475,8 @@ export function HelpPage() {
       <Callout>
         Job Radar is a personal AI-assisted job hunting tool. It scrapes job boards, scores
         each posting against your profile and criteria, helps you research, tailor your
-        résumé, and apply, tracks recruiters, and can watch your inbox — all driven by your
-        own AI API key.
+        résumé, and apply, and tracks recruiters{agentEnabled && " — and can watch your inbox"}.
+        All driven by your own AI API key.
       </Callout>
       <Tabs defaultValue={defaultTab}>
         <TabsList className="flex-wrap h-auto gap-1">
@@ -465,7 +485,7 @@ export function HelpPage() {
           <TabsTrigger value="pipeline">Job pipeline</TabsTrigger>
           <TabsTrigger value="scoring">Scoring</TabsTrigger>
           <TabsTrigger value="tools">Application tools</TabsTrigger>
-          <TabsTrigger value="inbox">Inbox &amp; recruiters</TabsTrigger>
+          <TabsTrigger value="inbox">{agentEnabled ? <>Inbox &amp; recruiters</> : "Recruiters"}</TabsTrigger>
           <TabsTrigger value="prompts">Prompts</TabsTrigger>
         </TabsList>
         <TabsContent value="start"    className="mt-6"><GettingStartedTab /></TabsContent>
@@ -473,7 +493,7 @@ export function HelpPage() {
         <TabsContent value="pipeline" className="mt-6"><JobPipelineTab /></TabsContent>
         <TabsContent value="scoring"  className="mt-6"><ScoringTab /></TabsContent>
         <TabsContent value="tools"    className="mt-6"><ApplicationToolsTab /></TabsContent>
-        <TabsContent value="inbox"    className="mt-6"><InboxRecruitersTab /></TabsContent>
+        <TabsContent value="inbox"    className="mt-6"><InboxRecruitersTab agentEnabled={agentEnabled} /></TabsContent>
         <TabsContent value="prompts"  className="mt-6"><PromptsTab /></TabsContent>
       </Tabs>
     </div>
