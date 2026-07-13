@@ -667,7 +667,10 @@ data={title:ti,company:co,location:lo,description:de,url:indeedUrl,external_id:i
 }else if(host.includes('ashbyhq.com')){
 var pth=window.location.pathname.split('/').filter(Boolean);
 var ti=tc('h1');
-var co=pth[0]?decodeURIComponent(pth[0]).replace(/[-_]/g,' ').trim():'';
+var dt=document.title||'';
+var atI=dt.lastIndexOf(' @ ');
+var co=atI>-1?dt.substring(atI+3).trim():'';
+if(!co&&pth[0]){co=decodeURIComponent(pth[0]).replace(/[-_]/g,' ').trim();}
 var id=pth[1]||'';
 var bodyTxt=(document.body.innerText||'');
 var de=longest(['[class*="_descriptionText"]','[class*="jobDescription"]','main','article']);
