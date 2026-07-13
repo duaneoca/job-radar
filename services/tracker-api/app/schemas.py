@@ -507,6 +507,7 @@ class ScraperUserConfig(BaseModel):
     work_style: str = "any"
     target_companies: List[str] = []  # drives the ATS board watcher
     adzuna: Optional[ScraperAdzunaCreds] = None
+    jsearch_api_key: Optional[str] = None  # decrypted RapidAPI key or null
 
 
 # ── LinkedIn connections ──────────────────────────────────────

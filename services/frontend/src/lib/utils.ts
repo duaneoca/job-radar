@@ -70,6 +70,7 @@ export const SOURCE_LABELS: Record<string, string> = {
   ashby:       "Ashby",
   greenhouse:  "Greenhouse",
   lever:       "Lever",
+  jsearch:     "JSearch",
   manual:      "Manual",
 };
 

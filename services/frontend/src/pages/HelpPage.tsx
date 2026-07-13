@@ -92,6 +92,9 @@ function JobPipelineTab() {
         <Li><strong>Adzuna</strong> — the main job board; searched with your own Adzuna key. No key, no Adzuna results.</Li>
         <Li><strong>The Muse</strong> — matched to the categories your job titles fall into</Li>
         <Li><strong>Remotive</strong> — remote-only roles</Li>
+        <Li><strong>JSearch</strong> — searches the Google for Jobs index (LinkedIn, Indeed and
+          more) with your own RapidAPI key. Checked at most once a day to stay inside the free
+          plan's monthly quota. No key, no JSearch results.</Li>
         <Li><strong>Company boards</strong> — every company in your <em>Target companies</em> list
           is watched directly on its Greenhouse, Ashby, or Lever job board (free, no key).
           Only roles matching your job titles are pulled in, so watching big companies
@@ -441,6 +444,14 @@ function ApiKeysTab() {
       <P>Register a free app at{" "}
         <a href="https://developer.adzuna.com/" target="_blank" rel="noreferrer" className="underline">developer.adzuna.com</a>{" "}
         — sign up, create an application, and copy the App ID + App Key into Settings.</P>
+
+      <H3>JSearch — job source (optional)</H3>
+      <P>JSearch searches the Google for Jobs index, which surfaces LinkedIn and Indeed
+        postings that can't be scraped directly. Subscribe to the free plan at{" "}
+        <a href="https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch" target="_blank" rel="noreferrer" className="underline">RapidAPI</a>{" "}
+        and paste your RapidAPI key into Settings. The free plan is a hard 200 requests per
+        month, so Job Radar checks JSearch at most once per day and combines your job titles
+        into a single search per location (up to 3 locations).</P>
 
       <H3>An AI key — scoring &amp; generation</H3>
       <P>All AI features (job scoring, cover letters, research, interview prep) run on your

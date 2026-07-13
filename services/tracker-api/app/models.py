@@ -56,6 +56,7 @@ class JobSource(str, enum.Enum):
     ASHBY        = "ashby"
     GREENHOUSE   = "greenhouse"
     LEVER        = "lever"
+    JSEARCH      = "jsearch"
     MANUAL       = "manual"
 
 
@@ -66,11 +67,12 @@ class LLMProvider(str, enum.Enum):
     GROQ      = "groq"
     TAVILY    = "tavily"   # web search, not LLM — stored here for convenience
     ADZUNA    = "adzuna"   # job-board API (BYOK) — stored as {app_id, app_key} JSON
+    JSEARCH   = "jsearch"  # job-board API (BYOK, RapidAPI) — plain key
 
 
 # Providers that are actual chat/generation LLMs. TAVILY (web search) and
-# ADZUNA (job source) live in the same user_api_keys table but must never be
-# selected as the user's LLM key.
+# ADZUNA/JSEARCH (job sources) live in the same user_api_keys table but must
+# never be selected as the user's LLM key.
 LLM_PROVIDERS = [
     LLMProvider.ANTHROPIC,
     LLMProvider.OPENAI,

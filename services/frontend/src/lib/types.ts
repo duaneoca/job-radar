@@ -6,9 +6,9 @@ export type JobSource =
   | "adzuna" | "the_muse" | "remotive" | "linkedin"
   | "indeed" | "glassdoor" | "dice" | "builtin"
   | "monster" | "ziprecruiter" | "ashby" | "greenhouse"
-  | "lever" | "manual";
+  | "lever" | "jsearch" | "manual";
 
-export type LLMProvider = "anthropic" | "openai" | "google" | "groq" | "tavily" | "adzuna";
+export type LLMProvider = "anthropic" | "openai" | "google" | "groq" | "tavily" | "adzuna" | "jsearch";
 
 // ─── Email agent — keys & stats ───────────────────────────────
 export type AgentRunStatus = "success" | "partial" | "failed";

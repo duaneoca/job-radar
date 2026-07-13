@@ -418,6 +418,7 @@ function KeysTab() {
 
   const tavilyKey = keyMap["tavily"];
   const adzunaKey = keyMap["adzuna"];
+  const jsearchKey = keyMap["jsearch"];
 
   return (
     <div className="max-w-lg space-y-6">
@@ -441,6 +442,28 @@ function KeysTab() {
           existing={adzunaKey}
           onSave={(id, key) => saveAdzuna(id, key)}
           onDelete={() => deleteKey("adzuna")}
+        />
+      </div>
+
+      <Separator />
+
+      <div className="space-y-3">
+        <div>
+          <h3 className="font-medium">Job source — JSearch</h3>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            JSearch searches the Google for Jobs index, which includes LinkedIn and Indeed
+            postings. Subscribe to the free plan at{" "}
+            <a href="https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch" target="_blank" rel="noreferrer" className="underline">
+              RapidAPI
+            </a>{" "}
+            and paste your RapidAPI key. The free plan is 200 requests per month, so this
+            source is checked at most once a day to stay within quota.
+          </p>
+        </div>
+        <KeyInput
+          provider="jsearch" placeholder="RapidAPI key" existing={jsearchKey}
+          onSave={(k) => saveKey("jsearch", k)}
+          onDelete={() => deleteKey("jsearch")}
         />
       </div>
 
