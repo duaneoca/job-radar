@@ -87,11 +87,15 @@ function JobPipelineTab() {
       <P>Once you've added your Adzuna key and set your criteria, Job Radar scrapes for you
         automatically every 6 hours — and right away whenever you save your criteria. It
         searches against <em>your</em> job titles and locations, and the jobs it finds are
-        yours alone (not shared with other users). Three sources:</P>
+        yours alone (not shared with other users). Sources:</P>
       <ul className="list-disc list-inside space-y-1 ml-2">
         <Li><strong>Adzuna</strong> — the main job board; searched with your own Adzuna key. No key, no Adzuna results.</Li>
         <Li><strong>The Muse</strong> — matched to the categories your job titles fall into</Li>
         <Li><strong>Remotive</strong> — remote-only roles</Li>
+        <Li><strong>Company boards</strong> — every company in your <em>Target companies</em> list
+          is watched directly on its Greenhouse, Ashby, or Lever job board (free, no key).
+          Only roles matching your job titles are pulled in, so watching big companies
+          doesn't flood your list or your AI scoring budget.</Li>
       </ul>
       <P>Each job is scored against your resume and criteria using your AI key, then sorted by
         match. You can also capture jobs directly from job sites using the bookmarklet

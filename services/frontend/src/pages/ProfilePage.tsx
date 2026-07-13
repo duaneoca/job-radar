@@ -431,7 +431,10 @@ function CriteriaTab() {
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <Label>Target companies</Label>
-          <p className="text-xs text-muted-foreground">Score boost — AI prioritizes these.</p>
+          <p className="text-xs text-muted-foreground">
+            Watched directly — their Greenhouse / Ashby / Lever job boards are
+            checked every scrape, matched against your job titles.
+          </p>
           <Textarea
             rows={3}
             value={(c.target_companies ?? []).join("\n")}

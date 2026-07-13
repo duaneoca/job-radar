@@ -42,3 +42,18 @@ class BaseScraper(ABC):
         ignore it.
         """
         ...
+
+
+class CompanyBoardScraper(ABC):
+    """Watches specific companies' public ATS boards (Greenhouse/Lever/Ashby).
+
+    Company-based rather than search-based: boards return ALL of a company's
+    open roles, so implementations MUST prefilter titles against `keywords`
+    before emitting — otherwise a handful of watched companies floods stage-2
+    AI scoring. Runs once per user (locations don't apply to a board).
+    """
+    source_name: str
+
+    @abstractmethod
+    async def scrape_companies(self, companies: List[str], keywords: List[str]) -> List[RawJob]:
+        ...
