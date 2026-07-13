@@ -97,3 +97,26 @@ def test_user_config_target_companies_defaults_empty(client, db, test_user):
     resp = client.get("/criteria/scraper/user-configs")
     cfg = next(c for c in resp.json() if c["user_id"] == str(TEST_USER_ID))
     assert cfg["target_companies"] == []
+
+
+def test_user_config_includes_decrypted_jsearch_key(client, db, test_user):
+    _make_criteria(db, ["Platform Engineer"], ["Remote"])
+    db.add(models.UserAPIKey(
+        id=uuid.uuid4(),
+        user_id=TEST_USER_ID,
+        provider=models.LLMProvider.JSEARCH,
+        encrypted_key=encrypt_api_key("rapid-key-123"),
+    ))
+    db.commit()
+
+    resp = client.get("/criteria/scraper/user-configs")
+    cfg = next(c for c in resp.json() if c["user_id"] == str(TEST_USER_ID))
+    assert cfg["jsearch_api_key"] == "rapid-key-123"
+
+
+def test_user_config_jsearch_null_when_no_key(client, db, test_user):
+    _make_criteria(db, ["Platform Engineer"], ["Remote"])
+
+    resp = client.get("/criteria/scraper/user-configs")
+    cfg = next(c for c in resp.json() if c["user_id"] == str(TEST_USER_ID))
+    assert cfg["jsearch_api_key"] is None

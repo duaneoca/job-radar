@@ -190,18 +190,20 @@ def scraper_user_configs(
         .all()
     )
 
-    # Preload all Adzuna keys in one query, indexed by user.
-    adzuna_by_user = {
-        row.user_id: row
+    # Preload all job-source keys in one query, indexed by (user, provider).
+    source_keys = {
+        (row.user_id, row.provider): row
         for row in db.query(models.UserAPIKey)
-        .filter(models.UserAPIKey.provider == models.LLMProvider.ADZUNA)
+        .filter(models.UserAPIKey.provider.in_(
+            [models.LLMProvider.ADZUNA, models.LLMProvider.JSEARCH]
+        ))
         .all()
     }
 
     configs: list[schemas.ScraperUserConfig] = []
     for c in active:
         adzuna = None
-        key_row = adzuna_by_user.get(c.user_id)
+        key_row = source_keys.get((c.user_id, models.LLMProvider.ADZUNA))
         if key_row:
             try:
                 blob = json.loads(decrypt_api_key(key_row.encrypted_key))
@@ -212,6 +214,14 @@ def scraper_user_configs(
             except Exception:
                 logger.warning("Could not decode Adzuna creds for user %s", c.user_id)
 
+        jsearch_api_key = None
+        key_row = source_keys.get((c.user_id, models.LLMProvider.JSEARCH))
+        if key_row:
+            try:
+                jsearch_api_key = decrypt_api_key(key_row.encrypted_key) or None
+            except Exception:
+                logger.warning("Could not decode JSearch key for user %s", c.user_id)
+
         configs.append(
             schemas.ScraperUserConfig(
                 user_id=c.user_id,
@@ -220,6 +230,7 @@ def scraper_user_configs(
                 work_style=c.work_style or "any",
                 target_companies=c.target_companies or [],
                 adzuna=adzuna,
+                jsearch_api_key=jsearch_api_key,
             )
         )
     return configs

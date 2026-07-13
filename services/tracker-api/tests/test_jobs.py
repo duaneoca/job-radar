@@ -129,8 +129,8 @@ def test_manual_job_dedup_by_url(client):
 
 
 def test_manual_job_ats_sources(client):
-    """ATS sources (ashby, greenhouse, lever) are accepted."""
-    for i, source in enumerate(("ashby", "greenhouse", "lever")):
+    """Newer sources (ashby, greenhouse, lever, jsearch) are accepted."""
+    for i, source in enumerate(("ashby", "greenhouse", "lever", "jsearch")):
         payload = {**JOB_PAYLOAD, "source": source,
                    "url": f"https://example.com/{source}/{i}"}
         with patch("app.routers.jobs._celery"):
