@@ -72,11 +72,37 @@ JUNK_HOSTS = (
 # Opaque per-provider click trackers: the destination is hidden behind a token,
 # so we can't canonicalize — but the tracker domain tells us which supported
 # site it lands on. These are navigated in the browser to resolve. host -> source.
+# Monster (click.monster.com) and Dice (elinks.dice.com) trackers were removed:
+# their emails are ignored wholesale (see IGNORE_SENDERS) because they resolve to
+# search pages, need fuzzy per-job matching, and overlap heavily with LinkedIn.
 OPAQUE_TRACKERS = {
     "cts.indeed.com": "indeed",
-    "click.monster.com": "monster",
-    "elinks.dice.com": "dice",
 }
+
+# Senders whose whole emails are skipped by the routine loop. These digest/alert
+# sources are high-effort, low-yield, and heavily redundant with LinkedIn/ATS:
+# - Monster: opaque trackers land on search pages; per-job search + fuzzy company
+#   matching is error-prone (silently mis-titled imports) and its /job-openings/
+#   URLs don't render on direct navigation.
+# - Dice IntelliSearch: elinks.dice.com trackers 500; staffing reposts rarely
+#   appear in Dice's own search.
+# - Glassdoor: not a bookmarklet destination; niche companies aren't re-findable.
+# monster.com / dice.com search stay available as MANUAL rescue tools for a
+# specifically-named job from another source — this only drops them from routine.
+IGNORE_SENDERS = (
+    "notifications.monster.com",
+    "connect.dice.com",
+    "glassdoor.com",
+)
+
+
+def sender_ignored(sender: str) -> str | None:
+    """Return a short reason if this From header is an ignored digest source."""
+    low = (sender or "").lower()
+    for dom in IGNORE_SENDERS:
+        if dom in low:
+            return f"ignored source ({dom}) — skip and mark seen"
+    return None
 
 
 def log(*a):
@@ -298,14 +324,21 @@ def cmd_list() -> int:
                 log(f"WARN: fetch failed for uid {uid!r}")
                 continue
             msg = email.message_from_bytes(fetched[0][1])
-            grouped = group_links(harvest_raw_links(msg))
-            results.append({
+            sender = _decode(msg.get("From"))
+            base = {
                 "uid": uid.decode(),
                 "subject": _decode(msg.get("Subject")),
-                "sender": _decode(msg.get("From")),
+                "sender": sender,
                 "date": _decode(msg.get("Date")),
-                **grouped,
-            })
+            }
+            reason = sender_ignored(sender)
+            if reason:
+                # Ignored digest source: don't harvest links. The loop marks it
+                # \Seen and moves on (see SKILL.md).
+                results.append({**base, "ignore": True, "ignore_reason": reason,
+                                "jobs": [], "unsupported": [], "junk_count": 0})
+                continue
+            results.append({**base, **group_links(harvest_raw_links(msg))})
         print(json.dumps(results, indent=2))
         return 0
     finally:
