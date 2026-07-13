@@ -52,6 +52,10 @@ class UserOut(BaseModel):
     is_admin: bool
     must_change_password: bool
     created_at: datetime
+    # Global feature flag (app_settings), not a per-user column. Populated on the
+    # session endpoints (login, GET/PATCH /auth/me) so the frontend learns it at
+    # startup; defaults False elsewhere (admin user lists), where it isn't read.
+    email_agent_enabled: bool = False
 
     class Config:
         from_attributes = True
@@ -62,6 +66,17 @@ class TokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserOut
+
+
+# ── Global settings (admin feature flags) ─────────────────────
+
+class AppSettingsOut(BaseModel):
+    email_agent_enabled: bool
+
+
+class AppSettingsUpdate(BaseModel):
+    """Partial update — only provided fields change."""
+    email_agent_enabled: Optional[bool] = None
 
 
 # ── Jobs (shared pool) ────────────────────────────────────────

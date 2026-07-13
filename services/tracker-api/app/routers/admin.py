@@ -11,7 +11,7 @@ from celery import Celery
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app import models, schemas
+from app import feature_flags, models, schemas
 from app.config import settings
 from app.database import get_db
 from app.deps import get_current_admin, require_internal_token
@@ -233,6 +233,33 @@ def delete_user(
         raise HTTPException(status_code=404, detail="User not found")
     db.delete(user)
     db.commit()
+
+
+# ── Global settings (feature flags) ──────────────────────────────────────────
+
+@router.get("/settings", response_model=schemas.AppSettingsOut)
+def get_app_settings(
+    db: Session = Depends(get_db),
+    _: models.User = Depends(get_current_admin),
+):
+    """Current global feature flags (admin-only)."""
+    return schemas.AppSettingsOut(
+        email_agent_enabled=feature_flags.email_agent_enabled(db),
+    )
+
+
+@router.put("/settings", response_model=schemas.AppSettingsOut)
+def update_app_settings(
+    payload: schemas.AppSettingsUpdate,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(get_current_admin),
+):
+    """Update global feature flags. Only fields present in the payload change."""
+    if payload.email_agent_enabled is not None:
+        feature_flags.set_email_agent_enabled(db, payload.email_agent_enabled)
+    return schemas.AppSettingsOut(
+        email_agent_enabled=feature_flags.email_agent_enabled(db),
+    )
 
 
 # ── Manual triggers ───────────────────────────────────────────────────────────

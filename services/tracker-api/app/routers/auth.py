@@ -5,7 +5,7 @@ Auth router — signup, login, logout, me, change-password.
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
-from app import models, ratelimit, schemas
+from app import feature_flags, models, ratelimit, schemas
 from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
@@ -13,6 +13,13 @@ from app.email import notify_new_account
 from app.security import create_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _with_flags(user: models.User, db: Session) -> models.User:
+    """Attach global feature flags to the ORM user so UserOut picks them up
+    (email_agent_enabled is app-wide state, not a users column)."""
+    user.email_agent_enabled = feature_flags.email_agent_enabled(db)
+    return user
 
 _COOKIE = "access_token"
 # Secure flag is on in production (HTTPS via Cloudflare) so the session cookie is
@@ -77,7 +84,7 @@ def login(
     token = create_access_token(str(user.id))
     response.set_cookie(key=_COOKIE, value=token, **_COOKIE_OPTS)
 
-    return schemas.TokenOut(access_token=token, user=user)
+    return schemas.TokenOut(access_token=token, user=_with_flags(user, db))
 
 
 @router.post("/logout")
@@ -87,8 +94,11 @@ def logout(response: Response):
 
 
 @router.get("/me", response_model=schemas.UserOut)
-def me(current_user: models.User = Depends(get_current_user)):
-    return current_user
+def me(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return _with_flags(current_user, db)
 
 
 @router.post("/change-password")
@@ -117,4 +127,4 @@ def update_me(
         current_user.full_name = payload.full_name
     db.commit()
     db.refresh(current_user)
-    return current_user
+    return _with_flags(current_user, db)

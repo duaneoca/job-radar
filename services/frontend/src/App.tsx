@@ -55,6 +55,13 @@ function RequireAdmin({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// Email agent is a global admin toggle — when off, agent pages bounce to /jobs.
+function RequireAgentEnabled({ children }: { children: React.ReactNode }) {
+  const { user } = useAuthStore();
+  if (!user?.email_agent_enabled) return <Navigate to="/jobs" replace />;
+  return <>{children}</>;
+}
+
 // Root: public marketing page for logged-out visitors, jobs for logged-in users.
 // Validate the session with the server rather than trusting a possibly-stale
 // persisted user, so an expired/absent session correctly shows the landing page
@@ -102,9 +109,11 @@ export default function App() {
           path="/inbox"
           element={
             <RequireAuth>
-              <Layout>
-                <InboxPage />
-              </Layout>
+              <RequireAgentEnabled>
+                <Layout>
+                  <InboxPage />
+                </Layout>
+              </RequireAgentEnabled>
             </RequireAuth>
           }
         />

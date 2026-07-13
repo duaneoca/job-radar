@@ -34,11 +34,15 @@ export function Layout({ children }: LayoutProps) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 
+  // Email agent is a global admin toggle; when off, the Inbox tab is hidden and
+  // the agent inbox is never polled.
+  const agentEnabled = !!user?.email_agent_enabled;
+
   // Inbox "needs review" count for the header tab badge.
   const { data: inboxNeeds } = useQuery<PaginatedInbox>({
     queryKey: ["inbox-needs-review"],
     queryFn: () => agentApi.get("/agent/inbox", { params: { status: "needs_review", limit: 1 } }).then((r) => r.data),
-    enabled: !!user,
+    enabled: !!user && agentEnabled,
   });
   const needsCount = inboxNeeds?.total ?? 0;
 
@@ -62,25 +66,27 @@ export function Layout({ children }: LayoutProps) {
             <span>Job Radar</span>
           </NavLink>
 
-          {/* Inbox tab — to the right of the brand */}
-          <NavLink
-            to="/inbox"
-            className={({ isActive }) =>
-              cn(
-                "relative flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium transition-colors",
-                isActive ? "bg-accent text-accent-foreground"
-                         : "text-muted-foreground hover:text-foreground hover:bg-accent/50",
-              )
-            }
-          >
-            <Inbox className="h-4 w-4" />
-            <span className="hidden sm:inline">Inbox</span>
-            {needsCount > 0 && (
-              <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold text-white">
-                {needsCount}
-              </span>
-            )}
-          </NavLink>
+          {/* Inbox tab — to the right of the brand (hidden when the email agent is off) */}
+          {agentEnabled && (
+            <NavLink
+              to="/inbox"
+              className={({ isActive }) =>
+                cn(
+                  "relative flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium transition-colors",
+                  isActive ? "bg-accent text-accent-foreground"
+                           : "text-muted-foreground hover:text-foreground hover:bg-accent/50",
+                )
+              }
+            >
+              <Inbox className="h-4 w-4" />
+              <span className="hidden sm:inline">Inbox</span>
+              {needsCount > 0 && (
+                <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold text-white">
+                  {needsCount}
+                </span>
+              )}
+            </NavLink>
+          )}
 
           {/* Recruiters tab — to the right of Inbox */}
           <NavLink

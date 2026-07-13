@@ -134,6 +134,8 @@ export interface User {
   is_admin: boolean;
   must_change_password: boolean;
   created_at: string;
+  /** Global feature flag (admin-controlled), delivered via /auth/me + login. */
+  email_agent_enabled: boolean;
 }
 
 export interface TimelineEvent {
