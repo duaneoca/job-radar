@@ -1,5 +1,9 @@
-mcp>=1.9.0
-httpx>=0.27.0
-pydantic-settings>=2.5.0
-uvicorn[standard]>=0.30.0
-starlette>=0.41.0
+# Pinned exactly, matching the other services. These were floor-only (`>=`)
+# constraints until mcp 2.0.0 shipped, which removed mcp.server.fastmcp — every
+# image rebuilt after that release crashlooped on import in staging and prod.
+# FastMCP is not part of mcp 2.x, so moving off 1.x is a rewrite, not a bump.
+mcp==1.29.0
+httpx==0.28.1
+pydantic-settings==2.14.2
+uvicorn[standard]==0.52.0
+starlette==1.3.1
