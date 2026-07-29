@@ -18,7 +18,10 @@ cryptography==42.0.8
 python-multipart==0.0.12
 
 # AI generation (on-demand: research summary, application assistance)
-anthropic>=0.52.0
+# Pinned like everything else here: floor-only constraints let a major release
+# land straight in a production image (see mcp-writer + mcp 2.0.0). Not imported
+# directly — litellm uses it for the Anthropic provider.
+anthropic==0.120.2
 
 # AWS SES (email notifications)
 boto3==1.35.76

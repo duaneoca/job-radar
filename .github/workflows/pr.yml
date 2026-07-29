@@ -106,3 +106,14 @@ jobs:
           docker build services/${{ matrix.service }} \
             -t jobradar-${{ matrix.service }}:pr-${{ github.sha }} \
             --no-cache
+
+      - name: Smoke-check ${{ matrix.service }} imports
+        # A green `docker build` only proves pip resolved — it never imports the app.
+        # mcp 2.0.0 removed mcp.server.fastmcp and this job stayed green while the
+        # image crashlooped in staging and production. Every service's entrypoint is
+        # `app.main`, so importing it catches missing or moved modules at PR time.
+        # No env is supplied on purpose: settings must hold defaults, as in a fresh pod.
+        run: |
+          docker run --rm --entrypoint python \
+            jobradar-${{ matrix.service }}:pr-${{ github.sha }} \
+            -c "import app.main; print('${{ matrix.service }}: app.main imports OK')"
