@@ -110,3 +110,25 @@ def test_cleanup_deletes_long_expired_reviews(db, test_user):
     assert result["orphan_jobs_deleted"] == 1
     assert db.query(models.UserJobReview).count() == 0
     assert db.query(models.Job).count() == 0
+
+
+def test_referral_requested_is_never_expired_or_cleaned(db, test_user):
+    """A pending referral is active work: it must survive both the soft-expiry
+    sweep and the terminal cleanup no matter how old it is."""
+    referral = _make_review(db, models.JobStatus.REFERRAL_REQUESTED, 365)
+
+    expire_result = _do_expire(db)
+    cleanup_result = _do_cleanup(db)
+
+    assert expire_result["reviews_expired"] == 0
+    assert cleanup_result["reviews_deleted"] == 0
+    db.refresh(referral)
+    assert referral.status == models.JobStatus.REFERRAL_REQUESTED
+
+
+def test_lifecycle_status_sets_are_disjoint():
+    """No status may be both expirable and terminal — otherwise a job could be
+    expired and immediately swept. Guards future status additions."""
+    from app.routers.admin import _EXPIRABLE_STATUSES, _TERMINAL_STATUSES
+
+    assert not set(_EXPIRABLE_STATUSES) & set(_TERMINAL_STATUSES)

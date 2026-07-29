@@ -34,6 +34,9 @@ def utcnow():
 class JobStatus(str, enum.Enum):
     NEW          = "new"
     REVIEWED     = "reviewed"
+    # Asked a contact for a referral — active work, so it is neither expirable
+    # (_EXPIRABLE_STATUSES) nor terminal (_TERMINAL_STATUSES) in admin.py.
+    REFERRAL_REQUESTED = "referral_requested"
     APPLIED      = "applied"
     DISMISSED    = "dismissed"
     INTERVIEWING = "interviewing"

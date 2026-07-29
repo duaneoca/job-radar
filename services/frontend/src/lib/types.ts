@@ -1,5 +1,5 @@
 export type JobStatus =
-  | "new" | "reviewed" | "applied" | "dismissed"
+  | "new" | "reviewed" | "referral_requested" | "applied" | "dismissed"
   | "interviewing" | "offer" | "rejected" | "expired";
 
 export type JobSource =
