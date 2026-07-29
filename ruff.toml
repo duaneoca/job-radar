@@ -1,0 +1,33 @@
+# Explicit lint contract for all Python services (tracker-api, scraper, ai-reviewer).
+#
+# Why this file exists: CI installed ruff unpinned and the repo had no config, so
+# CI enforced whatever ruff's *default* rule set happened to be. Ruff 0.16 widened
+# that default enormously (pyupgrade, bugbear, bandit, isort, …), which turned every
+# PR red with 557 pre-existing findings — 214 of them B008 false positives on
+# FastAPI's canonical `db: Session = Depends(get_db)` idiom.
+#
+# So the selection below is stated explicitly rather than inherited: it is the set
+# CI actually enforced and passed on before the drift (ruff's old defaults).
+# Broadening it is a deliberate, reviewable change — not a side effect of a release.
+target-version = "py312"   # matches the service Docker images
+
+[lint]
+select = [
+    "E4",  # pycodestyle — imports
+    "E7",  # pycodestyle — statements
+    "E9",  # pycodestyle — runtime/syntax errors
+    "F",   # pyflakes — undefined names, unused imports, dead code
+]
+
+[lint.flake8-bugbear]
+# Kept for whenever B is enabled: FastAPI dependency injection legitimately calls
+# these in argument defaults, so they must not be flagged as mutable defaults.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Header",
+    "fastapi.Body",
+    "fastapi.File",
+    "fastapi.Form",
+]

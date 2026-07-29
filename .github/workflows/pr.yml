@@ -46,7 +46,10 @@ jobs:
           python-version: "3.12"
 
       - name: Install ruff
-        run: pip install ruff
+        # Pinned on purpose: unpinned, a ruff release that widens the default rule
+        # set turns every open PR red (ruff 0.16 did exactly that). Rules live in
+        # /ruff.toml; bumping this version is a deliberate, reviewable change.
+        run: pip install ruff==0.16.0
 
       - name: Lint tracker-api
         run: ruff check services/tracker-api/app
