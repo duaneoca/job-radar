@@ -157,11 +157,17 @@ function JobPipelineTab() {
       <ul className="list-disc list-inside space-y-1 ml-2">
         <Li><strong>New</strong> — just arrived, not yet actioned</Li>
         <Li><strong>Reviewed</strong> — you've looked at it</Li>
+        <Li><strong>Referral req.</strong> — you've asked a contact for a referral and are
+          waiting to hear back. Like the other active statuses, these jobs are never
+          auto-expired, so a pending referral won't age out from under you.</Li>
         <Li><strong>Applied</strong> — application submitted</Li>
         <Li><strong>Interviewing</strong> — active interview process</Li>
         <Li><strong>Offer</strong> — offer received</Li>
         <Li><strong>Rejected</strong> — closed out</Li>
         <Li><strong>Dismissed</strong> — not interested, hidden from default view</Li>
+        <Li><strong>Expired</strong> — set automatically when a New or Reviewed job sits
+          unactioned too long; the posting is likely gone. Expired, Rejected, and Dismissed
+          jobs are deleted after a grace period.</Li>
       </ul>
 
       <Separator />

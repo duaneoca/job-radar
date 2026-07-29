@@ -53,20 +53,6 @@ export function scoreColor(score?: number | null) {
   return "text-rose-600 dark:text-rose-400";
 }
 
-export function statusBadgeVariant(status: JobStatus) {
-  const map: Record<JobStatus, string> = {
-    new:          "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
-    reviewed:     "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
-    applied:      "bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300",
-    dismissed:    "bg-slate-100 text-slate-400 dark:bg-slate-900 dark:text-slate-500",
-    interviewing: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300",
-    offer:        "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300",
-    rejected:     "bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-300",
-    expired:      "bg-slate-100 text-slate-400 dark:bg-slate-900 dark:text-slate-500",
-  };
-  return map[status] ?? map.new;
-}
-
 export const SOURCE_LABELS: Record<string, string> = {
   adzuna:      "Adzuna",
   the_muse:    "The Muse",
@@ -106,12 +92,22 @@ export const SOURCE_OPTIONS: { value: string; label: string }[] = [
   { value: "manual",      label: "Manual" },
 ];
 
-export const STATUS_OPTIONS: { value: JobStatus; label: string }[] = [
-  { value: "new",          label: "New" },
-  { value: "reviewed",     label: "Reviewed" },
-  { value: "applied",      label: "Applied" },
-  { value: "interviewing", label: "Interviewing" },
-  { value: "offer",        label: "Offer" },
-  { value: "rejected",     label: "Rejected" },
-  { value: "dismissed",    label: "Dismissed" },
-];
+// Insertion order is the dropdown order. Typing this as Record<JobStatus, …> makes
+// the build fail if a status is added to JobStatus without a label here: a missing
+// entry leaves the Select trigger blank, which is what hid the status on ~1.1k
+// Expired jobs in production.
+const STATUS_LABELS: Record<JobStatus, string> = {
+  new:                "New",
+  reviewed:           "Reviewed",
+  referral_requested: "Referral req.",
+  applied:            "Applied",
+  interviewing:       "Interviewing",
+  offer:              "Offer",
+  rejected:           "Rejected",
+  dismissed:          "Dismissed",
+  expired:            "Expired",
+};
+
+export const STATUS_OPTIONS: { value: JobStatus; label: string }[] =
+  (Object.entries(STATUS_LABELS) as [JobStatus, string][])
+    .map(([value, label]) => ({ value, label }));

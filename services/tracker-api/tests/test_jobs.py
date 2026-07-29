@@ -165,3 +165,20 @@ def test_ai_review(client):
     assert resp.json()["ai_score"] == 8.5
     assert resp.json()["status"] == "reviewed"
     assert resp.json()["recommended"] is True
+
+
+def test_update_review_status_referral_requested(client):
+    """'referral_requested' is accepted and, unlike 'applied', does not stamp
+    date_applied — no application has been submitted yet."""
+    with patch("app.routers.jobs._celery"):
+        client.post(f"/jobs?user_id={TEST_USER_ID}", json=JOB_PAYLOAD)
+    review_id = client.get("/jobs").json()["items"][0]["id"]
+
+    resp = client.patch(f"/jobs/{review_id}", json={"status": "referral_requested"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "referral_requested"
+    assert resp.json()["date_applied"] is None
+
+    # And it is filterable like any other status.
+    items = client.get("/jobs?status=referral_requested").json()["items"]
+    assert [i["id"] for i in items] == [review_id]
