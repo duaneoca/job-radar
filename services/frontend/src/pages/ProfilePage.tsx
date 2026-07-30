@@ -8,9 +8,10 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { Separator } from "../components/ui/separator";
+import { Switch } from "../components/ui/switch";
 import { profileApi, criteriaApi, connectionsApi } from "../lib/api";
 import { toast } from "../hooks/useToast";
-import type { Profile, Criteria, LinkedInConnection, WorkStyle, ApplicationTemplate, CareerStory } from "../lib/types";
+import type { Profile, Criteria, LinkedInConnection, WorkStyle, ApplicationTemplate, CareerStory, WritingSkill, SkillScope } from "../lib/types";
 
 // ─── Shared constants ─────────────────────────────────────────────────────────
 
@@ -460,6 +461,145 @@ function CriteriaTab() {
 
 // ─── AI Prompts tab ───────────────────────────────────────────────────────────
 
+// ─── Writing skills ───────────────────────────────────────────────────────────
+
+const SCOPE_OPTIONS: { value: SkillScope; label: string }[] = [
+  { value: "application",    label: "Application answers" },
+  { value: "research",       label: "Company research" },
+  { value: "interview_prep", label: "Interview prep" },
+  { value: "resume",         label: "Résumé tailoring" },
+  { value: "scoring",        label: "Job scoring" },
+];
+
+// A short in-house starter. Deliberately NOT a copy of any third-party skill
+// document — paste or upload one of those if you have it.
+const EXAMPLE_SKILL = `Write like a person, not a press release.
+- No filler openers ("In today's fast-paced world", "I am excited to apply").
+- No three-item lists used for rhythm rather than meaning.
+- Avoid "not just X, but Y" and other negative-parallel constructions.
+- Prefer concrete nouns and active voice; cut adverbs that add no information.
+- Vary sentence length. Short sentences are fine.
+- Say the thing directly instead of describing that you are about to say it.`;
+
+function WritingSkillsSection({ skills, onChange }: {
+  skills: WritingSkill[];
+  onChange: (next: WritingSkill[]) => void;
+}) {
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const enabledChars = skills.filter((s) => s.enabled).reduce((n, s) => n + (s.content?.length ?? 0), 0);
+
+  function update(id: string, patch: Partial<WritingSkill>) {
+    onChange(skills.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  }
+  function add(content = "", name = "") {
+    const id = crypto.randomUUID();
+    onChange([...skills, {
+      id, name, content, enabled: true,
+      scopes: ["application", "research", "interview_prep", "resume"],
+    }]);
+    setOpen((o) => ({ ...o, [id]: true }));
+  }
+  function toggleScope(s: WritingSkill, scope: SkillScope) {
+    const next = s.scopes.includes(scope)
+      ? s.scopes.filter((x) => x !== scope)
+      : [...s.scopes, scope];
+    update(s.id, { scopes: next });
+  }
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > 100_000) {
+      toast({ title: "That file is too large", description: "Skills are capped at 20,000 characters.", variant: "destructive" });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => add(String(reader.result ?? "").slice(0, 20_000), file.name.replace(/\.(md|markdown|txt)$/i, ""));
+    reader.readAsText(file);
+  }
+
+  return (
+    <div className="space-y-2">
+      <Label>Writing skills</Label>
+      <p className="text-xs text-muted-foreground">
+        Load a set of writing rules — your own, or one you've been given — and the AI follows it
+        everywhere you switch on below. Skills only shape <em>wording</em>: they can never override
+        the résumé honesty contract or a required output format.
+      </p>
+
+      {skills.map((s) => (
+        <div key={s.id} className="rounded-md border p-2.5 space-y-2">
+          <div className="flex items-center gap-2">
+            <Input
+              className="h-8 text-sm"
+              placeholder="Skill name (e.g. Humanizer)"
+              value={s.name}
+              onChange={(e) => update(s.id, { name: e.target.value })}
+            />
+            <Switch checked={s.enabled} onCheckedChange={(v) => update(s.id, { enabled: v })} />
+            <Button variant="ghost" size="sm" className="h-8 px-2 text-muted-foreground"
+              onClick={() => { if (confirm(`Delete "${s.name || "this skill"}"?`)) onChange(skills.filter((x) => x.id !== s.id)); }}>
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+
+          <div className="flex flex-wrap gap-1">
+            {SCOPE_OPTIONS.map((o) => {
+              const on = s.scopes.includes(o.value);
+              return (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => toggleScope(s, o.value)}
+                  className={`rounded-full border px-2 py-0.5 text-[11px] transition-colors ${
+                    on ? "border-primary/40 bg-primary/10 text-foreground"
+                       : "border-muted-foreground/25 text-muted-foreground hover:border-muted-foreground/50"
+                  }`}
+                >
+                  {o.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <button type="button" className="text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => setOpen((o) => ({ ...o, [s.id]: !o[s.id] }))}>
+            {open[s.id] ? "Hide" : "Show"} rules · {(s.content?.length ?? 0).toLocaleString()} characters
+          </button>
+          {open[s.id] && (
+            <Textarea
+              rows={10}
+              value={s.content}
+              onChange={(e) => update(s.id, { content: e.target.value.slice(0, 20_000) })}
+              placeholder="Paste the skill's rules here, or upload a .md file."
+            />
+          )}
+        </div>
+      ))}
+
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" size="sm" onClick={() => add()}>Add skill</Button>
+        <Button variant="outline" size="sm" onClick={() => add(EXAMPLE_SKILL, "Plain writing")}>
+          Add example
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
+          <Upload className="h-3.5 w-3.5 mr-1" /> Upload .md
+        </Button>
+        <input ref={fileRef} type="file" accept=".md,.markdown,.txt" hidden onChange={handleFile} />
+      </div>
+
+      {enabledChars > 0 && (
+        <p className={`text-xs ${enabledChars > 8000 ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground"}`}>
+          Enabled skills add ≈{enabledChars.toLocaleString()} characters (~{Math.round(enabledChars / 4).toLocaleString()} tokens)
+          to every matching AI call, billed to your own API key.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function AIPromptsTab() {
   const qc = useQueryClient();
   const { data: criteria } = useQuery<Criteria>({
@@ -510,7 +650,9 @@ function AIPromptsTab() {
       <div className="space-y-1.5">
         <Label>Voice guidelines</Label>
         <p className="text-xs text-muted-foreground">
-          Describe your writing style, tone, and personal preferences. Injected into every application prompt so generated text sounds like you.
+          Describe your writing style, tone, and personal preferences. Used in the Application tab —
+          both the first draft and the refinement chat. For research, interview prep, or résumé
+          wording, add a writing skill below.
         </p>
         <Textarea
           rows={5}
@@ -519,6 +661,13 @@ function AIPromptsTab() {
           placeholder={`I write in a direct, confident tone without being boastful. I avoid buzzwords like "passionate" and "synergy". I prefer short sentences. I focus on outcomes over activities.`}
         />
       </div>
+
+      <Separator />
+
+      <WritingSkillsSection
+        skills={c.writing_skills ?? []}
+        onChange={(next) => set("writing_skills", next)}
+      />
 
       <Separator />
 

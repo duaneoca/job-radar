@@ -260,6 +260,18 @@ export interface InterviewQuestion {
   notes: string;
 }
 
+// Which prompts a writing skill is attached to. "scoring" runs in the ai-reviewer
+// service and has a hard JSON contract, so it is opt-in rather than a default.
+export type SkillScope = "application" | "research" | "interview_prep" | "resume" | "scoring";
+
+export interface WritingSkill {
+  id: string;
+  name: string;
+  content: string;
+  enabled: boolean;
+  scopes: SkillScope[];
+}
+
 export interface Criteria {
   id: string;
   user_id: string;
@@ -278,6 +290,7 @@ export interface Criteria {
   research_prompt: string | null;
   application_templates: ApplicationTemplate[] | null;
   voice_guidelines: string | null;
+  writing_skills?: WritingSkill[] | null;
   interview_prep_prompt: string | null;
   resume_tailor_prompt: string | null;
   created_at: string;

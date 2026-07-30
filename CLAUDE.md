@@ -119,13 +119,23 @@ a time (H6). The shared `AGENT_INTERNAL_TOKEN` must match in `tracker-api-secret
 - Summary must be written in second person to the candidate ("Your background in X…"), not from a hiring manager perspective
 - Uses LiteLLM — priority order: Anthropic → OpenAI → Google → Groq
 
+**Writing skills** (`criteria.writing_skills`, JSON `[{id,name,content,enabled,scopes}]`):
+user-loadable blocks of style rules injected into the prompts named in each skill's
+`scopes` (`application | research | interview_prep | resume | scoring`). Built by
+`skills_block()` in `routers/generate.py`; ai-reviewer keeps its own small copy since
+the services share no package. **Always rendered below** the locked honesty contract /
+rubric / output format so a skill can only shape wording — and never injected into
+extract-changes (meta-prompting) or the résumé parser (extraction).
+
 ### scraper (Celery + Beat)
 Beat schedule (UTC):
 - Every 6 hours — `scrape_all`: per-user scrape. Fetches `/criteria/scraper/user-configs`
   (each user's criteria + their decrypted Adzuna creds), scrapes each user with their
   own key, and POSTs jobs to `/jobs?user_id=` (attributed to that user, no fan-out).
 - 2:45 AM — `expire_jobs`; 3 AM — `cleanup_jobs`.
-- Also triggered on demand: `scrape_user(user_id)` fires when a user saves criteria (debounced).
+- Also triggered on demand: `scrape_user(user_id)` fires when a user saves criteria (debounced)
+  — but only when a *search* field actually changed (`_SCRAPE_FIELDS` in `routers/criteria.py`).
+  The AI Prompts tab PUTs the whole criteria object, so prompt/skill edits must not scrape.
 
 Sources: **Adzuna** (BYOK per-user key; skipped for users without one), **The Muse** (public,
 category mapped from the user's job titles), **Remotive** (public, remote-only). HTML scraping

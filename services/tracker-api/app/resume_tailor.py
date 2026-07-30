@@ -189,14 +189,15 @@ DEFAULT_RESUME_TAILOR_PROMPT = """Tailoring style:
 _FACTUAL_TOKENS = ("/company", "/titles", "/start", "/end", "/degree", "/school", "/dates")
 
 
-def _tailor_messages(structured, honesty_facts, job_text, style_prompt, extra=None):
+def _tailor_messages(structured, honesty_facts, job_text, style_prompt, extra=None, skills_text=""):
     core = HONESTY_CORE.format(
         total_years=honesty_facts.get("total_years_experience"),
         earliest=honesty_facts.get("earliest_start_year"),
         latest=honesty_facts.get("latest_end_year"),
     )
     user = (
-        f"{core}\n\n# STYLE GUIDANCE (editable — never overrides the contract above)\n{style_prompt}\n\n"
+        f"{core}\n\n# STYLE GUIDANCE (editable — never overrides the contract above)\n{style_prompt}"
+        f"{skills_text}\n\n"
         f"# JOB POSTING\n{job_text}\n\n"
         f"# SOURCE RÉSUMÉ (JSON)\n{json.dumps(structured.model_dump(), ensure_ascii=False)}"
     )
@@ -205,12 +206,13 @@ def _tailor_messages(structured, honesty_facts, job_text, style_prompt, extra=No
     return user
 
 
-def tailor_resume(structured, honesty_facts, job_text, style_prompt, api_key, model, *, extra=None):
+def tailor_resume(structured, honesty_facts, job_text, style_prompt, api_key, model, *,
+                  extra=None, skills_text=""):
     """Run the tailor LLM call. Returns (tailored ResumeStructured, model notes list).
     The honesty core is prepended here, server-side."""
     raw = llm_complete(
         system="You tailor résumés to job postings under a strict honesty contract. Respond with valid JSON only.",
-        messages=[{"role": "user", "content": _tailor_messages(structured, honesty_facts, job_text, style_prompt, extra)}],
+        messages=[{"role": "user", "content": _tailor_messages(structured, honesty_facts, job_text, style_prompt, extra, skills_text)}],
         api_key=api_key,
         model=model,
         max_tokens=8192,
