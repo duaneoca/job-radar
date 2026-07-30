@@ -8,7 +8,7 @@ from uuid import UUID
 
 import re
 
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.models import (
     AgentEnvironment, AgentRunStatus,
@@ -256,6 +256,37 @@ class UserJobReviewOut(BaseModel):
 
 # ── Criteria ──────────────────────────────────────────────────
 
+# Which prompts a writing skill may be attached to. `scoring` runs in the
+# ai-reviewer service and has a hard JSON contract, so it is opt-in per skill.
+SKILL_SCOPES = ("application", "research", "interview_prep", "resume", "scoring")
+DEFAULT_SKILL_SCOPES = ["application", "research", "interview_prep", "resume"]
+
+MAX_SKILL_CONTENT = 20_000
+MAX_SKILLS = 20
+MAX_SKILLS_TOTAL = 60_000
+
+
+class WritingSkill(BaseModel):
+    """A block of user-supplied style rules, injected into the scopes it names.
+
+    Caps exist because every enabled skill rides along on each matching LLM call,
+    billed to the user's own key — see the counter in Profile → AI Prompts.
+    """
+    id: str
+    name: str = Field(max_length=80)
+    content: str = Field(max_length=MAX_SKILL_CONTENT)
+    enabled: bool = True
+    scopes: List[str] = Field(default_factory=lambda: list(DEFAULT_SKILL_SCOPES))
+
+    @field_validator("scopes")
+    @classmethod
+    def _known_scopes(cls, v):
+        bad = [s for s in v if s not in SKILL_SCOPES]
+        if bad:
+            raise ValueError(f"Unknown scope(s): {', '.join(bad)}")
+        return v
+
+
 class CriteriaBase(BaseModel):
     name: str = "default"
     job_titles: Optional[List[str]] = None
@@ -271,6 +302,7 @@ class CriteriaBase(BaseModel):
     research_prompt: Optional[str] = None
     application_templates: Optional[List[dict]] = None  # [{label, prompt}]
     voice_guidelines: Optional[str] = None
+    writing_skills: Optional[List[WritingSkill]] = None
     interview_prep_prompt: Optional[str] = None
     resume_tailor_prompt: Optional[str] = None   # editable style prompt (honesty core is server-side)
     # Legacy fields — preserved in DB, no longer shown in UI
@@ -280,6 +312,20 @@ class CriteriaBase(BaseModel):
     locations: Optional[List[str]] = None
     remote_only: bool = False
     years_experience: Optional[int] = None
+
+    @field_validator("writing_skills")
+    @classmethod
+    def _skills_within_budget(cls, v):
+        if v is None:
+            return v
+        if len(v) > MAX_SKILLS:
+            raise ValueError(f"At most {MAX_SKILLS} writing skills.")
+        total = sum(len(s.content) for s in v)
+        if total > MAX_SKILLS_TOTAL:
+            raise ValueError(
+                f"Writing skills total {total:,} characters; the limit is {MAX_SKILLS_TOTAL:,}."
+            )
+        return v
 
 
 class CriteriaCreate(CriteriaBase):

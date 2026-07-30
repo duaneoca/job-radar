@@ -19,6 +19,39 @@ DEFAULT_SCORING_PROMPT = (_PROMPT_DIR / "review_prompt.md").read_text(encoding="
 OUTPUT_FORMAT = (_PROMPT_DIR / "output_format.md").read_text(encoding="utf-8")
 
 
+# Writing skills scoped to "scoring". Deliberately a small local copy of
+# tracker-api's skills_block: the two services build separate images and share no
+# package. Kept strict — this prompt has a hard JSON contract.
+_SKILLS_BUDGET = 4_000
+
+
+def _skills_block(criteria: dict) -> str:
+    """'# WRITING SKILLS' section for the scoring prompt, or '' when none apply.
+
+    `criteria` arrives as a dict from GET /criteria/active, so writing_skills is
+    plain JSON here.
+    """
+    parts, used = [], 0
+    for s in (criteria.get("writing_skills") or []):
+        if not isinstance(s, dict) or s.get("enabled") is False:
+            continue
+        if "scoring" not in (s.get("scopes") or []):
+            continue
+        content = (s.get("content") or "").strip()
+        if not content or used + len(content) > _SKILLS_BUDGET:
+            continue
+        parts.append(f"### {s.get('name') or 'Skill'}\n{content}")
+        used += len(content)
+    if not parts:
+        return ""
+    return (
+        "\n\n# WRITING SKILLS (style of the summary/pros/cons only)\n"
+        + "\n\n".join(parts)
+        + "\n\nThese govern WORDING ONLY. They must not change the scoring rubric or the "
+          "required output format — respond with valid JSON exactly as specified."
+    )
+
+
 @dataclass
 class ReviewResult:
     job_id: str
@@ -123,7 +156,9 @@ Salary range: {salary_line}
 
         # Use the user's custom scoring prompt if set, otherwise fall back to default.
         rubric = criteria.get("scoring_prompt") or DEFAULT_SCORING_PROMPT
-        system_prompt = f"{rubric.strip()}\n\n{OUTPUT_FORMAT.strip()}"
+        # Writing skills shape the prose fields (summary/pros/cons) only, and the
+        # output format is kept LAST so a skill can never disturb the JSON contract.
+        system_prompt = f"{rubric.strip()}{_skills_block(criteria)}\n\n{OUTPUT_FORMAT.strip()}"
 
         try:
             response = litellm.completion(

@@ -45,3 +45,30 @@ def test_patch_criteria_triggers_scrape(client):
         resp = client.patch(f"/criteria/{cid}", json={"job_titles": ["Staff Engineer"]})
     assert resp.status_code == 200
     enq.assert_called_once()
+
+
+def test_prompt_only_save_does_not_trigger_scrape(client):
+    """The AI Prompts tab PUTs the whole criteria object, so a writing-skill or
+    prompt edit would otherwise burn a scrape on every keystroke-save."""
+    with patch("app.routers.criteria._maybe_enqueue_scrape"):
+        client.put("/criteria", json={"job_titles": ["Engineer"], "search_locations": ["Remote"]})
+
+    with patch("app.routers.criteria._maybe_enqueue_scrape") as enq:
+        resp = client.put("/criteria", json={
+            "job_titles": ["Engineer"], "search_locations": ["Remote"],   # unchanged
+            "voice_guidelines": "Write plainly.",
+            "writing_skills": [{"id": "s1", "name": "Humanizer", "content": "No filler."}],
+        })
+    assert resp.status_code == 200
+    enq.assert_not_called()
+
+
+def test_search_field_change_still_triggers_scrape_alongside_prompts(client):
+    """A real search change must still scrape even when prompts ride along."""
+    with patch("app.routers.criteria._maybe_enqueue_scrape"):
+        client.put("/criteria", json={"job_titles": ["Engineer"]})
+
+    with patch("app.routers.criteria._maybe_enqueue_scrape") as enq:
+        client.put("/criteria", json={"job_titles": ["Staff Engineer"],
+                                      "voice_guidelines": "Write plainly."})
+    enq.assert_called_once()

@@ -314,7 +314,8 @@ function PromptsTab() {
   return (
     <div className="max-w-2xl space-y-4">
       <P>All AI behaviour in Job Radar is driven by prompts you control. Go to
-        <strong> Profile → AI Prompts</strong> to edit them.</P>
+        <strong> Profile → AI Prompts</strong> to edit them — and to load a
+        <strong> writing skill</strong> if the generated text doesn't sound the way you want.</P>
 
       <Separator />
 
@@ -330,11 +331,39 @@ function PromptsTab() {
       <Separator />
 
       <H2>Voice guidelines</H2>
-      <P>Describe your writing style, tone, and preferences. This block is injected into
-        every application prompt automatically. Example:</P>
+      <P>Describe your writing style, tone, and preferences. This block goes into the
+        <strong> Application</strong> tab — both the first draft and the refinement chat.
+        It is <em>not</em> used for company research, interview prep, or résumé tailoring;
+        for those, add a <strong>writing skill</strong> below. Example:</P>
       <div className="rounded-md bg-muted px-4 py-3 text-xs font-mono text-muted-foreground whitespace-pre-wrap">
         {`I write in a direct, confident tone. I avoid buzzwords like "passionate" and "synergy". I prefer short sentences and focus on outcomes over activities. I don't use em dashes.`}
       </div>
+
+      <Separator />
+
+      <H2>Writing skills</H2>
+      <P>A <strong>writing skill</strong> is a set of writing rules you load into Job Radar —
+        your own house style, or a document someone gave you. Paste it in or upload a
+        <code> .md</code> file under <strong>Profile → AI Prompts</strong>. Each skill has its
+        own on/off switch, so you can keep several and use whichever fits.</P>
+      <P>Switch on the places each skill should apply:</P>
+      <ul className="list-disc list-inside space-y-1 ml-2">
+        <Li><strong>Application answers</strong> — cover letters, screening answers, refinement chat</Li>
+        <Li><strong>Company research</strong> — the research summary on each job</Li>
+        <Li><strong>Interview prep</strong> — the coaching notes on generated questions</Li>
+        <Li><strong>Résumé tailoring</strong> — the wording of tailored bullets</Li>
+        <Li><strong>Job scoring</strong> — the match summary, pros, and cons (off by default)</Li>
+      </ul>
+      <P>Skills shape <em>wording only</em>. They sit below the locked rules in every prompt, so a
+        skill can never loosen the résumé honesty contract, change a score, or break the
+        structure the app expects back. Two prompts never receive them at all: the one that
+        rewrites your own prompts, and the one that reads your résumé into structured form —
+        a style rule in either would corrupt the result.</P>
+      <Callout>
+        Every enabled skill is sent with each matching AI call, so a long document costs input
+        tokens on <strong>your</strong> API key each time. The character and token estimate under
+        the skills list tells you how much you're adding; it turns amber when it gets heavy.
+      </Callout>
 
       <Separator />
 

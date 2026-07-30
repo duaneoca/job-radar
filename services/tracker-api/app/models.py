@@ -250,6 +250,10 @@ class Criteria(Base):
     research_prompt      = Column(Text, nullable=True)
     application_templates = Column(JSON, nullable=True)  # [{label, prompt}]
     voice_guidelines     = Column(Text, nullable=True)
+    # User-loadable writing skills: [{id, name, content, enabled, scopes}]. Each is a
+    # block of style rules appended to the prompts named in its `scopes`, always
+    # BELOW the locked contracts so it can never override them.
+    writing_skills       = Column(JSON, nullable=True)
     interview_prep_prompt = Column(Text, nullable=True)
     resume_tailor_prompt  = Column(Text, nullable=True)  # editable style prompt (honesty core is server-side, not here)
     # Legacy columns preserved for data migration

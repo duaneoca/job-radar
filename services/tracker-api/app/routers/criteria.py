@@ -41,6 +41,22 @@ def _maybe_enqueue_scrape(user_id: UUID) -> None:
         logger.warning("Could not enqueue scrape for user %s", user_id, exc_info=True)
 
 
+# Only these fields change what the scrapers would find. Everything else on
+# Criteria is prompt/style config — saving those must not burn a scrape (the
+# AI Prompts tab PUTs the whole object, so exclude_unset can't tell them apart).
+_SCRAPE_FIELDS = (
+    "job_titles", "search_locations", "work_style", "home_city",
+    "max_commute_miles", "min_salary", "target_companies", "excluded_companies",
+    "locations", "remote_only",
+)
+
+
+def _scrape_inputs(obj: models.Criteria | None) -> dict:
+    if obj is None:
+        return {}
+    return {f: getattr(obj, f, None) for f in _SCRAPE_FIELDS}
+
+
 def _get_or_404(criteria_id: UUID, user: models.User, db: Session) -> models.Criteria:
     obj = (
         db.query(models.Criteria)
@@ -82,6 +98,7 @@ def upsert_criteria(
         .order_by(models.Criteria.updated_at.desc())
         .first()
     )
+    before = _scrape_inputs(obj)
     if obj:
         for field, value in payload.model_dump(exclude_unset=True).items():
             setattr(obj, field, value)
@@ -90,7 +107,8 @@ def upsert_criteria(
         db.add(obj)
     db.commit()
     db.refresh(obj)
-    _maybe_enqueue_scrape(current_user.id)
+    if _scrape_inputs(obj) != before:
+        _maybe_enqueue_scrape(current_user.id)
     return obj
 
 
@@ -127,11 +145,13 @@ def update_criteria(
     current_user: models.User = Depends(get_current_user),
 ):
     obj = _get_or_404(criteria_id, current_user, db)
+    before = _scrape_inputs(obj)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(obj, field, value)
     db.commit()
     db.refresh(obj)
-    _maybe_enqueue_scrape(current_user.id)
+    if _scrape_inputs(obj) != before:
+        _maybe_enqueue_scrape(current_user.id)
     return obj
 
 
