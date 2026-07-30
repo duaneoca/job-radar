@@ -45,14 +45,14 @@ function ResumeView({ data }: { data: any }) {
                 )}
               </div>
               {e.titles?.length > 0 && <div className="italic text-muted-foreground" data-path={`experience/${i}/titles`}>{e.titles.join(" → ")}</div>}
-              {e.bullets?.length > 0 && <ul className="list-disc ml-4">{e.bullets.map((b: string, j: number) => <li key={j} data-path={`experience/${i}/bullets/${j}`}>{b}</li>)}</ul>}
+              {e.bullets?.length > 0 && <ul className="list-disc ml-4" data-path={`experience/${i}/bullets`}>{e.bullets.map((b: string, j: number) => <li key={j} data-path={`experience/${i}/bullets/${j}`}>{b}</li>)}</ul>}
               {e.phases?.map((p: any, k: number) => (
                 <div key={k} className="mt-1">
                   {p.label && <div className="font-medium">{p.label}</div>}
-                  <ul className="list-disc ml-4">{(p.bullets ?? []).map((b: string, j: number) => <li key={j} data-path={`experience/${i}/phases/${k}/bullets/${j}`}>{b}</li>)}</ul>
+                  <ul className="list-disc ml-4" data-path={`experience/${i}/phases/${k}/bullets`}>{(p.bullets ?? []).map((b: string, j: number) => <li key={j} data-path={`experience/${i}/phases/${k}/bullets/${j}`}>{b}</li>)}</ul>
                 </div>
               ))}
-              {e.notable?.length > 0 && <p className="text-muted-foreground mt-0.5">Notable: {e.notable.map((n: string, j: number) => <span key={j} data-path={`experience/${i}/notable/${j}`}>{n}{j < e.notable.length - 1 ? ", " : ""}</span>)}</p>}
+              {e.notable?.length > 0 && <p className="text-muted-foreground mt-0.5" data-path={`experience/${i}/notable`}>Notable: {e.notable.map((n: string, j: number) => <span key={j} data-path={`experience/${i}/notable/${j}`}>{n}{j < e.notable.length - 1 ? ", " : ""}</span>)}</p>}
             </div>
           ))}
         </Section>
@@ -69,7 +69,7 @@ function ResumeView({ data }: { data: any }) {
           {data.projects.map((pr: any, i: number) => (
             <div key={i}>
               {pr.title && <div className="font-medium" data-path={`projects/${i}/title`}>{pr.title}</div>}
-              <ul className="list-disc ml-4">{(pr.bullets ?? []).map((b: string, j: number) => <li key={j} data-path={`projects/${i}/bullets/${j}`}>{b}</li>)}</ul>
+              <ul className="list-disc ml-4" data-path={`projects/${i}/bullets`}>{(pr.bullets ?? []).map((b: string, j: number) => <li key={j} data-path={`projects/${i}/bullets/${j}`}>{b}</li>)}</ul>
             </div>
           ))}
         </Section>
@@ -78,10 +78,55 @@ function ResumeView({ data }: { data: any }) {
   );
 }
 
+// ─── Re-order card body ─────────────────────────────────────────────────────────
+
+// One card for a whole list whose bullets changed places. Showing the section
+// before and after is the only representation that makes sense — the same move
+// rendered per-bullet reads as a chain of inverse edits.
+function ReorderBody({ c }: { c: TailorChange }) {
+  const before = c.before_items;
+  const after = c.after_items;
+  // Old stored states have no item arrays; fall back to the numbered strings.
+  if (!before || !after) {
+    return (
+      <>
+        {c.before && <p className="whitespace-pre-line text-rose-600 dark:text-rose-400">{c.before}</p>}
+        {c.after && <p className="whitespace-pre-line text-emerald-700 dark:text-emerald-400">{c.after}</p>}
+      </>
+    );
+  }
+  const order = c.order ?? [];
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <div>
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Before</div>
+        <ol className="list-decimal ml-4 space-y-0.5 text-muted-foreground">
+          {before.map((b, i) => <li key={i}>{b}</li>)}
+        </ol>
+      </div>
+      <div>
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">After</div>
+        <ol className="list-decimal ml-4 space-y-0.5">
+          {after.map((b, j) => {
+            const from = order[j];
+            const moved = from != null && from !== j;
+            return (
+              <li key={j} className={cn(moved && "text-blue-700 dark:text-blue-400")}>
+                {b}
+                {moved && <span className="ml-1 text-[10px] text-muted-foreground">(was #{(from as number) + 1})</span>}
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+    </div>
+  );
+}
+
 // ─── Change card ────────────────────────────────────────────────────────────────
 
 function ChangeCard({ c, onDecide, onLocate, busy }: {
-  c: TailorChange; onDecide: (id: string, d: TailorDecision) => void; onLocate: (path: string, anchorTop: number) => void; busy: boolean;
+  c: TailorChange; onDecide: (id: string, d: TailorDecision) => void; onLocate: (c: TailorChange, anchorTop: number) => void; busy: boolean;
 }) {
   const flagged = c.type === "factual";
   const cardRef = useRef<HTMLDivElement>(null);
@@ -96,11 +141,12 @@ function ChangeCard({ c, onDecide, onLocate, busy }: {
         <Badge variant="outline" className={cn("text-[10px] capitalize", flagged ? "border-amber-500/40 text-amber-700 dark:text-amber-400" : "text-muted-foreground")}>{c.type}</Badge>
         {c.kind === "removed" && <Badge variant="outline" className="text-[10px] border-rose-400/40 text-rose-600 dark:text-rose-400">removed</Badge>}
         {c.kind === "added" && <Badge variant="outline" className="text-[10px] border-emerald-400/40 text-emerald-700 dark:text-emerald-400">added</Badge>}
+        {c.kind === "reordered" && <Badge variant="outline" className="text-[10px] border-blue-400/40 text-blue-700 dark:text-blue-400">changed order</Badge>}
         {flagged && <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-700 dark:text-amber-400"><AlertTriangle className="h-3 w-3" />review carefully</span>}
         <button
           type="button"
           title="Show where this is in the résumé"
-          onClick={() => onLocate(c.path, cardRef.current?.getBoundingClientRect().top ?? 0)}
+          onClick={() => onLocate(c, cardRef.current?.getBoundingClientRect().top ?? 0)}
           className="ml-auto inline-flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground"
         >
           <Crosshair className="h-3 w-3" /> locate
@@ -117,8 +163,14 @@ function ChangeCard({ c, onDecide, onLocate, busy }: {
         </div>
       )}
 
-      {c.before && <p className="text-rose-600 dark:text-rose-400 line-through decoration-rose-400/50">{c.before}</p>}
-      {c.after && <p className="text-emerald-700 dark:text-emerald-400">{c.after}</p>}
+      {c.kind === "reordered" ? (
+        <ReorderBody c={c} />
+      ) : (
+        <>
+          {c.before && <p className="text-rose-600 dark:text-rose-400 line-through decoration-rose-400/50">{c.before}</p>}
+          {c.after && <p className="text-emerald-700 dark:text-emerald-400">{c.after}</p>}
+        </>
+      )}
       {c.kind === "removed" && !c.after && (
         <p className="text-[11px] text-muted-foreground">No replacement — this line was removed or its content merged into another bullet.</p>
       )}
@@ -183,14 +235,20 @@ export function TailorReviewPage() {
   // panes move; the page and the changes column stay put.
   const origRef = useRef<HTMLDivElement>(null);
   const tailRef = useRef<HTMLDivElement>(null);
-  function locate(path: string, anchorTop?: number) {
+  function locate(c: TailorChange, anchorTop?: number) {
     for (const ref of [origRef, tailRef]) {
       ref.current?.querySelectorAll(".rt-highlight").forEach((e) => e.classList.remove("rt-highlight"));
     }
+    // A moved bullet sits at a different index in each pane, so each pane gets its
+    // own path. Reorder cards point at the list container in both.
+    const paths: [typeof origRef, string | null | undefined][] = [
+      [origRef, c.orig_path ?? c.path],
+      [tailRef, c.tailored_path ?? c.path],
+    ];
     let found = false;
-    for (const ref of [origRef, tailRef]) {
+    for (const [ref, path] of paths) {
       const container = ref.current;
-      if (!container) continue;
+      if (!container || !path) continue;
       const el = container.querySelector(`[data-path="${CSS.escape(path)}"]`) as HTMLElement | null;
       if (!el) continue;
       found = true;
@@ -227,6 +285,7 @@ export function TailorReviewPage() {
         {state && state.changes.length > 0 && (
           <span className="text-xs text-muted-foreground hidden md:inline">
             {state.changes.length} change{state.changes.length === 1 ? "" : "s"}
+            {(state.reorder_count ?? 0) > 0 && <> · {state.reorder_count} re-ordered</>}
             {state.flagged_count > 0 && <> · <span className="text-amber-700 dark:text-amber-400">{state.flagged_count} flagged</span></>}
           </span>
         )}

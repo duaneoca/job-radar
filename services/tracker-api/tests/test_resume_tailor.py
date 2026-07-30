@@ -244,3 +244,213 @@ def test_profile_default_template_settings(client, db):
     assert r.json()["fontPt"] == 10.5
     assert r.json()["accent"] == "#1f3a5f"           # valid hex kept
     assert client.get("/profile").json()["resume_template_settings"]["density"] == "compact"
+
+
+# ── reorder-aware diff ────────────────────────────────────────
+
+def _with_bullets(bullets, base=None):
+    d = base or ORIGINAL
+    return {**d, "experience": [{**d["experience"][0], "bullets": list(bullets)}]}
+
+
+def _swapped():
+    return _with_bullets(["Led migration", "Built ETL pipelines"])
+
+
+def test_pure_swap_emits_one_reorder_change():
+    """Moving a bullet is ONE change, not a chain of inverse edits."""
+    changes = resume_tailor.diff_structured(_s(ORIGINAL), _s(_swapped()))
+    assert len(changes) == 1
+    c = changes[0]
+    assert c["kind"] == "reordered"
+    assert c["type"] == "reorder"
+    assert c["path"] == "experience/0/bullets"
+    assert c["order"] == [1, 0]                       # tailored slot -> original index
+    assert c["before_items"] == ["Built ETL pipelines", "Led migration"]
+    assert c["after_items"] == ["Led migration", "Built ETL pipelines"]
+    assert c["decision"] == "pending"                 # requires explicit accept
+
+
+def test_move_and_reword_emits_reorder_plus_modified():
+    """A bullet that moved AND changed wording gets both cards."""
+    tailored = _with_bullets(["Led the migration effort", "Built ETL pipelines"])
+    changes = resume_tailor.diff_structured(_s(ORIGINAL), _s(tailored))
+    kinds = sorted(c["kind"] for c in changes)
+    assert kinds == ["modified", "reordered"]
+    mod = next(c for c in changes if c["kind"] == "modified")
+    assert mod["before"] == "Led migration"           # matched by fuzzy, not position
+    assert mod["after"] == "Led the migration effort"
+    assert mod["orig_index"] == 1 and mod["new_index"] == 0
+
+
+def test_reorder_card_sorts_above_its_items():
+    tailored = _with_bullets(["Led the migration effort", "Built ETL pipelines"])
+    changes = resume_tailor.diff_structured(_s(ORIGINAL), _s(tailored))
+    assert changes[0]["kind"] == "reordered"
+
+
+def test_added_bullet_without_reorder_has_no_reorder_card():
+    """Relative order preserved + one insert => added only, no reorder noise."""
+    tailored = _with_bullets(["Built ETL pipelines", "Led migration", "Shipped API"])
+    changes = resume_tailor.diff_structured(_s(ORIGINAL), _s(tailored))
+    assert [c["kind"] for c in changes] == ["added"]
+    assert changes[0]["after"] == "Shipped API"
+
+
+def test_full_rewrite_stays_modified_not_add_remove():
+    """Positional fallback keeps a wholly rewritten bullet a single 'modified'."""
+    tailored = _with_bullets(["Totally different text here", "Led migration"])
+    changes = resume_tailor.diff_structured(_s(ORIGINAL), _s(tailored))
+    assert [c["kind"] for c in changes] == ["modified"]
+    assert changes[0]["before"] == "Built ETL pipelines"
+
+
+def test_change_id_stable_across_reorder():
+    """Ids follow content, so refine keeps the user's accept/reject decisions."""
+    reworded = _with_bullets(["Built ETL pipelines v2", "Led migration"])
+    moved = _with_bullets(["Led migration", "Built ETL pipelines v2"])
+    a = next(c for c in resume_tailor.diff_structured(_s(ORIGINAL), _s(reworded))
+             if c["kind"] == "modified")
+    b = next(c for c in resume_tailor.diff_structured(_s(ORIGINAL), _s(moved))
+             if c["kind"] == "modified")
+    assert a["id"] == b["id"]
+
+
+def test_duplicate_bullets_get_unique_ids():
+    dup = _with_bullets(["Same line", "Same line"])
+    edited = _with_bullets(["Same line edited", "Same line also edited"])
+    changes = resume_tailor.diff_structured(_s(dup), _s(edited))
+    ids = [c["id"] for c in changes]
+    assert len(ids) == len(set(ids)) == 2
+
+
+def test_notes_do_not_cross_attach_on_pure_move():
+    """A note must not bind to a bullet whose text never changed."""
+    notes = [{"before": "Built ETL pipelines", "after": "Built ETL pipelines",
+              "type": "vocabulary", "rationale": "should not attach"}]
+    changes = resume_tailor.diff_structured(_s(ORIGINAL), _s(_swapped()), notes)
+    assert changes[0]["rationale"] == "Bullets re-ordered within this section."
+
+
+def test_reorder_note_enriches_the_reorder_card():
+    notes = [{"type": "reorder", "rationale": "lead with the migration work",
+              "trigger": "large-scale migrations"}]
+    c = resume_tailor.diff_structured(_s(ORIGINAL), _s(_swapped()), notes)[0]
+    assert c["rationale"] == "lead with the migration work"
+    assert c["trigger"] == "large-scale migrations"
+
+
+# ── effective résumé ──────────────────────────────────────────
+
+def _state(original, tailored, decisions=None):
+    st = resume_tailor.build_tailor_state(_s(original), _s(tailored), [], "m", {})
+    for c in st["changes"]:
+        c["decision"] = (decisions or {}).get(c["kind"], "pending")
+    return st
+
+
+def _bullets(resume):
+    return resume["experience"][0]["bullets"]
+
+
+def test_effective_reorder_and_wording_matrix():
+    """All four accept/reject combinations of a moved-and-reworded bullet."""
+    tailored = _with_bullets(["Led the migration effort", "Built ETL pipelines"])
+    orig_order = ["Built ETL pipelines", "Led migration"]
+
+    both_rejected = _state(ORIGINAL, tailored, {"reordered": "rejected", "modified": "rejected"})
+    assert _bullets(resume_tailor.effective_resume(both_rejected)) == orig_order
+
+    wording_only = _state(ORIGINAL, tailored, {"reordered": "rejected", "modified": "accepted"})
+    assert _bullets(resume_tailor.effective_resume(wording_only)) == \
+        ["Built ETL pipelines", "Led the migration effort"]
+
+    # Previously inexpressible: keep the new ORDER but the original wording.
+    order_only = _state(ORIGINAL, tailored, {"reordered": "accepted", "modified": "rejected"})
+    assert _bullets(resume_tailor.effective_resume(order_only)) == \
+        ["Led migration", "Built ETL pipelines"]
+
+    both_accepted = _state(ORIGINAL, tailored, {"reordered": "accepted", "modified": "accepted"})
+    assert resume_tailor.effective_resume(both_accepted) == both_accepted["tailored"]
+
+
+def test_effective_pending_keeps_tailored():
+    """Pending behaves like every other pending change — tailored content stands."""
+    st = _state(ORIGINAL, _swapped())
+    assert _bullets(resume_tailor.effective_resume(st)) == ["Led migration", "Built ETL pipelines"]
+
+
+def test_effective_rejected_scalar_reverts():
+    st = _state(ORIGINAL, TAILORED, {"modified": "rejected"})
+    eff = resume_tailor.effective_resume(st)
+    assert eff["summary"] == ORIGINAL["summary"]
+
+
+def test_effective_rejected_skill_items_stays_a_list():
+    """The joined 'a · b' display form must never be written back into the array."""
+    st = _state(ORIGINAL, TAILORED, {"modified": "rejected"})
+    items = resume_tailor.effective_resume(st)["skills"][0]["items"]
+    assert items == ["Python", "Java"]
+
+
+def test_effective_rejected_removal_keeps_the_bullet():
+    tailored = _with_bullets(["Built ETL pipelines"])          # dropped one
+    st = _state(ORIGINAL, tailored, {"removed": "rejected"})
+    assert _bullets(resume_tailor.effective_resume(st)) == \
+        ["Built ETL pipelines", "Led migration"]
+
+
+def test_effective_legacy_state_falls_back():
+    """States stored before list-aware diffing still print correctly."""
+    legacy = {
+        "original": ORIGINAL, "tailored": TAILORED,
+        "changes": [{"id": "x", "path": "summary", "before": ORIGINAL["summary"],
+                     "after": TAILORED["summary"], "kind": "modified",
+                     "type": "wording", "decision": "rejected"}],
+    }
+    assert resume_tailor.effective_resume(legacy)["summary"] == ORIGINAL["summary"]
+
+
+def test_build_state_counts_reorders():
+    st = resume_tailor.build_tailor_state(_s(ORIGINAL), _s(_swapped()), [], "m", {})
+    assert st["reorder_count"] == 1
+
+
+def test_tailor_response_includes_effective(client, db, monkeypatch):
+    """Every tailor response carries the approved résumé, computed server-side."""
+    _seed(db)
+    rid = _scrape(client)
+    monkeypatch.setattr(resume_tailor, "tailor_resume", lambda *a, **k: (_s(TAILORED), NOTES))
+
+    state = client.post(f"/jobs/{rid}/tailor-resume").json()
+    assert state["effective"]["summary"] == TAILORED["summary"]     # pending keeps tailored
+
+    cid = next(c["id"] for c in state["changes"] if c["path"] == "summary")
+    r = client.patch(f"/jobs/{rid}/tailor-resume/decisions", json={"decisions": {cid: "rejected"}})
+    assert r.json()["effective"]["summary"] == ORIGINAL["summary"]
+    assert client.get(f"/jobs/{rid}/tailor-resume").json()["effective"]["summary"] == ORIGINAL["summary"]
+    # Never persisted — it is derived from changes + decisions on every read.
+    assert "effective" not in (db.query(models.UserJobReview).first().resume_tailor or {})
+
+
+def test_refine_excludes_reorder_card_from_kept_phrasings(client, db, monkeypatch):
+    """A rejected reorder must become an ordering instruction, not a phrasing to keep
+    (its `before` is a numbered listing, which would garble the prompt)."""
+    _seed(db)
+    rid = _scrape(client)
+    monkeypatch.setattr(resume_tailor, "tailor_resume",
+                        lambda *a, **k: (_s(_swapped()), []))
+    state = client.post(f"/jobs/{rid}/tailor-resume").json()
+    cid = next(c["id"] for c in state["changes"] if c["kind"] == "reordered")
+    client.patch(f"/jobs/{rid}/tailor-resume/decisions", json={"decisions": {cid: "rejected"}})
+
+    seen = {}
+
+    def capture(*a, **k):
+        seen["extra"] = k.get("extra", "")
+        return _s(_swapped()), []
+    monkeypatch.setattr(resume_tailor, "tailor_resume", capture)
+    client.post(f"/jobs/{rid}/tailor-resume/refine", json={"instruction": "punchier"})
+
+    assert "Do NOT reorder the bullets" in seen["extra"]
+    assert "1. Built ETL pipelines" not in seen["extra"]      # numbered listing not leaked
