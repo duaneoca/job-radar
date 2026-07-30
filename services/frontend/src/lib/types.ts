@@ -294,11 +294,23 @@ export interface TailorChange {
   section: string;       // summary | skills | experience | education | projects
   before: string | null;
   after: string | null;
-  kind: string;          // modified | added | removed
+  kind: string;          // modified | added | removed | reordered
   type: TailorChangeType;
   rationale: string;
   trigger?: string;      // job-posting phrase that motivated the change
   decision: TailorDecision;
+  // Set on changes inside a bullet list. Absent on states stored before
+  // list-aware diffing shipped, so every field here is optional.
+  list_path?: string | null;
+  orig_index?: number | null;
+  new_index?: number | null;
+  orig_path?: string | null;      // where it lives in the Original pane
+  tailored_path?: string | null;  // where it lives in the Tailored pane
+  // kind === "reordered" only:
+  before_items?: string[];
+  after_items?: string[];
+  order?: (number | null)[];      // per tailored slot: original index, null if added
+  removed_indices?: number[];
 }
 
 export interface TailorState {
@@ -310,6 +322,9 @@ export interface TailorState {
   generated_at: string;
   total_years: number | null;
   flagged_count: number;
+  reorder_count?: number;
+  // The approved résumé, computed server-side from changes + decisions.
+  effective?: Record<string, any>;
   base_changed?: boolean;
   // Phase 4 print knobs: per-résumé override + the profile default to fall back to.
   print_settings?: Partial<import("./resumeSettings").ResumeSettings> | null;

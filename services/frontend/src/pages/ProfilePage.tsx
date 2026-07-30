@@ -57,7 +57,7 @@ const HONESTY_CONTRACT_DISPLAY = `Always enforced — cannot be edited (here for
 • Meet-or-exceed, never inflate — a qualification may be phrased to meet/exceed a posting only when your true value already clears it (e.g. "8+ years" if you have at least 8); never claim beyond reality.
 • Never invent skills, technologies, employers, titles, dates, or certifications not in your résumé — and no platform or tool is added that isn't already there, even if the posting asks for it.
 • Leave gaps alone — if the posting wants something your résumé doesn't show, the gap stays; it's never filled or implied.
-• Keep factual anchors & structure — company names, titles, employers, dates, and the set of bullets/jobs/sections are preserved.
+• Keep factual anchors & structure — company names, titles, employers, dates, and the set of bullets/jobs/sections are preserved. Bullets may be re-ordered within a role to lead with what's most relevant; you approve that as a single change.
 Changes that touch a factual claim are flagged for your review in the diff.`;
 
 const DEFAULT_RESUME_TAILOR_PROMPT = `Tailoring style:

@@ -470,6 +470,17 @@ def _fresh_structured(profile: models.Profile, user_id: UUID, db: Session):
     return structured
 
 
+def _with_effective(state: dict) -> dict:
+    """Attach the approved ("effective") résumé to a tailor response.
+
+    Computed server-side, never stored: a rejected reorder has to restore the
+    original ORDER while accepted rewordings survive, which the frontend's old
+    per-path revert could not express — and there is no JS test runner here, so
+    the logic lives where it can be tested.
+    """
+    return {**state, "effective": resume_tailor.effective_resume(state)}
+
+
 @router.get("/{review_id}/tailor-resume")
 def get_tailored_resume(
     review_id: UUID,
@@ -488,7 +499,7 @@ def get_tailored_resume(
     # Phase 4 print knobs: per-résumé override + the profile default to fall back to.
     state["print_settings"] = review.resume_print_settings
     state["default_print_settings"] = profile.resume_template_settings if profile else None
-    return state
+    return _with_effective(state)
 
 
 @router.post("/{review_id}/tailor-resume")
@@ -517,7 +528,7 @@ def tailor_resume_endpoint(
 
     review.resume_tailor = state
     db.commit()
-    return state
+    return _with_effective(state)
 
 
 @router.post("/{review_id}/tailor-resume/refine")
@@ -542,10 +553,20 @@ def refine_tailored_resume(
     style = (criteria.resume_tailor_prompt if criteria else None) or resume_tailor.DEFAULT_RESUME_TAILOR_PROMPT
     api_key, model = get_llm_provider(current_user.id, db)
 
-    rejected = [c["before"] for c in prev["changes"] if c.get("decision") == "rejected" and c.get("before")]
+    # Reorder cards carry a numbered listing in `before`, not a phrasing — feeding
+    # that to "keep EXACTLY as written" would garble the prompt. They get their own
+    # instruction instead.
+    rejected = [c["before"] for c in prev["changes"]
+                if c.get("decision") == "rejected" and c.get("before")
+                and c.get("kind") != "reordered"]
+    reorder_rejected = [c["path"] for c in prev["changes"]
+                        if c.get("decision") == "rejected" and c.get("kind") == "reordered"]
     extra = payload.instruction.strip()
     if rejected:
         extra += "\n\nKeep these phrasings EXACTLY as written (the user rejected changing them): " + " | ".join(rejected)
+    if reorder_rejected:
+        extra += ("\n\nDo NOT reorder the bullets in these sections; keep them in the order given: "
+                  + " | ".join(reorder_rejected))
 
     tailored, notes = resume_tailor.tailor_resume(
         current, honesty, _job_block(review.job), style, api_key, model, extra=extra)
@@ -559,7 +580,7 @@ def refine_tailored_resume(
 
     review.resume_tailor = state
     db.commit()
-    return state
+    return _with_effective(state)
 
 
 @router.patch("/{review_id}/tailor-resume/decisions")
@@ -585,7 +606,7 @@ def set_change_decisions(
             c["decision"] = payload.decisions[c["id"]]
     flag_modified(review, "resume_tailor")
     db.commit()
-    return state
+    return _with_effective(state)
 
 
 @router.put("/{review_id}/tailor-resume/print-settings")
