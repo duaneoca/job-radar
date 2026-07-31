@@ -165,9 +165,14 @@ function JobPipelineTab() {
         <Li><strong>Offer</strong> — offer received</Li>
         <Li><strong>Rejected</strong> — closed out</Li>
         <Li><strong>Dismissed</strong> — not interested, hidden from default view</Li>
-        <Li><strong>Expired</strong> — set automatically when a New or Reviewed job sits
-          unactioned too long; the posting is likely gone. Expired, Rejected, and Dismissed
-          jobs are deleted after a grace period.</Li>
+        <Li><strong>Expired</strong> — set automatically, for either of two reasons: the job
+          sat New or Reviewed without you actioning it for a month, or <em>the posting itself</em>
+          is more than three weeks old. That second rule matters because listings from the big
+          job boards come down within a week or two, so an old posting is almost always a dead
+          link even if we only found it yesterday. Jobs you captured with the bookmarklet, and
+          jobs watched directly on a company's own board, are never expired for age — we can
+          see those are still open. Expired, Rejected, and Dismissed jobs are deleted after a
+          grace period, and you can always set the status back yourself.</Li>
       </ul>
 
       <Separator />

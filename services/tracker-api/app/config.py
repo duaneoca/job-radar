@@ -28,6 +28,14 @@ class Settings(BaseSettings):
 
     # Job pool — unactioned jobs older than this many days are soft-expired.
     job_ttl_days: int = 30
+    # A POSTING older than this is soft-expired regardless of when we scraped it.
+    # job_ttl_days counts from when the row last changed here, so a listing that
+    # was already three weeks old when scraped could be shown for ~50 days after
+    # it went up. Big-tech postings come down in one to three weeks, which is why
+    # the Jobs list fills with "this job is no longer available" links.
+    # Bookmarklet imports and company-board sources are exempt — see
+    # _POSTING_AGE_EXEMPT_SOURCES in routers/admin.py for why.
+    posting_max_age_days: int = 21
     # Terminal-status reviews (dismissed / rejected / expired) older than this
     # many days are hard-deleted along with any jobs that become orphaned.
     terminal_ttl_days: int = 14

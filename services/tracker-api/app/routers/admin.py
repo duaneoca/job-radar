@@ -9,6 +9,7 @@ from uuid import UUID
 
 from celery import Celery
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import feature_flags, models, schemas
@@ -36,6 +37,21 @@ _TERMINAL_STATUSES = [
 _EXPIRABLE_STATUSES = [
     models.JobStatus.NEW,
     models.JobStatus.REVIEWED,
+]
+
+# Sources exempt from posting-age expiry, because age says nothing about whether
+# the listing is still live:
+#   manual                     — you captured it deliberately; your call, not ours.
+#   ashby/greenhouse/lever     — we re-read the company's own board every scrape,
+#                                so a posting still being returned IS still open.
+#                                Some evergreen reqs sit on a board for years.
+# For the aggregator sources there is no such evidence: a search result tells us
+# nothing about whether the underlying ad is alive, so age is the best proxy.
+_POSTING_AGE_EXEMPT_SOURCES = [
+    models.JobSource.MANUAL.value,
+    models.JobSource.ASHBY.value,
+    models.JobSource.GREENHOUSE.value,
+    models.JobSource.LEVER.value,
 ]
 
 
@@ -105,36 +121,66 @@ def _do_cleanup(db: Session) -> dict:
 
 def _do_expire(db: Session) -> dict:
     """
-    Soft-expire unactioned reviews: flip NEW / REVIEWED rows whose updated_at is
-    older than job_ttl_days to EXPIRED. They then enter the terminal-status grace
-    window and are hard-deleted by _do_cleanup after terminal_ttl_days.
+    Soft-expire unactioned reviews. Two independent rules flip NEW / REVIEWED to
+    EXPIRED; the row then enters the terminal grace window and is hard-deleted by
+    _do_cleanup after terminal_ttl_days.
+
+    1. STALE IN OUR LIST — updated_at older than job_ttl_days. "You have not
+       looked at this in a month."
+    2. STALE AT THE SOURCE — the posting's own date_posted is older than
+       posting_max_age_days. A listing that was already weeks old when we scraped
+       it is gone from the employer's site long before rule 1 fires; that is what
+       fills the list with dead "no longer available" links. Bookmarklet imports
+       are exempt, since those were captured deliberately.
+
+    We cannot confirm death by fetching the link: job boards return 403 to
+    anything that is not a real browser, and the block page is identical for live
+    and expired ads, so there is no signal to read. Posting age is the proxy.
 
     updated_at is reset to now so the terminal grace period starts at expiry.
     Applied / interviewing / offer and already-terminal statuses are untouched.
 
-    Returns a dict with the count of soft-expired reviews.
+    Returns the count of soft-expired reviews, split by rule.
     """
     now = datetime.now(timezone.utc)
-    cutoff = now - timedelta(days=settings.job_ttl_days)
 
-    reviews_expired = (
-        db.query(models.UserJobReview)
-        .filter(
-            models.UserJobReview.status.in_(_EXPIRABLE_STATUSES),
-            models.UserJobReview.updated_at < cutoff,
+    def _expire(where) -> int:
+        return (
+            db.query(models.UserJobReview)
+            .filter(models.UserJobReview.status.in_(_EXPIRABLE_STATUSES), where)
+            .update(
+                {
+                    models.UserJobReview.status: models.JobStatus.EXPIRED,
+                    models.UserJobReview.updated_at: now,
+                },
+                synchronize_session=False,
+            )
         )
-        .update(
-            {
-                models.UserJobReview.status: models.JobStatus.EXPIRED,
-                models.UserJobReview.updated_at: now,
-            },
-            synchronize_session=False,
-        )
+
+    unactioned = _expire(
+        models.UserJobReview.updated_at < now - timedelta(days=settings.job_ttl_days)
     )
 
+    # Sub-select rather than a join: .update() cannot span tables.
+    stale_postings = select(models.UserJobReview.id).join(
+        models.Job, models.Job.id == models.UserJobReview.job_id
+    ).where(
+        models.Job.date_posted.isnot(None),
+        models.Job.date_posted < now - timedelta(days=settings.posting_max_age_days),
+        models.Job.source.not_in(_POSTING_AGE_EXEMPT_SOURCES),
+    )
+    stale = _expire(models.UserJobReview.id.in_(stale_postings))
+
     db.commit()
-    logger.info("expire_jobs: %d unactioned reviews soft-expired", reviews_expired)
-    return {"reviews_expired": reviews_expired}
+    logger.info(
+        "expire_jobs: %d soft-expired (%d unactioned, %d stale postings)",
+        unactioned + stale, unactioned, stale,
+    )
+    return {
+        "reviews_expired": unactioned + stale,
+        "unactioned": unactioned,
+        "stale_postings": stale,
+    }
 
 
 @router.get("/users", response_model=schemas.PaginatedUsers)

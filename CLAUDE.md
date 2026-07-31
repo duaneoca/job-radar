@@ -167,9 +167,22 @@ self-configure from `.env`; only in-cluster (cloud) agents fetch decrypted confi
 
 ## Data retention
 
+- **Two soft-expiry rules** (`_do_expire`), both flipping NEW/REVIEWED → EXPIRED:
+  1. `job_ttl_days = 30` — the review sat unactioned here that long.
+  2. `posting_max_age_days = 21` — the **posting's own `date_posted`** is that old,
+     no matter when we scraped it. Rule 1 counts from `updated_at`, so a listing
+     already weeks old when scraped could show for ~50 days after going up; this
+     is what fills the list with dead "no longer available" links.
+     `_POSTING_AGE_EXEMPT_SOURCES` skips `manual` (deliberate capture) and
+     `ashby`/`greenhouse`/`lever` (we re-read those boards every scrape, so a
+     posting still returned IS still open — evergreen reqs can sit for years).
+- Expiry cannot be confirmed by fetching the link: aggregators return 403 to
+  anything that isn't a real browser, and the block page is identical for live
+  and dead ads. Posting age is the proxy. (A browser *does* see
+  "Unfortunately, this job is no longer available" — but only a browser.)
 - `terminal_ttl_days = 14` (config) — dismissed, rejected, expired reviews deleted after 14 days
 - Orphaned `Job` rows (no remaining reviews from any user) hard-deleted in same pass
-- Applied / interviewing / offer statuses are never touched by cleanup
+- Applied / interviewing / offer / referral_requested are never touched by either pass
 - Manual trigger: Admin → System → "Clean up old jobs"
 
 ---
