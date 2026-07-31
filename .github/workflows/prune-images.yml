@@ -42,19 +42,9 @@ jobs:
     name: Prune GHCR versions
     runs-on: ubuntu-latest
     steps:
-      # Layers orphaned when a tag gets overwritten. Nothing references these.
-      - name: Delete untagged versions
-        uses: snok/container-retention-policy@v3.1.0
-        with:
-          account: user
-          token: ${{ secrets.GITHUB_TOKEN }}
-          image-names: ${{ env.IMAGES }}
-          tag-selection: untagged
-          cut-off: 2w
-          dry-run: ${{ inputs.dry_run || false }}
-
       # Commit-SHA staging builds. "!v*" keeps every release image, and
       # keep-n-most-recent protects whatever staging is currently running.
+      # Runs FIRST so the untagged step below only ever sees real orphans.
       - name: Delete old staging builds
         uses: snok/container-retention-policy@v3.1.0
         with:
@@ -65,4 +55,27 @@ jobs:
           image-tags: "!v*"
           cut-off: 8w
           keep-n-most-recent: 10
+          dry-run: ${{ inputs.dry_run || false }}
+
+      # DANGER, read before touching the cut-off.
+      #
+      # "Untagged" here does NOT mean garbage. Staging builds go through buildx,
+      # so each push is an OCI *index*: the tag sits on the index and its children
+      # — the real amd64 image manifest and its attestation — are untagged.
+      # Deleting a child of a live index leaves the tag resolving to nothing, so
+      # the image looks present and fails to pull.
+      #
+      # The invariant that makes this safe: this cut-off is 2x the tagged cut-off
+      # above. A child only becomes eligible long after the step above removed its
+      # parent index, so by the time we touch it, it is genuinely unreferenced.
+      # Release (v*) images are plain single manifests with no children, so they
+      # are not exposed to this at all.
+      - name: Delete orphaned untagged versions
+        uses: snok/container-retention-policy@v3.1.0
+        with:
+          account: user
+          token: ${{ secrets.GITHUB_TOKEN }}
+          image-names: ${{ env.IMAGES }}
+          tag-selection: untagged
+          cut-off: 16w
           dry-run: ${{ inputs.dry_run || false }}
