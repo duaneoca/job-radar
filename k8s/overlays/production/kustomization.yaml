@@ -6,6 +6,8 @@ namespace: jobradar-production
 
 resources:
   - ../../base
+  # Production only — staging data is disposable, so it gets no backup job.
+  - backup-cronjob.yaml
 
 patches:
   # Override ingress with hostname + TLS for production

@@ -1,0 +1,113 @@
+# Nightly logical backup of the production database to S3.
+#
+# Production only — staging data is disposable and re-creatable.
+#
+# Runs at 02:00 UTC, BEFORE the 02:45 expire and 03:00 cleanup passes, so each
+# night's dump still contains the terminal-status reviews those jobs are about to
+# delete. That is deliberate: "restore what cleanup removed" is a likely reason to
+# reach for a backup.
+#
+# Two official images instead of a custom one: pg_dump runs in the init container,
+# the upload runs in the main container, and they hand off through an emptyDir.
+#
+# WHY THIS MATTERS BEYOND THE DATABASE: user_job_reviews.job_id cascades from jobs,
+# so a partial restore is not possible — the whole database is the unit. And a
+# restore is only useful while ENCRYPTION_KEY still exists, since every stored API
+# key and mail credential is encrypted with it. That key lives in the
+# tracker-api-secrets object and must be backed up separately, off-cluster.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: jobradar-db-backup
+  namespace: jobradar-production
+  labels:
+    app: db-backup
+    project: jobradar
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600     # still run if the node was busy at 02:00
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 1800
+      backoffLimit: 2               # transient S3/network failures get a retry
+      template:
+        metadata:
+          labels:
+            app: db-backup
+        spec:
+          restartPolicy: Never
+          volumes:
+            - name: dump
+              emptyDir: {}
+          initContainers:
+            - name: pg-dump
+              image: postgres:16-alpine
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -euo pipefail
+                  STAMP="$(date -u +%Y%m%d-%H%M%S)"
+                  FILE="/dump/jobradar-prod-${STAMP}.dump"
+                  echo "Dumping to ${FILE}"
+                  # -Fc: custom format — compressed, and restorable selectively
+                  # Host is the SERVICE name ("postgres"), not the deployment
+                  # name ("jobradar-postgres") — same as the app's DATABASE_URL.
+                  pg_dump -Fc -h postgres -U "$POSTGRES_USER" jobradar > "$FILE"
+                  # Prove the dump is readable before we ship it. A dump that
+                  # cannot be listed cannot be restored, and finding that out at
+                  # restore time is the whole failure mode backups exist to avoid.
+                  pg_restore --list "$FILE" > /dev/null
+                  echo "Verified $(wc -c < "$FILE") bytes, $(pg_restore --list "$FILE" | grep -c '^[0-9]') objects"
+                  ln -sf "$FILE" /dump/latest
+              env:
+                - name: POSTGRES_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-credentials
+                      key: POSTGRES_USER
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-credentials
+                      key: POSTGRES_PASSWORD
+              volumeMounts:
+                - name: dump
+                  mountPath: /dump
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "64Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "256Mi"
+          containers:
+            - name: upload
+              image: amazon/aws-cli:2.17.0
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -euo pipefail
+                  FILE="$(ls -1 /dump/jobradar-prod-*.dump | head -1)"
+                  echo "Uploading $(basename "$FILE") ($(wc -c < "$FILE") bytes) to s3://${S3_BUCKET}/${S3_PREFIX}/"
+                  aws s3 cp "$FILE" "s3://${S3_BUCKET}/${S3_PREFIX}/$(basename "$FILE")" \
+                    --only-show-errors
+                  echo "Upload complete."
+                  # Surface the current retention window in the log, so a silently
+                  # broken schedule is visible without opening the console.
+                  aws s3 ls "s3://${S3_BUCKET}/${S3_PREFIX}/" | tail -5
+              envFrom:
+                - secretRef:
+                    name: db-backup-secrets
+              volumeMounts:
+                - name: dump
+                  mountPath: /dump
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "64Mi"
+                limits:
+                  cpu: "300m"
+                  memory: "256Mi"
