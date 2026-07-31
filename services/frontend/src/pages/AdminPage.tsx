@@ -2,8 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle, XCircle, ShieldCheck, ShieldOff, Loader2,
-  ChevronLeft, ChevronRight, KeyRound, Trash2, RefreshCw, Brain,
-} from "lucide-react";
+  ChevronLeft, ChevronRight, KeyRound, Trash2, RefreshCw, Brain, Clock } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Badge } from "../components/ui/badge";
@@ -246,6 +245,7 @@ function SystemTab() {
   const [scraping, setScraping] = useState(false);
   const [evaluating, setEvaluating] = useState(false);
   const [cleaning, setCleaning] = useState(false);
+  const [expiring, setExpiring] = useState(false);
   const queryClient = useQueryClient();
   const { user, setUser } = useAuthStore();
 
@@ -298,6 +298,24 @@ function SystemTab() {
     }
   }
 
+  async function triggerExpire() {
+    setExpiring(true);
+    try {
+      const res = await adminApi.post("/admin/expire-jobs");
+      const { reviews_expired, stale_postings, unactioned } = res.data;
+      toast({
+        title: reviews_expired > 0 ? `${reviews_expired} job${reviews_expired !== 1 ? "s" : ""} expired` : "Nothing to expire",
+        description: reviews_expired > 0
+          ? `${stale_postings} posting${stale_postings !== 1 ? "s" : ""} too old at the source, ${unactioned} unactioned here. Set any back from the status dropdown — nothing is deleted for 14 days.`
+          : "Every listing is either recent enough or already actioned.",
+      });
+    } catch (err: any) {
+      toast({ title: "Expire failed", description: err?.response?.data?.detail, variant: "destructive" });
+    } finally {
+      setExpiring(false);
+    }
+  }
+
   async function triggerCleanup() {
     if (!confirm("Delete all dismissed, rejected, and expired jobs older than 14 days? This cannot be undone.")) return;
     setCleaning(true);
@@ -305,8 +323,12 @@ function SystemTab() {
       const res = await adminApi.post("/admin/cleanup-jobs");
       const { reviews_deleted, orphan_jobs_deleted } = res.data;
       toast({
-        title: "Cleanup complete",
-        description: `${reviews_deleted} old review${reviews_deleted !== 1 ? "s" : ""} removed, ${orphan_jobs_deleted} orphan job${orphan_jobs_deleted !== 1 ? "s" : ""} deleted.`,
+        title: reviews_deleted > 0 ? "Cleanup complete" : "Nothing to delete",
+        // A plain "0 removed" reads like a failure. Say WHY: expiring a job resets
+        // its clock, so freshly expired jobs are not eligible for another 14 days.
+        description: reviews_deleted > 0
+          ? `${reviews_deleted} old review${reviews_deleted !== 1 ? "s" : ""} removed, ${orphan_jobs_deleted} orphan job${orphan_jobs_deleted !== 1 ? "s" : ""} deleted.`
+          : "Nothing has been dismissed, rejected, or expired for longer than 14 days yet. Expired jobs wait out that window before they are deleted.",
       });
     } catch (err: any) {
       toast({ title: "Cleanup failed", description: err?.response?.data?.detail, variant: "destructive" });
@@ -359,6 +381,21 @@ function SystemTab() {
         <Button onClick={triggerEvaluate} disabled={evaluating} variant="outline">
           {evaluating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Brain className="h-4 w-4 mr-2" />}
           Evaluate unscored jobs
+        </Button>
+      </div>
+
+      <div className="rounded-lg border p-4 space-y-3">
+        <div>
+          <h3 className="font-medium">Expire stale listings</h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            Mark jobs as Expired when the posting is more than three weeks old, or when it
+            has sat here unactioned for a month. Reversible — set any back from the status
+            dropdown. Runs automatically every night at 2:45 AM UTC.
+          </p>
+        </div>
+        <Button onClick={triggerExpire} disabled={expiring} variant="outline">
+          {expiring ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Clock className="h-4 w-4 mr-2" />}
+          Expire stale listings
         </Button>
       </div>
 
