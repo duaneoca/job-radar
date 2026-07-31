@@ -3,6 +3,7 @@
 from unittest.mock import patch
 
 from app import main
+from app.scrapers.base import BoardScrape
 
 
 class FakeCompanyScraper:
@@ -13,7 +14,7 @@ class FakeCompanyScraper:
 
     async def scrape_companies(self, companies, keywords):
         self.calls.append((list(companies), list(keywords)))
-        return list(self._jobs)
+        return BoardScrape(list(self._jobs), {c: {"id"} for c in companies})
 
 
 def test_company_pass_runs_once_despite_many_locations():
@@ -25,7 +26,8 @@ def test_company_pass_runs_once_despite_many_locations():
     }
     with patch.object(main, "SCRAPERS", []), \
          patch.object(main, "COMPANY_SCRAPERS", [board]), \
-         patch.object(main, "_post_job", return_value="id") as post:
+         patch.object(main, "_post_job", return_value="id") as post, \
+         patch.object(main, "_post_board_sync") as sync:
         seen, created = main._scrape_for_config(cfg)
     assert len(board.calls) == 1  # once per user, NOT per location
     assert board.calls[0] == (["Acme"], ["eng"])
@@ -42,7 +44,8 @@ def test_company_pass_skipped_without_target_companies():
     ):
         with patch.object(main, "SCRAPERS", []), \
              patch.object(main, "COMPANY_SCRAPERS", [board]), \
-             patch.object(main, "_post_job", return_value="id"):
+             patch.object(main, "_post_job", return_value="id"), \
+             patch.object(main, "_post_board_sync"):
             main._scrape_for_config(cfg)
     assert board.calls == []
 
@@ -58,6 +61,7 @@ def test_company_pass_crash_isolated():
            "target_companies": ["Acme"], "adzuna": None}
     with patch.object(main, "SCRAPERS", []), \
          patch.object(main, "COMPANY_SCRAPERS", [Crasher(), ok]), \
-         patch.object(main, "_post_job", return_value="id"):
+         patch.object(main, "_post_job", return_value="id"), \
+             patch.object(main, "_post_board_sync"):
         seen, created = main._scrape_for_config(cfg)
     assert (seen, created) == (1, 1)  # lever still ran after ashby crashed

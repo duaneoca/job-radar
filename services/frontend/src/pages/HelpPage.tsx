@@ -170,8 +170,10 @@ function JobPipelineTab() {
           is more than three weeks old. That second rule matters because listings from the big
           job boards come down within a week or two, so an old posting is almost always a dead
           link even if we only found it yesterday. Jobs you captured with the bookmarklet, and
-          jobs watched directly on a company's own board, are never expired for age — we can
-          see those are still open. Expired, Rejected, and Dismissed jobs are deleted after a
+          jobs watched directly on a company's own board, are never expired for age. For
+          company boards we can do better than a guess: we re-read the board every scrape,
+          so a role that disappears from it has genuinely been taken down, and we expire it
+          once it has been missing twice in a row. Expired, Rejected, and Dismissed jobs are deleted after a
           grace period, and you can always set the status back yourself.</Li>
       </ul>
 

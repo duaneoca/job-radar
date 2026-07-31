@@ -176,10 +176,22 @@ self-configure from `.env`; only in-cluster (cloud) agents fetch decrypted confi
      `_POSTING_AGE_EXEMPT_SOURCES` skips `manual` (deliberate capture) and
      `ashby`/`greenhouse`/`lever` (we re-read those boards every scrape, so a
      posting still returned IS still open — evergreen reqs can sit for years).
-- Expiry cannot be confirmed by fetching the link: aggregators return 403 to
+- **Company boards get a real signal instead of a proxy.** `POST /jobs/board-sync`
+  (internal) receives every `external_id` still on each board the scraper
+  successfully read; a posting missing `BOARD_MISS_THRESHOLD` (2) consecutive
+  scrapes is expired. Safety: only boards that returned a valid payload are sent
+  (a 429 or dead slug is omitted, never mistaken for "empty"); ids are collected
+  BEFORE the title prefilter, so editing `job_titles` can't expire past finds;
+  reappearing resets the counter. Expiry is global for the job and touches only
+  NEW/REVIEWED.
+- Expiry cannot be confirmed by fetching an AGGREGATOR link: they return 403 to
   anything that isn't a real browser, and the block page is identical for live
-  and dead ads. Posting age is the proxy. (A browser *does* see
+  and dead ads. Posting age is the proxy there. (A browser *does* see
   "Unfortunately, this job is no longer available" — but only a browser.)
+- Never treat absence from an aggregator search as evidence: Adzuna is queried
+  `sort_by=date` capped at 100/keyword, so live-but-older postings fall out by
+  design. `models.BOARD_SOURCES` is the single source of truth for which sources
+  return every open role.
 - `terminal_ttl_days = 14` (config) — dismissed, rejected, expired reviews deleted after 14 days
 - Orphaned `Job` rows (no remaining reviews from any user) hard-deleted in same pass
 - Applied / interviewing / offer / referral_requested are never touched by either pass
