@@ -287,13 +287,17 @@ function ApplicationToolsTab() {
       <P>It's deliberately <strong>honest</strong>: a locked guideline stops it from
         inventing experience, tools, or titles you don't have. If there's a genuine gap
         between you and the role, it leaves the gap rather than papering over it.</P>
-      <P>The AI may also <strong>re-order bullets within a role</strong> to lead with what's
-        most relevant to the posting. That arrives as a single <em>changed order</em> change
-        showing the section before and after — not as one edit per bullet — and you accept or
-        reject the whole re-ordering at once. If a bullet was also reworded, its wording shows
-        up as its own separate change, so you can take the new order while keeping your
-        original phrasing (or the reverse). A bullet moved between phases of the same job is
-        the one case that still shows as a removal plus an addition.</P>
+      <P>The AI may also <strong>re-order things</strong> to lead with what's most relevant to
+        the posting — bullets inside a role, or whole entries within a section (promoting a
+        project, say). Either way it arrives as a single <em>changed order</em> change showing
+        the section before and after, not one edit per line, and you accept or reject the whole
+        re-ordering at once.</P>
+      <P>Entries are matched by their heading and bullets by their text, so a re-ordering is
+        recognised as a move rather than a pile of rewrites. If something was moved <em>and</em>
+        reworded, the wording shows up as its own separate change — so you can take the new
+        order while keeping your original phrasing, or the reverse. A bullet moved between
+        phases of the same job is the one case that still shows as a removal plus an
+        addition.</P>
       <P>When you're happy, export a clean, templated <strong>PDF</strong> — pick a template,
         adjust font/density/margins, and print or download. Your tailored version is saved
         with the job, so you can come back to it later.</P>
