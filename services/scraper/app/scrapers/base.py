@@ -44,6 +44,23 @@ class BaseScraper(ABC):
         ...
 
 
+@dataclass
+class BoardScrape:
+    """The result of one company-board pass.
+
+    `live_ids` is the absence signal, and it is deliberately narrow: a company
+    appears ONLY if its board was actually read (HTTP 200 with a valid payload).
+    A 429, a timeout, or a slug that stopped resolving must never look like "the
+    board is empty" — that would expire every job at that company in one sweep.
+
+    The ids are collected BEFORE the title prefilter, so editing your job titles
+    can never expire postings you already collected. Absence means the employer
+    took the listing down, nothing else.
+    """
+    jobs: List[RawJob]
+    live_ids: dict          # company -> set of every external_id on its board
+
+
 class CompanyBoardScraper(ABC):
     """Watches specific companies' public ATS boards (Greenhouse/Lever/Ashby).
 
@@ -51,9 +68,12 @@ class CompanyBoardScraper(ABC):
     open roles, so implementations MUST prefilter titles against `keywords`
     before emitting — otherwise a handful of watched companies floods stage-2
     AI scoring. Runs once per user (locations don't apply to a board).
+
+    Returning ALL open roles is also what makes absence meaningful here, unlike
+    an aggregator search which returns a ranked, truncated slice.
     """
     source_name: str
 
     @abstractmethod
-    async def scrape_companies(self, companies: List[str], keywords: List[str]) -> List[RawJob]:
+    async def scrape_companies(self, companies: List[str], keywords: List[str]) -> BoardScrape:
         ...

@@ -169,6 +169,81 @@ def get_job_internal(
     return job
 
 
+@router.post("/board-sync", include_in_schema=False)
+def board_sync(
+    payload: schemas.BoardSyncIn,
+    user_id: Optional[UUID] = None,
+    db: Session = Depends(get_db),
+    _it: None = Depends(require_internal_token),
+):
+    """Expire company-board postings the employer has taken down.
+
+    The scraper sends every external_id still on each board it SUCCESSFULLY read.
+    A posting we hold that is not in that set has been removed — company boards
+    return every open role, so absence is real evidence here (unlike an
+    aggregator search, which returns a ranked, truncated slice).
+
+    Two safety properties matter more than the feature:
+      * only boards that returned a valid payload are ever sent, so a 429 or a
+        dead slug can never masquerade as "the board is empty";
+      * a posting must be missing BOARD_MISS_THRESHOLD scrapes in a row, so one
+        bad run cannot clear a company. Reappearing resets the counter.
+
+    Expiry is global for the job (board presence is a property of the posting,
+    not of one user) and touches only NEW/REVIEWED — anything you have acted on
+    is left alone. `user_id` is for log context only.
+    """
+    if payload.source not in models.BOARD_SOURCES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"board-sync is only valid for {', '.join(models.BOARD_SOURCES)}",
+        )
+
+    now = datetime.now(timezone.utc)
+    missing = expired = reset = 0
+
+    for company, ids in payload.companies.items():
+        live = set(ids)
+        jobs = (
+            db.query(models.Job)
+            .filter(models.Job.source == payload.source, models.Job.company == company)
+            .all()
+        )
+        for job in jobs:
+            if job.external_id in live:
+                if job.board_missing_count:
+                    job.board_missing_count = 0
+                    reset += 1
+                continue
+            job.board_missing_count = (job.board_missing_count or 0) + 1
+            missing += 1
+            if job.board_missing_count < models.BOARD_MISS_THRESHOLD:
+                continue
+            expired += (
+                db.query(models.UserJobReview)
+                .filter(
+                    models.UserJobReview.job_id == job.id,
+                    models.UserJobReview.status.in_(
+                        [models.JobStatus.NEW, models.JobStatus.REVIEWED]
+                    ),
+                )
+                .update(
+                    {
+                        models.UserJobReview.status: models.JobStatus.EXPIRED,
+                        models.UserJobReview.updated_at: now,
+                    },
+                    synchronize_session=False,
+                )
+            )
+
+    db.commit()
+    logger.info(
+        "board-sync %s (user %s): %d companies, %d missing, %d expired, %d back on board",
+        payload.source, user_id, len(payload.companies), missing, expired, reset,
+    )
+    return {"missing": missing, "expired": expired, "reset": reset}
+
+
 # ── User-facing endpoints (auth required) ────────────────────
 
 @router.get("", response_model=schemas.JobListOut)

@@ -47,12 +47,7 @@ _EXPIRABLE_STATUSES = [
 #                                Some evergreen reqs sit on a board for years.
 # For the aggregator sources there is no such evidence: a search result tells us
 # nothing about whether the underlying ad is alive, so age is the best proxy.
-_POSTING_AGE_EXEMPT_SOURCES = [
-    models.JobSource.MANUAL.value,
-    models.JobSource.ASHBY.value,
-    models.JobSource.GREENHOUSE.value,
-    models.JobSource.LEVER.value,
-]
+_POSTING_AGE_EXEMPT_SOURCES = [models.JobSource.MANUAL.value, *models.BOARD_SOURCES]
 
 
 def _do_cleanup(db: Session) -> dict:

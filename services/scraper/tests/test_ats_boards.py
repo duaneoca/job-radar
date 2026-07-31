@@ -105,14 +105,17 @@ def test_title_prefilter_drops_nonmatching(monkeypatch):
         return items
 
     monkeypatch.setattr(scraper, "_fetch_company", fake_fetch)
-    jobs = asyncio.run(scraper.scrape_companies(["Stripe"], ["Forward Deployed Engineer"]))
-    assert [j.external_id for j in jobs] == ["7954688"]
+    result = asyncio.run(scraper.scrape_companies(["Stripe"], ["Forward Deployed Engineer"]))
+    assert [j.external_id for j in result.jobs] == ["7954688"]
+    # live_ids is collected BEFORE the title filter — the non-matching job is
+    # still on the board, so it must not look like it was taken down.
+    assert result.live_ids == {"Stripe": {"7954688", "2"}}
 
 
 def test_no_keywords_refuses_to_scrape():
     scraper = GreenhouseScraper()
-    jobs = asyncio.run(scraper.scrape_companies(["Stripe"], []))
-    assert jobs == []
+    result = asyncio.run(scraper.scrape_companies(["Stripe"], []))
+    assert result.jobs == [] and result.live_ids == {}
 
 
 def test_429_probe_not_cached_as_miss():
@@ -139,3 +142,48 @@ class _fake_client:
         return self
     async def __aexit__(self, *a):
         return False
+
+
+# ── live_ids: the absence signal, and when it must stay silent ──
+
+def _scraper_returning(items):
+    """A scraper whose board fetch yields `items` (None = fetch failed)."""
+    s = GreenhouseScraper()
+
+    async def fake_fetch(client, company):
+        return items
+    s._fetch_company = fake_fetch
+    return s
+
+
+def test_failed_fetch_reports_no_live_ids():
+    """The mass-expiry failure mode: a 429 / dead slug / timeout returns None,
+    and must NOT look like an empty board."""
+    result = asyncio.run(_scraper_returning(None).scrape_companies(["Stripe"], ["Forward Deployed Engineer"]))
+    assert result.live_ids == {}          # company omitted entirely
+    assert result.jobs == []
+
+
+def test_genuinely_empty_board_reports_an_empty_set():
+    """A board that really has no open roles IS evidence — distinct from above."""
+    result = asyncio.run(_scraper_returning([]).scrape_companies(["Stripe"], ["Forward Deployed Engineer"]))
+    assert result.live_ids == {"Stripe": set()}
+
+
+def test_live_ids_ignore_the_title_filter():
+    """Editing your job titles must never expire postings you already collected."""
+    items = [GH_ITEM, {**GH_ITEM, "id": 999, "title": "Chef de Partie"}]
+    result = asyncio.run(_scraper_returning(items).scrape_companies(["Stripe"], ["Forward Deployed Engineer"]))
+    assert [j.external_id for j in result.jobs] == ["7954688"]     # only the match
+    assert result.live_ids["Stripe"] == {"7954688", "999"}         # both are live
+
+
+def test_unlisted_ashby_job_is_not_live():
+    """isListed=False means it is off the public board — correctly absent."""
+    s = AshbyScraper()
+
+    async def fake_fetch(client, company):
+        return [ASHBY_ITEM, {**ASHBY_ITEM, "id": "hidden", "isListed": False}]
+    s._fetch_company = fake_fetch
+    result = asyncio.run(s.scrape_companies(["Ramp"], ["Solutions Architect"]))
+    assert "hidden" not in result.live_ids["Ramp"]

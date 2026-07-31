@@ -538,6 +538,16 @@ class ActiveKeyUpdate(BaseModel):
     provider: Optional[LLMProvider] = None  # null clears the selection (back to priority order)
 
 
+class BoardSyncIn(BaseModel):
+    """Which postings are still live on each company board we actually read.
+
+    Only boards that returned a valid payload are included — a failed fetch must
+    never arrive here looking like an empty board.
+    """
+    source: str
+    companies: dict[str, List[str]]   # company -> external_ids currently on its board
+
+
 # ── Scraper per-user config (internal, in-cluster only) ───────
 
 class ScraperAdzunaCreds(BaseModel):

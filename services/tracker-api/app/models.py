@@ -63,6 +63,21 @@ class JobSource(str, enum.Enum):
     MANUAL       = "manual"
 
 
+# Sources backed by a company's OWN board, which returns EVERY open role. That is
+# what makes absence meaningful: a posting that stops appearing has been taken
+# down. An aggregator search returns a ranked, truncated slice, where a missing
+# job usually just fell off the end — never treat that as evidence.
+BOARD_SOURCES = [
+    JobSource.ASHBY.value,
+    JobSource.GREENHOUSE.value,
+    JobSource.LEVER.value,
+]
+
+# Consecutive board scrapes a posting must be missing from before it expires.
+# Two strikes means one bad scrape can never clear a company.
+BOARD_MISS_THRESHOLD = 2
+
+
 class LLMProvider(str, enum.Enum):
     ANTHROPIC = "anthropic"
     OPENAI    = "openai"
@@ -142,6 +157,11 @@ class Job(Base):
 
     date_posted     = Column(DateTime(timezone=True), nullable=True)
     date_scraped    = Column(DateTime(timezone=True), default=utcnow)
+    # Consecutive company-board scrapes in which this posting was NOT returned.
+    # Only ever touched for board sources (ashby/greenhouse/lever), and only when
+    # the board was actually read — see /jobs/board-sync. Two strikes expires it,
+    # so a single bad scrape can't clear a company.
+    board_missing_count = Column(Integer, nullable=False, server_default="0", default=0)
 
     # Relationships
     user_reviews = relationship("UserJobReview", back_populates="job", cascade="all, delete-orphan")

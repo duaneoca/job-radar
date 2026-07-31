@@ -31,7 +31,7 @@ from typing import List, Optional
 
 import httpx
 
-from app.scrapers.base import CompanyBoardScraper, RawJob
+from app.scrapers.base import BoardScrape, CompanyBoardScraper, RawJob
 from app.scrapers.filtering import keyword_tokens, strip_html, title_matches
 from app.scrapers.slugs import SlugCache, candidate_slugs
 
@@ -77,13 +77,14 @@ class _ATSBase(CompanyBoardScraper):
 
     # ── shared loop ──────────────────────────────────────────
 
-    async def scrape_companies(self, companies: List[str], keywords: List[str]) -> List[RawJob]:
+    async def scrape_companies(self, companies: List[str], keywords: List[str]) -> BoardScrape:
         tokens = keyword_tokens(keywords)
         if not tokens:
-            return []  # nothing to prefilter against — refuse to flood scoring
+            return BoardScrape([], {})  # nothing to prefilter against — refuse to flood scoring
 
         jobs: List[RawJob] = []
         seen: set[str] = set()
+        live_ids: dict[str, set] = {}
         headers = {"User-Agent": _USER_AGENT}
         async with httpx.AsyncClient(timeout=_TIMEOUT, headers=headers) as client:
             for i, company in enumerate(companies):
@@ -94,21 +95,29 @@ class _ATSBase(CompanyBoardScraper):
                 except Exception:
                     logger.exception("%s board fetch crashed for '%s'", self.source_name, company)
                     continue
+                # None = we never got a valid payload (transient failure, no board,
+                # cached miss). [] = the board really is empty. Only the latter is
+                # evidence, so only the latter may drive expiry.
                 if items is None:
                     continue
+                on_board: set[str] = set()
                 kept = 0
                 for item in items:
                     raw = self._to_raw_job(item, company)
-                    if raw is None or raw.external_id in seen:
+                    if raw is None:
                         continue
-                    if not title_matches(raw.title, tokens):
+                    # Recorded before the title filter: absence must mean "taken
+                    # down", never "no longer matches your job titles".
+                    on_board.add(raw.external_id)
+                    if raw.external_id in seen or not title_matches(raw.title, tokens):
                         continue
                     seen.add(raw.external_id)
                     jobs.append(raw)
                     kept += 1
-                logger.info("%s/%s: %d postings, %d after title filter",
-                            self.source_name, company, len(items), kept)
-        return jobs
+                live_ids[company] = on_board
+                logger.info("%s/%s: %d postings (%d live ids), %d after title filter",
+                            self.source_name, company, len(items), len(on_board), kept)
+        return BoardScrape(jobs, live_ids)
 
     async def _fetch_company(self, client: httpx.AsyncClient, company: str) -> Optional[list]:
         """Resolve the slug (cached or by probing) and return its postings.

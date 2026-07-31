@@ -197,15 +197,21 @@ def _scrape_for_config(cfg: dict) -> tuple[int, int]:
     if companies:
         for scraper in COMPANY_SCRAPERS:
             try:
-                raw_jobs = asyncio.run(scraper.scrape_companies(companies, keywords))
+                result = asyncio.run(scraper.scrape_companies(companies, keywords))
             except Exception:
                 logger.exception("company scraper %s crashed for user %s",
                                  scraper.source_name, user_id)
                 continue
-            seen += len(raw_jobs)
-            for raw in raw_jobs:
+            seen += len(result.jobs)
+            for raw in result.jobs:
                 if _post_job(raw, user_id=user_id):
                     created += 1
+            # Report which postings are still on each board we actually read, so
+            # tracker-api can expire the ones the employer took down. Only boards
+            # that returned a valid payload are in live_ids — a failed fetch must
+            # never look like an empty board.
+            if result.live_ids:
+                _post_board_sync(scraper.source_name, result.live_ids, user_id)
     return seen, created
 
 
@@ -273,6 +279,30 @@ def _fetch_user_configs() -> list[dict] | None:
     except Exception:
         logger.exception("Failed to fetch user configs from %s", url)
         return None
+
+
+def _post_board_sync(source: str, live_ids: dict, user_id: str) -> None:
+    """Tell tracker-api which external_ids are still live on each company board.
+
+    Absence is only meaningful for company boards, which return EVERY open role.
+    (An aggregator search returns a ranked, truncated slice, so a missing job
+    there usually just fell off the end.) Best-effort: a failure here must never
+    fail the scrape — worst case the expiry is a cycle late.
+    """
+    url = f"{settings.tracker_api_url}/jobs/board-sync"
+    payload = {
+        "source": source,
+        "companies": {c: sorted(ids) for c, ids in live_ids.items()},
+    }
+    try:
+        resp = httpx.post(url, json=payload, params={"user_id": user_id},
+                          timeout=30, headers=_internal_headers())
+        resp.raise_for_status()
+        body = resp.json()
+        logger.info("board-sync %s: %d companies, %d expired, %d missing",
+                    source, len(live_ids), body.get("expired", 0), body.get("missing", 0))
+    except Exception:
+        logger.exception("board-sync failed for %s (user %s)", source, user_id)
 
 
 def _post_job(raw: RawJob, user_id: str) -> str | None:
