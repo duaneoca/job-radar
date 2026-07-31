@@ -1,0 +1,68 @@
+name: Prune container images
+
+# Staging tags every image with the commit SHA, so each merge to main pushes five
+# new versions to GHCR that are never reused. Production tags with the release
+# (vX.Y.Z) instead. This prunes the disposable half.
+#
+# Release images are NEVER deleted: rolling production back means redeploying an
+# earlier vX.Y.Z, and the node's kubelet garbage-collects its local image cache,
+# so GHCR is what actually makes a rollback possible.
+#
+# Nothing here touches the cluster. Images on the node are already managed by
+# kubelet (GC at 85% disk, down to 80%) and need no help from us.
+#
+# First run: trigger this manually with "Dry run" left ON and read the log before
+# letting the schedule do it for real.
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"        # Mondays, 04:00 UTC
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List what would be deleted, without deleting it"
+        type: boolean
+        default: true
+
+permissions:
+  packages: write
+
+env:
+  # Listed explicitly: with the built-in GITHUB_TOKEN the action cannot use
+  # wildcards on the package-list endpoint.
+  IMAGES: >-
+    jobradar-tracker-api
+    jobradar-frontend
+    jobradar-scraper
+    jobradar-ai-reviewer
+    jobradar-mcp-writer
+
+jobs:
+  prune:
+    name: Prune GHCR versions
+    runs-on: ubuntu-latest
+    steps:
+      # Layers orphaned when a tag gets overwritten. Nothing references these.
+      - name: Delete untagged versions
+        uses: snok/container-retention-policy@v3.1.0
+        with:
+          account: user
+          token: ${{ secrets.GITHUB_TOKEN }}
+          image-names: ${{ env.IMAGES }}
+          tag-selection: untagged
+          cut-off: 2w
+          dry-run: ${{ inputs.dry_run || false }}
+
+      # Commit-SHA staging builds. "!v*" keeps every release image, and
+      # keep-n-most-recent protects whatever staging is currently running.
+      - name: Delete old staging builds
+        uses: snok/container-retention-policy@v3.1.0
+        with:
+          account: user
+          token: ${{ secrets.GITHUB_TOKEN }}
+          image-names: ${{ env.IMAGES }}
+          tag-selection: tagged
+          image-tags: "!v*"
+          cut-off: 8w
+          keep-n-most-recent: 10
+          dry-run: ${{ inputs.dry_run || false }}
