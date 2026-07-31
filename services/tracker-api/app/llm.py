@@ -28,7 +28,11 @@ litellm.suppress_debug_info = True
 PROVIDER_MODELS: dict[models.LLMProvider, str] = {
     models.LLMProvider.ANTHROPIC: "claude-haiku-4-5",
     models.LLMProvider.OPENAI:    "gpt-4o-mini",
-    models.LLMProvider.GOOGLE:    "gemini/gemini-1.5-flash",
+    # Gemini 1.5 was shut down entirely — it returns 404, which surfaced as every
+    # review silently scoring nothing for a user who had no preferred_model set.
+    # Users can pick any live model in Settings (the dropdown is fetched from
+    # Google), but this is what they get until they do, so keep it current.
+    models.LLMProvider.GOOGLE:    "gemini/gemini-2.5-flash",
     models.LLMProvider.GROQ:      "groq/llama-3.3-70b-versatile",
 }
 
@@ -46,11 +50,15 @@ MODEL_DESCRIPTORS: dict[str, str] = {
     "o1":           "Advanced reasoning · highest cost",
     "o3-mini":      "Fast reasoning",
     "o3":           "Advanced reasoning · highest cost",
-    # Google (keyed without prefix for matching after stripping "gemini/")
-    "gemini-1.5-flash":    "Fast · lowest cost",
-    "gemini-1.5-pro":      "Balanced · recommended",
-    "gemini-2.0-flash":    "Fast · latest generation",
-    "gemini-2.0-pro":      "Most capable · higher cost",
+    # Google (keyed without prefix for matching after stripping "gemini/").
+    # 1.5 and 2.0 are retired; these are descriptors only, and the Settings
+    # dropdown lists whatever Google actually returns for the user's key.
+    "gemini-2.5-flash-lite": "Fastest · lowest cost",
+    "gemini-2.5-flash":      "Fast · low cost",
+    "gemini-2.5-pro":        "Most capable · higher cost",
+    "gemini-3.5-flash-lite": "Fastest · latest generation",
+    "gemini-3.5-flash":      "Balanced · latest generation",
+    "gemini-3.6-flash":      "Newest · balanced",
     # Groq (keyed without prefix for matching after stripping "groq/")
     "llama-3.3-70b-versatile": "Balanced · free tier",
     "llama-3.1-8b-instant":    "Fastest · free tier",
