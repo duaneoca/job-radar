@@ -21,6 +21,25 @@ spec:
         - name: ai-reviewer
           # Image tag is overridden by CI via `kubectl set image` on every deploy.
           image: ghcr.io/duaneoca/jobradar-ai-reviewer:staging
+          # Pinned to one fork. Celery defaults concurrency to the CPU count (2 on
+          # this node) and each fork loads litellm — roughly 150Mi apiece — which
+          # exceeds the 256Mi limit below as soon as both are busy. Light traffic
+          # never ran two at once; the first real backlog (843 queued jobs) OOM-
+          # killed the worker into CrashLoopBackOff in production.
+          #
+          # One fork rather than a bigger limit: the node is already at ~87% of its
+          # memory limits, and scoring is I/O-bound waiting on the LLM API, so the
+          # second fork bought little. Observed drain rate at concurrency=1 is
+          # ~3.5 jobs/sec. Raise the memory limit BEFORE raising this.
+          command:
+            - celery
+            - -A
+            - app.main
+            - worker
+            - --loglevel=info
+            - -Q
+            - review
+            - --concurrency=1
           envFrom:
             - configMapRef:
                 name: tracker-api-config   # shares REDIS_URL and TRACKER_API_URL
