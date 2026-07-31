@@ -236,53 +236,59 @@ def tailor_resume(structured, honesty_facts, job_text, style_prompt, api_key, mo
 
 # ── Deterministic diff (the authoritative consent gate) ───────
 
-def _scalar_leaves(structured: schemas.ResumeStructured) -> dict:
-    """Flatten the SCALAR fields of a résumé to {path: (section, text)}.
 
-    Bullet lists are deliberately excluded — they are aligned by content in
-    `_lists`/`_align_list` instead, because the contract lets the model reorder
-    bullets within a role and index-based paths cannot express a move (a swap
-    would read as two inverse edits).
+# Object arrays whose ENTRIES can move as a unit — a project promoted to the top,
+# a skill group reordered. Identity is the entry's heading: that is how a person
+# recognises an entry, and it survives its bullets being reworded.
+_ENTRY_ARRAYS = {
+    "skills":     ("skills",     lambda e: e.label or ""),
+    "experience": ("experience", lambda e: e.company or ""),
+    "education":  ("education",  lambda e: " ".join(x for x in (e.degree, e.school) if x)),
+    "projects":   ("projects",   lambda e: e.title or ""),
+}
 
-    `skills/{i}/items` and `experience/{i}/titles` stay joined scalars on
-    purpose: a skill group is set-ish, so a reorder card there is noise.
-    """
-    out: dict[str, tuple[str, str]] = {}
-    if structured.summary:
-        out["summary"] = ("summary", structured.summary)
-    for i, g in enumerate(structured.skills):
-        out[f"skills/{i}/label"] = ("skills", g.label)
-        out[f"skills/{i}/items"] = ("skills", " · ".join(g.items))
-    for i, e in enumerate(structured.experience):
-        out[f"experience/{i}/company"] = ("experience", e.company)
-        out[f"experience/{i}/titles"] = ("experience", " → ".join(e.titles))
+# Sub-fields rendered as one joined string for display but stored as a list. The
+# change carries the real list in *_value so applying it can never write the
+# " · "-joined display form back into the array.
+_JOINED_FIELDS = {"items": " · ", "titles": " → "}
+
+
+def _entry_fields(array: str, e) -> tuple[dict, dict]:
+    """(scalar sub-paths, list sub-paths) for ONE entry of an object array."""
+    if array == "skills":
+        return {"label": e.label, "items": " · ".join(e.items)}, {}
+    if array == "experience":
+        scalars = {"company": e.company, "titles": " → ".join(e.titles)}
         if e.start:
-            out[f"experience/{i}/start"] = ("experience", e.start)
+            scalars["start"] = e.start
         if e.end:
-            out[f"experience/{i}/end"] = ("experience", e.end)
-    for i, ed in enumerate(structured.education):
-        out[f"education/{i}/degree"] = ("education", ed.degree or "")
-        out[f"education/{i}/school"] = ("education", ed.school or "")
-    for i, pr in enumerate(structured.projects):
-        if pr.title:
-            out[f"projects/{i}/title"] = ("projects", pr.title)
-    return out
-
-
-def _lists(structured: schemas.ResumeStructured) -> dict:
-    """Bullet-style lists as {list_path: (section, [items])} — diffed by content."""
-    out: dict[str, tuple[str, list]] = {}
-    for i, e in enumerate(structured.experience):
-        out[f"experience/{i}/bullets"] = ("experience", list(e.bullets))
+            scalars["end"] = e.end
+        lists = {"bullets": list(e.bullets), "notable": list(e.notable)}
         for k, p in enumerate(e.phases):
-            out[f"experience/{i}/phases/{k}/bullets"] = ("experience", list(p.bullets))
-        out[f"experience/{i}/notable"] = ("experience", list(e.notable))
-    for i, pr in enumerate(structured.projects):
-        out[f"projects/{i}/bullets"] = ("projects", list(pr.bullets))
-    return {k: v for k, v in out.items() if v[1]}
+            lists[f"phases/{k}/bullets"] = list(p.bullets)
+        return scalars, lists
+    if array == "education":
+        return {"degree": e.degree or "", "school": e.school or ""}, {}
+    return ({"title": e.title} if e.title else {}), {"bullets": list(e.bullets)}
 
 
-# Minimum similarity for pairing a bullet that was moved AND reworded. 0.6 is the
+def _raw_field(array: str, e, sub: str):
+    """The stored (unjoined) value behind a scalar sub-path."""
+    if sub == "items":
+        return list(e.items)
+    if sub == "titles":
+        return list(e.titles)
+    return getattr(e, sub, None)
+
+
+def _entry_summary(array: str, e) -> str:
+    """One-line description of a whole entry, for added/removed cards."""
+    section, keyfn = _ENTRY_ARRAYS[array]
+    _, lists = _entry_fields(array, e)
+    bullets = [b for items in lists.values() for b in items]
+    head = keyfn(e) or "(untitled)"
+    return f"{head}: {bullets[0]}" if bullets else head
+# Minimum similarity for pairing an item that was moved AND reworded. 0.6 is the
 # same cutoff difflib.get_close_matches uses.
 FUZZY_THRESHOLD = 0.60
 
@@ -393,15 +399,18 @@ def _norm_text(s) -> str:
     return " ".join(str(s or "").split()).casefold()
 
 
+
 def diff_structured(original: schemas.ResumeStructured, tailored: schemas.ResumeStructured,
                     notes=None) -> list[dict]:
     """Authoritative change list. The diff is computed, never trusted to the model;
     model `notes` only enrich type/rationale/trigger.
 
-    Scalar fields diff by path. Bullet lists diff by CONTENT alignment, so moving a
-    bullet produces ONE 'reordered' change for the list rather than a chain of
-    inverse edits — and a bullet that was moved *and* reworded still gets its own
-    'modified' card for the wording.
+    Both levels of a résumé are aligned by CONTENT rather than position:
+    the ENTRIES of a section (projects, roles, skill groups) and the bullets inside
+    each entry. So promoting a project to the top is ONE "reordered" change, not a
+    title edit plus a body edit for every slot it shifted through. Every path is
+    anchored to the entry's ORIGINAL index, which is what keeps a decision attached
+    to its content across a re-order and across refine.
     """
     notes = [n for n in (notes or []) if isinstance(n, dict)]
     note_by_after, note_by_before = {}, {}
@@ -414,7 +423,7 @@ def diff_structured(original: schemas.ResumeStructured, tailored: schemas.Resume
 
     def take_note(before, after) -> dict:
         """Bind one model note to one change. Pure moves are skipped: their text is
-        unchanged, so text-matching would steal another bullet's rationale."""
+        unchanged, so text-matching would steal another entry's rationale."""
         if (before or "") == (after or ""):
             return {}
         for key, table in ((_norm_text(after), note_by_after), (_norm_text(before), note_by_before)):
@@ -428,7 +437,7 @@ def diff_structured(original: schemas.ResumeStructured, tailored: schemas.Resume
     seen_ids: set[str] = set()
 
     def add(change: dict) -> None:
-        """Append, keeping ids unique even if a résumé repeats a bullet verbatim."""
+        """Append, keeping ids unique even when a résumé repeats text verbatim."""
         cid, n = change["id"], 2
         while change["id"] in seen_ids:
             change["id"] = _cid(cid, f"#{n}")
@@ -436,124 +445,152 @@ def diff_structured(original: schemas.ResumeStructured, tailored: schemas.Resume
         seen_ids.add(change["id"])
         changes.append(change)
 
-    # ── scalar fields ────────────────────────────────────────
-    o, t = _scalar_leaves(original), _scalar_leaves(tailored)
-    for path in set(o) | set(t):
-        before = o.get(path, (None, None))[1]
-        after = t.get(path, (None, None))[1]
-        if (before or "") == (after or ""):
-            continue
-        section = (o.get(path) or t.get(path))[0]
-        note = take_note(before, after)
+    def emit_reorder(path, section, before_items, after_items, order, removed_i, label):
+        note = next((n for n in notes if n.get("type") == "reorder" and id(n) not in used_notes), None)
+        if note:
+            used_notes.add(id(note))
         add({
-            "id": _cid(path, _norm_text(before)),
+            "id": _cid(path, ":order"),
             "path": path,
             "section": section,
-            "before": before,
-            "after": after,
-            "kind": "modified" if (path in o and path in t) else ("removed" if path in o else "added"),
-            "type": _classify(path, note.get("type")),
-            "rationale": note.get("rationale", ""),
-            "trigger": note.get("trigger", ""),     # job-posting phrase that motivated it
+            # Numbered text so an older frontend still renders something readable.
+            "before": "\n".join(f"{n}. {b}" for n, b in enumerate(before_items, 1)),
+            "after": "\n".join(f"{n}. {b}" for n, b in enumerate(after_items, 1)),
+            "kind": "reordered",
+            "type": "reorder",
+            "rationale": (note or {}).get("rationale", "") or label,
+            "trigger": (note or {}).get("trigger", ""),
             "decision": "pending",
-            "list_path": None,
+            "list_path": path,
+            "before_items": list(before_items),
+            "after_items": list(after_items),
+            "order": order,
+            "removed_indices": removed_i,
+            "orig_path": path,
+            "tailored_path": path,
         })
 
-    # ── bullet lists ─────────────────────────────────────────
-    ol, tl = _lists(original), _lists(tailored)
-    for list_path in set(ol) | set(tl):
-        section = (ol.get(list_path) or tl.get(list_path))[0]
-        o_items = ol.get(list_path, (None, []))[1]
-        t_items = tl.get(list_path, (None, []))[1]
+    def diff_list(list_path, section, o_items, t_items):
+        """Bullet-level alignment inside one entry."""
         al = _align_list(o_items, t_items)
-
         if al.is_reorder:
-            note = next((n for n in notes
-                         if n.get("type") == "reorder" and id(n) not in used_notes), None)
-            if note:
-                used_notes.add(id(note))
-            add({
-                "id": _cid(list_path, ":order"),
-                "path": list_path,
-                "section": section,
-                # Numbered text so an older frontend still renders something useful.
-                "before": "\n".join(f"{n}. {b}" for n, b in enumerate(o_items, 1)),
-                "after": "\n".join(f"{n}. {b}" for n, b in enumerate(t_items, 1)),
-                "kind": "reordered",
-                "type": "reorder",
-                "rationale": (note or {}).get("rationale", "")
-                             or "Bullets re-ordered within this section.",
-                "trigger": (note or {}).get("trigger", ""),
-                "decision": "pending",
-                "list_path": list_path,
-                "before_items": list(o_items),
-                "after_items": list(t_items),
-                "order": al.order,
-                "removed_indices": al.removed_i,
-                "orig_path": list_path,
-                "tailored_path": list_path,
-            })
-
+            emit_reorder(list_path, section, o_items, t_items, al.order, al.removed_i,
+                         "Bullets re-ordered within this section.")
         for i, j in al.pairs:
             if o_items[i] == t_items[j]:
-                continue                      # moved only — covered by the reorder card
+                continue                      # moved only — the reorder card covers it
             note = take_note(o_items[i], t_items[j])
             add({
                 "id": _cid(list_path, str(i), _norm_text(o_items[i])),
-                "path": f"{list_path}/{i}",
-                "section": section,
-                "before": o_items[i],
-                "after": t_items[j],
-                "kind": "modified",
+                "path": f"{list_path}/{i}", "section": section,
+                "before": o_items[i], "after": t_items[j], "kind": "modified",
                 "type": _classify(list_path, note.get("type")),
-                "rationale": note.get("rationale", ""),
-                "trigger": note.get("trigger", ""),
-                "decision": "pending",
-                "list_path": list_path,
-                "orig_index": i,
-                "new_index": j,
-                "orig_path": f"{list_path}/{i}",
-                "tailored_path": f"{list_path}/{j}",
+                "rationale": note.get("rationale", ""), "trigger": note.get("trigger", ""),
+                "decision": "pending", "list_path": list_path,
+                "orig_index": i, "new_index": j,
+                "orig_path": f"{list_path}/{i}", "tailored_path": f"{list_path}/{j}",
             })
-
         for i in al.removed_i:
             note = take_note(o_items[i], None)
             add({
                 "id": _cid(list_path, str(i), _norm_text(o_items[i])),
-                "path": f"{list_path}/{i}",
-                "section": section,
-                "before": o_items[i],
-                "after": None,
-                "kind": "removed",
+                "path": f"{list_path}/{i}", "section": section,
+                "before": o_items[i], "after": None, "kind": "removed",
                 "type": _classify(list_path, note.get("type")),
-                "rationale": note.get("rationale", ""),
-                "trigger": note.get("trigger", ""),
-                "decision": "pending",
-                "list_path": list_path,
-                "orig_index": i,
-                "new_index": None,
-                "orig_path": f"{list_path}/{i}",
-                "tailored_path": None,
+                "rationale": note.get("rationale", ""), "trigger": note.get("trigger", ""),
+                "decision": "pending", "list_path": list_path,
+                "orig_index": i, "new_index": None,
+                "orig_path": f"{list_path}/{i}", "tailored_path": None,
             })
-
         for j in al.added_j:
             note = take_note(None, t_items[j])
             add({
                 "id": _cid(list_path, "+", str(j), _norm_text(t_items[j])),
-                "path": f"{list_path}/+{j}",
-                "section": section,
-                "before": None,
-                "after": t_items[j],
-                "kind": "added",
+                "path": f"{list_path}/+{j}", "section": section,
+                "before": None, "after": t_items[j], "kind": "added",
                 "type": _classify(list_path, note.get("type")),
-                "rationale": note.get("rationale", ""),
-                "trigger": note.get("trigger", ""),
-                "decision": "pending",
-                "list_path": list_path,
-                "orig_index": None,
-                "new_index": j,
-                "orig_path": None,
-                "tailored_path": f"{list_path}/{j}",
+                "rationale": note.get("rationale", ""), "trigger": note.get("trigger", ""),
+                "decision": "pending", "list_path": list_path,
+                "orig_index": None, "new_index": j,
+                "orig_path": None, "tailored_path": f"{list_path}/{j}",
+            })
+
+    # ── summary ──────────────────────────────────────────────
+    if (original.summary or "") != (tailored.summary or ""):
+        note = take_note(original.summary, tailored.summary)
+        add({
+            "id": _cid("summary", _norm_text(original.summary)),
+            "path": "summary", "section": "summary",
+            "before": original.summary, "after": tailored.summary,
+            "kind": "modified" if (original.summary and tailored.summary)
+                    else ("removed" if original.summary else "added"),
+            "type": _classify("summary", note.get("type")),
+            "rationale": note.get("rationale", ""), "trigger": note.get("trigger", ""),
+            "decision": "pending", "list_path": None,
+        })
+
+    # ── entry arrays ─────────────────────────────────────────
+    for array, (section, keyfn) in _ENTRY_ARRAYS.items():
+        o_ents, t_ents = list(getattr(original, array)), list(getattr(tailored, array))
+        if not o_ents and not t_ents:
+            continue
+        al = _align_list([keyfn(e) for e in o_ents], [keyfn(e) for e in t_ents])
+
+        if al.is_reorder:
+            emit_reorder(array, section, [keyfn(e) for e in o_ents], [keyfn(e) for e in t_ents],
+                         al.order, al.removed_i, "Entries re-ordered within this section.")
+
+        for i, j in al.pairs:
+            so, lo = _entry_fields(array, o_ents[i])
+            st, lt = _entry_fields(array, t_ents[j])
+            for sub in set(so) | set(st):
+                before, after = so.get(sub), st.get(sub)
+                if (before or "") == (after or ""):
+                    continue
+                path = f"{array}/{i}/{sub}"
+                note = take_note(before, after)
+                change = {
+                    "id": _cid(path, _norm_text(before)),
+                    "path": path, "section": section,
+                    "before": before, "after": after,
+                    "kind": "modified" if (sub in so and sub in st)
+                            else ("removed" if sub in so else "added"),
+                    "type": _classify(path, note.get("type")),
+                    "rationale": note.get("rationale", ""), "trigger": note.get("trigger", ""),
+                    "decision": "pending", "list_path": None,
+                    "entry_index": i, "entry_new_index": j, "entry_field": sub,
+                    "orig_path": path, "tailored_path": f"{array}/{j}/{sub}",
+                }
+                if sub in _JOINED_FIELDS:
+                    # Keep the real list alongside the joined display string.
+                    change["before_value"] = _raw_field(array, o_ents[i], sub)
+                    change["after_value"] = _raw_field(array, t_ents[j], sub)
+                add(change)
+            for sub in set(lo) | set(lt):
+                diff_list(f"{array}/{i}/{sub}", section, lo.get(sub, []), lt.get(sub, []))
+
+        for i in al.removed_i:
+            add({
+                "id": _cid(array, str(i), ":entry"),
+                "path": f"{array}/{i}", "section": section,
+                "before": _entry_summary(array, o_ents[i]), "after": None,
+                "kind": "removed", "type": _classify(array, None),
+                "rationale": "This whole entry was dropped.", "trigger": "",
+                "decision": "pending", "list_path": None,
+                "entry_index": i, "entry_new_index": None, "entry_whole": True,
+                "orig_path": f"{array}/{i}", "tailored_path": None,
+            })
+        for j in al.added_j:
+            add({
+                "id": _cid(array, "+", str(j), ":entry"),
+                "path": f"{array}/+{j}", "section": section,
+                "before": None, "after": _entry_summary(array, t_ents[j]),
+                "kind": "added", "type": _classify(array, None),
+                "rationale": "This whole entry is new.", "trigger": "",
+                "decision": "pending", "list_path": None,
+                "entry_index": None, "entry_new_index": j, "entry_whole": True,
+                "entry": t_ents[j].model_dump(),
+                "orig_path": None, "tailored_path": f"{array}/{j}",
             })
 
     changes.sort(key=lambda c: _path_sort_key(c["path"]))
@@ -561,7 +598,6 @@ def diff_structured(original: schemas.ResumeStructured, tailored: schemas.Resume
                 len(changes), sum(1 for c in changes if c["kind"] == "reordered"),
                 len(used_notes), len(notes))
     return changes
-
 
 def build_tailor_state(original, tailored, notes, model, honesty_facts) -> dict:
     """Assemble the per-job tailor record stored on UserJobReview.resume_tailor."""
@@ -607,9 +643,10 @@ def _set_path(obj, path: str, value) -> None:
         cur[last] = value
 
 
+
 def _legacy_effective(state: dict) -> dict:
-    """Pre-reorder behaviour: clone tailored, revert every rejected leaf. Still used
-    for tailor states stored before list-aware diffing shipped."""
+    """Pre-alignment behaviour: clone tailored, revert every rejected leaf. Still
+    used for tailor states stored before content-aligned diffing shipped."""
     import copy
     eff = copy.deepcopy(state.get("tailored") or {})
     for c in state.get("changes") or []:
@@ -618,75 +655,133 @@ def _legacy_effective(state: dict) -> dict:
     return eff
 
 
-def effective_resume(state: dict) -> dict:
-    """The résumé the user has actually approved: tailored content, with every
-    REJECTED change reverted. Pending and accepted changes keep the tailored value,
-    matching the rule every other change type has always followed.
+def _apply_list(o_items: list, cs: list) -> list:
+    """Rebuild one bullet list from the ORIGINAL items plus its changes.
 
-    Lists are rebuilt from the original so a rejected reorder can restore the
-    original ORDER while independently-accepted rewordings survive — something the
-    old per-path revert could not express.
+    Rejected → original text/order; pending and accepted → tailored, matching the
+    rule every other change type follows.
+    """
+    reorder = next((c for c in cs if c["kind"] == "reordered"), None)
+    by_oi = {c["orig_index"]: c for c in cs
+             if c.get("orig_index") is not None and c["kind"] != "reordered"}
+
+    text, alive = {}, []
+    for i, item in enumerate(o_items):
+        c = by_oi.get(i)
+        if c and c["kind"] == "removed":
+            if c.get("decision") != "rejected":
+                continue                                   # removal stands
+            text[i] = item                                 # user kept it
+        elif c and c.get("decision") == "rejected":
+            text[i] = item
+        elif c:
+            text[i] = c["after"]
+        else:
+            text[i] = item
+        alive.append(i)
+
+    if reorder is not None and reorder.get("decision") != "rejected":
+        order = [oi for oi in (reorder.get("order") or []) if oi is None or oi in text]
+    else:
+        order = sorted(alive)
+
+    added = {c["new_index"]: c for c in cs if c["kind"] == "added"}
+    out = []
+    for slot, oi in enumerate(order):
+        if oi is None:
+            c = added.get(slot)
+            if c and c.get("decision") != "rejected":
+                out.append(c["after"])
+        else:
+            out.append(text[oi])
+    if reorder is None or reorder.get("decision") == "rejected":
+        for slot in sorted(added):
+            c = added[slot]
+            if c.get("decision") != "rejected":
+                out.insert(min(slot, len(out)), c["after"])
+    return out
+
+
+def effective_resume(state: dict) -> dict:
+    """The résumé the user has actually approved: tailored content with every
+    REJECTED change reverted. Pending and accepted keep the tailored value.
+
+    Sections are rebuilt from the original so a rejected re-ordering restores the
+    original ORDER while independently accepted rewordings survive — at both the
+    entry level (projects, roles) and the bullet level.
     """
     import copy
 
     changes = state.get("changes") or []
-    if not any(c.get("list_path") for c in changes):
+    if not any(c.get("list_path") or c.get("entry_index") is not None
+               or c.get("entry_new_index") is not None for c in changes):
         return _legacy_effective(state)
 
     eff = copy.deepcopy(state.get("tailored") or {})
     orig = state.get("original") or {}
 
+    # Top-level scalars (summary).
     for c in changes:
-        if c.get("list_path") is None and c.get("decision") == "rejected":
+        if "/" not in c["path"] and c["kind"] != "reordered" and c.get("decision") == "rejected":
             _set_path(eff, c["path"], _get_path(orig, c["path"]))
 
-    by_list: dict[str, list] = {}
-    for c in changes:
-        if c.get("list_path"):
-            by_list.setdefault(c["list_path"], []).append(c)
+    for array in _ENTRY_ARRAYS:
+        mine = [c for c in changes if c["path"] == array or c["path"].startswith(f"{array}/")]
+        if not mine:
+            continue
+        o_entries = _get_path(orig, array) or []
+        reorder = next((c for c in mine if c["kind"] == "reordered" and c["path"] == array), None)
+        removed = {c["entry_index"]: c for c in mine
+                   if c.get("entry_whole") and c["kind"] == "removed"}
+        added = {c["entry_new_index"]: c for c in mine
+                 if c.get("entry_whole") and c["kind"] == "added"}
 
-    for list_path, cs in by_list.items():
-        o_items = _get_path(orig, list_path) or []
-        reorder = next((c for c in cs if c["kind"] == "reordered"), None)
-        by_oi = {c["orig_index"]: c for c in cs
-                 if c.get("orig_index") is not None and c["kind"] != "reordered"}
-
-        # Text for each surviving original item.
-        text, alive = {}, []
-        for i, item in enumerate(o_items):
-            c = by_oi.get(i)
-            if c and c["kind"] == "removed":
-                if c.get("decision") != "rejected":
-                    continue                       # removal stands
-                text[i] = item                     # user kept it
-            elif c and c.get("decision") == "rejected":
-                text[i] = item
-            elif c:
-                text[i] = c["after"]
-            else:
-                text[i] = item
+        built, alive = {}, []
+        for i, entry in enumerate(o_entries):
+            rem = removed.get(i)
+            if rem is not None and rem.get("decision") != "rejected":
+                continue                                   # entry dropped
+            e = copy.deepcopy(entry)
+            for c in mine:
+                if c.get("entry_index") != i or c.get("entry_whole"):
+                    continue
+                sub = c["path"][len(f"{array}/{i}/"):] if c["path"].startswith(f"{array}/{i}/") else None
+                if not sub:
+                    continue
+                if c.get("list_path"):
+                    continue                               # handled below
+                if c.get("decision") == "rejected":
+                    continue                               # deepcopy already holds the original
+                value = c["after_value"] if "after_value" in c else c["after"]
+                _set_path(e, sub, value)
+            # Bullet lists inside this entry.
+            list_paths = {c["list_path"] for c in mine
+                          if c.get("list_path") and c["list_path"].startswith(f"{array}/{i}/")}
+            for lp in list_paths:
+                sub = lp[len(f"{array}/{i}/"):]
+                cs = [c for c in mine if c.get("list_path") == lp]
+                _set_path(e, sub, _apply_list(_get_path(entry, sub) or [], cs))
+            built[i] = e
             alive.append(i)
 
         if reorder is not None and reorder.get("decision") != "rejected":
-            order = [oi for oi in (reorder.get("order") or []) if oi is None or oi in text]
+            order = [oi for oi in (reorder.get("order") or []) if oi is None or oi in built]
         else:
             order = sorted(alive)
 
-        added = {c["new_index"]: c for c in cs if c["kind"] == "added"}
         out = []
         for slot, oi in enumerate(order):
             if oi is None:
                 c = added.get(slot)
-                if c and c.get("decision") != "rejected":
-                    out.append(c["after"])
+                if c and c.get("decision") != "rejected" and c.get("entry"):
+                    out.append(copy.deepcopy(c["entry"]))
             else:
-                out.append(text[oi])
-        # Kept-but-un-permuted additions (rejected reorder still keeps accepted adds).
+                out.append(built[oi])
         if reorder is None or reorder.get("decision") == "rejected":
             for slot in sorted(added):
                 c = added[slot]
-                if c.get("decision") != "rejected":
-                    out.insert(min(slot, len(out)), c["after"])
-        _set_path(eff, list_path, out)
+                if c.get("decision") != "rejected" and c.get("entry"):
+                    out.insert(min(slot, len(out)), copy.deepcopy(c["entry"]))
+        _set_path(eff, array, out)
 
     return eff

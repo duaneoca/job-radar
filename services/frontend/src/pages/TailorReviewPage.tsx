@@ -12,9 +12,9 @@ import type { JobReview, TailorState, TailorChange, TailorDecision } from "../li
 
 // ─── Rendered résumé (plain structured text — template/PDF is Phase 3) ──────────
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, path, children }: { title: string; path?: string; children: React.ReactNode }) {
   return (
-    <div>
+    <div data-path={path}>
       <div className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground border-b mb-1 pb-0.5">{title}</div>
       <div className="space-y-1">{children}</div>
     </div>
@@ -28,16 +28,16 @@ function ResumeView({ data }: { data: any }) {
     <div className="space-y-3 text-xs leading-relaxed">
       {data.summary && <Section title="Summary"><p data-path="summary">{data.summary}</p></Section>}
       {data.skills?.length > 0 && (
-        <Section title="Skills">
+        <Section title="Skills" path="skills">
           {data.skills.map((g: any, i: number) => (
-            <p key={i}><b data-path={`skills/${i}/label`}>{g.label}:</b> <span data-path={`skills/${i}/items`}>{(g.items ?? []).join(" · ")}</span></p>
+            <p key={i} data-path={`skills/${i}`}><b data-path={`skills/${i}/label`}>{g.label}:</b> <span data-path={`skills/${i}/items`}>{(g.items ?? []).join(" · ")}</span></p>
           ))}
         </Section>
       )}
       {data.experience?.length > 0 && (
-        <Section title="Experience">
+        <Section title="Experience" path="experience">
           {data.experience.map((e: any, i: number) => (
-            <div key={i} className="mb-2">
+            <div key={i} className="mb-2" data-path={`experience/${i}`}>
               <div className="font-medium">
                 <span data-path={`experience/${i}/company`}>{e.company}</span>{" "}
                 {(e.start || e.end) && (
@@ -58,16 +58,16 @@ function ResumeView({ data }: { data: any }) {
         </Section>
       )}
       {data.education?.length > 0 && (
-        <Section title="Education">
+        <Section title="Education" path="education">
           {data.education.map((ed: any, i: number) => (
-            <p key={i}><span data-path={`education/${i}/degree`}>{ed.degree}</span>{ed.school && <> · <span data-path={`education/${i}/school`}>{ed.school}</span></>}</p>
+            <p key={i} data-path={`education/${i}`}><span data-path={`education/${i}/degree`}>{ed.degree}</span>{ed.school && <> · <span data-path={`education/${i}/school`}>{ed.school}</span></>}</p>
           ))}
         </Section>
       )}
       {data.projects?.length > 0 && (
-        <Section title="Projects">
+        <Section title="Projects" path="projects">
           {data.projects.map((pr: any, i: number) => (
-            <div key={i}>
+            <div key={i} data-path={`projects/${i}`}>
               {pr.title && <div className="font-medium" data-path={`projects/${i}/title`}>{pr.title}</div>}
               <ul className="list-disc ml-4" data-path={`projects/${i}/bullets`}>{(pr.bullets ?? []).map((b: string, j: number) => <li key={j} data-path={`projects/${i}/bullets/${j}`}>{b}</li>)}</ul>
             </div>

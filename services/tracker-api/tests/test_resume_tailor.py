@@ -454,3 +454,132 @@ def test_refine_excludes_reorder_card_from_kept_phrasings(client, db, monkeypatc
 
     assert "Do NOT reorder the bullets" in seen["extra"]
     assert "1. Built ETL pipelines" not in seen["extra"]      # numbered listing not leaked
+
+
+# ── entry-level re-ordering (whole projects / roles moving) ───
+
+PROJECTS = [
+    {"title": "Production AI applications", "bullets": ["Two live sites"]},
+    {"title": "Persistent AI memory", "bullets": ["Deployed OpenBrain"]},
+    {"title": "Workflow automation", "bullets": ["Built n8n pipelines"]},
+    {"title": "Agentic email pipeline", "bullets": ["LangGraph agent", "Threat model"]},
+]
+
+
+def _projects(entries):
+    return {**ORIGINAL, "projects": entries}
+
+
+def test_entry_rotation_is_one_change():
+    """A project promoted to the top used to read as a title edit plus a body edit
+    for every slot it shifted through — 8 cards for this rotation."""
+    rotated = [PROJECTS[0], PROJECTS[3], PROJECTS[1], PROJECTS[2]]
+    changes = resume_tailor.diff_structured(_s(_projects(PROJECTS)), _s(_projects(rotated)))
+    assert len(changes) == 1
+    c = changes[0]
+    assert c["kind"] == "reordered" and c["path"] == "projects"
+    assert c["order"] == [0, 3, 1, 2]
+    assert c["after_items"][1] == "Agentic email pipeline"
+
+
+def test_entry_move_plus_bullet_reword_are_separate_changes():
+    moved = [PROJECTS[0], {**PROJECTS[3], "bullets": ["LangGraph agent, rewritten", "Threat model"]},
+             PROJECTS[1], PROJECTS[2]]
+    changes = resume_tailor.diff_structured(_s(_projects(PROJECTS)), _s(_projects(moved)))
+    kinds = sorted(c["kind"] for c in changes)
+    assert kinds == ["modified", "reordered"]
+    mod = next(c for c in changes if c["kind"] == "modified")
+    # Anchored to the entry's ORIGINAL index (3), not the slot it moved to.
+    assert mod["path"] == "projects/3/bullets/0"
+    assert mod["before"] == "LangGraph agent"
+
+
+def test_entry_reorder_does_not_fire_on_pure_edit():
+    edited = [PROJECTS[0], {**PROJECTS[1], "title": "Persistent AI memory infra"},
+              PROJECTS[2], PROJECTS[3]]
+    changes = resume_tailor.diff_structured(_s(_projects(PROJECTS)), _s(_projects(edited)))
+    assert [c["kind"] for c in changes] == ["modified"]
+    assert changes[0]["path"] == "projects/1/title"
+
+
+def test_experience_entries_align_by_company():
+    """Roles are matched by employer, so a moved role keeps its bullets attached."""
+    two = [{"company": "Acme", "titles": ["Eng"], "bullets": ["Built ETL"]},
+           {"company": "Globex", "titles": ["Eng"], "bullets": ["Ran ops"]}]
+    swapped = [two[1], two[0]]
+    changes = resume_tailor.diff_structured(
+        _s({**ORIGINAL, "experience": two}), _s({**ORIGINAL, "experience": swapped}))
+    assert len(changes) == 1
+    assert changes[0]["kind"] == "reordered" and changes[0]["path"] == "experience"
+
+
+def test_effective_entry_reorder_matrix():
+    rotated = [PROJECTS[0], {**PROJECTS[3], "bullets": ["LangGraph agent, rewritten", "Threat model"]},
+               PROJECTS[1], PROJECTS[2]]
+    st = resume_tailor.build_tailor_state(
+        _s(_projects(PROJECTS)), _s(_projects(rotated)), [], "m", {})
+
+    def eff(dec):
+        for c in st["changes"]:
+            c["decision"] = dec.get(c["kind"], "pending")
+        return resume_tailor.effective_resume(st)["projects"]
+
+    both_rejected = eff({"reordered": "rejected", "modified": "rejected"})
+    assert [p["title"] for p in both_rejected] == [p["title"] for p in PROJECTS]
+    assert both_rejected[3]["bullets"][0] == "LangGraph agent"
+
+    # New order, original wording — inexpressible before entry alignment.
+    order_only = eff({"reordered": "accepted", "modified": "rejected"})
+    assert [p["title"] for p in order_only][1] == "Agentic email pipeline"
+    assert order_only[1]["bullets"][0] == "LangGraph agent"
+
+    wording_only = eff({"reordered": "rejected", "modified": "accepted"})
+    assert [p["title"] for p in wording_only] == [p["title"] for p in PROJECTS]
+    assert wording_only[3]["bullets"][0] == "LangGraph agent, rewritten"
+
+    both = eff({"reordered": "accepted", "modified": "accepted"})
+    assert both == st["tailored"]["projects"]
+
+
+def test_effective_rejected_skill_items_still_a_list_after_entry_alignment():
+    """The joined 'a · b' display string must never be written into the array."""
+    st = resume_tailor.build_tailor_state(_s(ORIGINAL), _s(TAILORED), [], "m", {})
+    for c in st["changes"]:
+        c["decision"] = "rejected"
+    assert resume_tailor.effective_resume(st)["skills"][0]["items"] == ["Python", "Java"]
+
+
+def test_effective_accepted_skill_items_is_the_tailored_list():
+    st = resume_tailor.build_tailor_state(_s(ORIGINAL), _s(TAILORED), [], "m", {})
+    for c in st["changes"]:
+        c["decision"] = "accepted"
+    assert resume_tailor.effective_resume(st)["skills"][0]["items"] == ["Python", "JavaScript"]
+
+
+def test_dropped_entry_is_a_single_removal():
+    without = [PROJECTS[0], PROJECTS[1], PROJECTS[2]]
+    changes = resume_tailor.diff_structured(_s(_projects(PROJECTS)), _s(_projects(without)))
+    assert [c["kind"] for c in changes] == ["removed"]
+    assert changes[0]["path"] == "projects/3"
+    assert "Agentic email pipeline" in changes[0]["before"]
+
+
+def test_rejected_entry_removal_restores_the_entry():
+    without = [PROJECTS[0], PROJECTS[1], PROJECTS[2]]
+    st = resume_tailor.build_tailor_state(_s(_projects(PROJECTS)), _s(_projects(without)), [], "m", {})
+    for c in st["changes"]:
+        c["decision"] = "rejected"
+    titles = [p["title"] for p in resume_tailor.effective_resume(st)["projects"]]
+    assert titles == [p["title"] for p in PROJECTS]
+
+
+def test_added_entry_is_reinserted_when_accepted():
+    extra = PROJECTS + [{"title": "New thing", "bullets": ["Did a thing"]}]
+    st = resume_tailor.build_tailor_state(_s(_projects(PROJECTS)), _s(_projects(extra)), [], "m", {})
+    assert [c["kind"] for c in st["changes"]] == ["added"]
+    for c in st["changes"]:
+        c["decision"] = "accepted"
+    assert [p["title"] for p in resume_tailor.effective_resume(st)["projects"]][-1] == "New thing"
+    for c in st["changes"]:
+        c["decision"] = "rejected"
+    assert len(resume_tailor.effective_resume(st)["projects"]) == len(PROJECTS)
