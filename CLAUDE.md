@@ -45,6 +45,12 @@ git tag vX.Y.Z && git push origin vX.Y.Z
 - Namespaces: `jobradar-production`, `jobradar-staging`
 - Cloudflare proxies both hostnames (handles TLS — no cert-manager needed)
 - GHCR for Docker images; GitHub Actions for CI/CD
+  - Staging tags images with the commit SHA, production with the release tag.
+  - `prune-images.yml` (weekly) deletes untagged versions and staging SHA builds
+    older than 8 weeks, keeping the 10 most recent. **Release (`v*`) images are
+    never deleted** — a production rollback redeploys an earlier `vX.Y.Z`, and the
+    node's kubelet garbage-collects its local cache, so GHCR is what makes rollback
+    possible. Images on the node need no management (kubelet GCs at 85% disk).
 - SES sending from `noreply@job-radar.net` (domain identity, not email address identity)
 - IAM role on EC2 — no hardcoded AWS keys
 
