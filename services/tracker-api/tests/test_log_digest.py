@@ -334,3 +334,30 @@ def test_milliseconds_are_still_accepted():
     assert len(_collect(
         "2026-08-01T04:29:02.042Z 2026-08-01 04:29:02,042 ERROR app.jobs: boom"
     )) == 1
+
+
+# ── formats the digest must not miss ──────────────────────────
+
+def test_uvicorns_own_error_format_is_caught():
+    """uvicorn logs unhandled ASGI exceptions through its private `uvicorn.error`
+    logger, which has propagate=False and keeps uvicorn's format regardless of
+    what configure_logging does. Those are real 500s — the fallback is the only
+    thing that sees them."""
+    entries = _collect(
+        "2026-08-01T04:53:17.000Z ERROR:    Exception in ASGI application",
+        service="tracker-api",
+    )
+    assert len(entries) == 1
+    assert "ASGI application" in next(iter(entries.values())).example
+
+
+def test_celery_own_format_is_caught():
+    """Celery's task-failure banner uses its own format even with
+    worker_hijack_root_logger=False, since it's logged before our handler in the
+    child process for some failure modes."""
+    entries = _collect(
+        "2026-08-01T04:50:35.143Z [2026-08-01 04:50:35,143: ERROR/ForkPoolWorker-1] "
+        "Task app.tasks.review_job raised unexpected: ValueError('nope')",
+        service="ai-reviewer",
+    )
+    assert len(entries) == 1

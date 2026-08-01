@@ -30,6 +30,7 @@ from celery import Celery
 from celery.schedules import crontab
 
 from app.config import settings
+from app.logging_config import configure_logging
 from app.scrapers.adzuna import AdzunaScraper
 from app.scrapers.ats_boards import AshbyScraper, GreenhouseScraper, LeverScraper
 from app.scrapers.base import BaseScraper, CompanyBoardScraper, Creds, RawJob
@@ -37,6 +38,7 @@ from app.scrapers.jsearch import JSearchScraper
 from app.scrapers.remotive import RemotiveScraper
 from app.scrapers.the_muse import TheMuseScraper
 
+configure_logging(settings.log_level)
 logger = logging.getLogger(__name__)
 
 app = Celery("scraper", broker=settings.redis_url, backend=settings.redis_url)
