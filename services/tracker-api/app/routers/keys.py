@@ -3,6 +3,7 @@ API keys router — store encrypted provider keys per user.
 """
 
 import json
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -73,6 +74,9 @@ def list_keys(
             preferred_model=k.preferred_model,
             updated_at=k.updated_at,
             active=(k.provider == active_provider),
+            last_error_kind=k.last_error_kind,
+            last_error=k.last_error,
+            last_error_at=k.last_error_at,
         ))
     return result
 
@@ -98,6 +102,13 @@ def set_active_llm(
         )
         if not has_key:
             raise HTTPException(status_code=404, detail="No key configured for that provider")
+        if not has_key.preferred_model:
+            # There is no default model, so selecting a model-less key would make
+            # every AI feature fail. Refuse rather than accept a broken state.
+            raise HTTPException(
+                status_code=400,
+                detail=f"Choose a model for your {payload.provider.value} key before making it active.",
+            )
     current_user.selected_llm_provider = payload.provider
     db.commit()
     return list_keys(db=db, current_user=current_user)
@@ -122,7 +133,16 @@ def upsert_key(
     )
     if existing:
         existing.encrypted_key = encrypted
-        existing.preferred_model = payload.preferred_model or None
+        # Only touch the model when the caller actually sent the field. The
+        # Settings form re-saves a key without it, and `payload.x or None` used to
+        # wipe the user's model choice — which, with no default to fall back on,
+        # would break every AI feature for them.
+        if "preferred_model" in payload.model_fields_set:
+            existing.preferred_model = payload.preferred_model or None
+        # A new secret deserves a fresh verdict.
+        existing.last_error_kind = None
+        existing.last_error = None
+        existing.last_error_at = None
         db.commit()
         db.refresh(existing)
         key_obj = existing
@@ -189,6 +209,10 @@ def update_key_model(
     if not existing:
         raise HTTPException(status_code=404, detail="Key not found")
     existing.preferred_model = payload.preferred_model or None
+    # Whatever the provider rejected was about the old model.
+    existing.last_error_kind = None
+    existing.last_error = None
+    existing.last_error_at = None
     db.commit()
     db.refresh(existing)
     try:
@@ -230,7 +254,7 @@ def delete_key(
 
 @router.get("/internal/{user_id}/llm", include_in_schema=False)
 def get_best_llm_key(
-    user_id: str,
+    user_id: UUID,
     db: Session = Depends(get_db),
     _it: None = Depends(require_internal_token),
 ):
@@ -238,20 +262,59 @@ def get_best_llm_key(
     Returns the decrypted API key and LiteLLM model string for the user's *active*
     LLM key — the explicit selection, else priority order. Called by ai-reviewer.
     """
-    from app.llm import get_active_llm_key, model_for_key
+    from app.llm import NO_MODEL_DETAIL, get_active_llm_key, model_for_key
     key_obj = get_active_llm_key(user_id, db)
     if not key_obj:
         raise HTTPException(status_code=404, detail="No AI key configured")
+    model = model_for_key(key_obj)
+    if not model:
+        # 409, not 404 — 404 already means "no key at all", and callers skip
+        # quietly on that. This is a different, user-fixable state.
+        raise HTTPException(status_code=409, detail=NO_MODEL_DETAIL)
     return {
         "api_key": decrypt_api_key(key_obj.encrypted_key),
-        "model": model_for_key(key_obj),
+        "model": model,
         "provider": key_obj.provider.value,
+        # Lets the worker skip the "clear my error" post-back on the overwhelming
+        # majority of reviews, where there was never an error to clear.
+        "last_error_kind": key_obj.last_error_kind,
     }
+
+
+@router.post("/internal/{user_id}/llm/status", include_in_schema=False)
+def report_llm_key_status(
+    user_id: UUID,
+    payload: schemas.LLMKeyStatus,
+    db: Session = Depends(get_db),
+    _it: None = Depends(require_internal_token),
+):
+    """Record the outcome of a background LLM call against the user's active key.
+
+    Posted by ai-reviewer, which has no database access of its own. A null `kind`
+    means the call succeeded and clears any recorded failure. Only permanent
+    verdicts are ever sent — the worker classifies transient errors and retries
+    them instead of reporting.
+    """
+    from app.llm import clear_key_error, get_active_llm_key, record_key_error
+
+    key_obj = get_active_llm_key(user_id, db)
+    if not key_obj:
+        raise HTTPException(status_code=404, detail="No AI key configured")
+
+    if payload.kind is None:
+        clear_key_error(db, key_obj)
+        return {"status": "cleared"}
+
+    if payload.kind not in (models.KEY_ERROR_INVALID_MODEL, models.KEY_ERROR_INVALID_KEY):
+        raise HTTPException(status_code=400, detail=f"Unknown error kind: {payload.kind}")
+
+    record_key_error(db, key_obj, payload.kind, payload.detail or "")
+    return {"status": "recorded", "kind": payload.kind}
 
 
 @router.get("/internal/{user_id}/{provider}", include_in_schema=False)
 def get_key_for_service(
-    user_id: str,
+    user_id: UUID,
     provider: models.LLMProvider,
     db: Session = Depends(get_db),
     _it: None = Depends(require_internal_token),

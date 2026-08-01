@@ -8,7 +8,7 @@ import { useDarkMode, type ThemeMode } from "../../hooks/useDarkMode";
 import { useAuthStore } from "../../store/auth";
 import { authApi, agentApi } from "../../lib/api";
 import { cn } from "../../lib/utils";
-import { MissingKeysBanner, useApiKeyStatus } from "../ApiKeyWarning";
+import { LlmKeyProblemBanner, MissingKeysBanner, useApiKeyStatus } from "../ApiKeyWarning";
 import type { PaginatedInbox } from "../../lib/types";
 
 interface LayoutProps {
@@ -246,6 +246,10 @@ export function Layout({ children }: LayoutProps) {
 
       {/* Missing-key warning (shown until required keys are added) */}
       <MissingKeysBanner />
+
+      {/* Present-but-unusable AI key: no model chosen, or the provider
+          rejected it. Hides itself while the banner above is showing. */}
+      <LlmKeyProblemBanner />
 
       {/* Page content */}
       <main className="flex-1 container px-4 py-6">{children}</main>

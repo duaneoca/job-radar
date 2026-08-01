@@ -128,7 +128,10 @@ def _build_agent_config(user: models.User, db: Session) -> schemas.AgentConfigOu
     # LLM key — the user's *active* key (selection → priority), same as scoring/research.
     llm_config = None
     key_row = get_active_llm_key(user.id, db)
-    if key_row:
+    # A key with no model is not a usable config. Sending one anyway would make the
+    # agent fall back to *its* default model, spending the user's money on
+    # something they never chose — the exact behaviour this codebase removed.
+    if key_row and key_row.preferred_model:
         try:
             plaintext_key = decrypt_api_key(key_row.encrypted_key)
             llm_config = schemas.AgentLLMConfig(

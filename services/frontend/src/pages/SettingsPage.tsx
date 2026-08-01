@@ -167,7 +167,10 @@ function ModelSelector({ provider, existing, onSave }: {
 
   const currentModel = existing.preferred_model ?? "";
   const inList = modelList?.some(m => m.id === currentModel);
-  const stale = currentModel && modelList && !inList;
+  // A key with no model is broken, not defaulted — there is no fallback model —
+  // so an empty selection warns just as loudly as a retired one.
+  const noModel = !currentModel && !!modelList;
+  const stale = !!currentModel && !!modelList && !inList;
 
   if (isLoading) return (
     <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
@@ -189,6 +192,15 @@ function ModelSelector({ provider, existing, onSave }: {
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
           <span>
             <span className="font-mono">{currentModel}</span> is not in the current model list — it may have been retired. Please select a new model.
+          </span>
+        </div>
+      )}
+      {noModel && (
+        <div className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+          <span>
+            No model selected — AI features won't run. Job Radar doesn't pick one
+            for you, because that's a cost decision on your own account.
           </span>
         </div>
       )}
@@ -363,7 +375,15 @@ function KeysTab() {
     try {
       await keysApi.put("/keys", { provider, api_key: key, preferred_model });
       qc.invalidateQueries({ queryKey: ["keys"] });
-      toast({ title: "Key saved" });
+      // For an LLM provider, keep this row open: saving the key is only half the
+      // setup, and the model selector lives inside the expanded row. Tavily and
+      // the job-source keys have no model.
+      const isLlm = AI_PROVIDERS.some((p) => p.value === provider);
+      if (isLlm) pickProvider(provider);
+      toast({
+        title: "Key saved",
+        description: isLlm ? "Now choose a model for it." : undefined,
+      });
     } catch (err: any) {
       toast({ title: "Failed to save key", description: err?.response?.data?.detail, variant: "destructive" });
       throw err;
@@ -476,6 +496,8 @@ function KeysTab() {
             The <span className="font-medium">active</span> key is used by job scoring{agentEnabled
               ? ", research, and the email agent" : " and research"}. Click the dot to switch. If you don't pick one, it falls back to
             Anthropic → OpenAI → Google → Groq. Click a row to add or edit its key.
+            Every key needs a model — Job Radar never picks one for you, because
+            that's a cost decision on your own account.
           </p>
         </div>
         <div className="space-y-2">
@@ -483,6 +505,10 @@ function KeysTab() {
             const isExpanded = preferred === value;
             const existing = keyMap[value];
             const isActive = existing?.active ?? false;
+            // A key with no model can't be made active — there is no default to
+            // fall back on, so selecting it would break every AI feature.
+            const needsModel = !!existing && !existing.preferred_model;
+            const rejected = existing?.last_error_kind ?? null;
             return (
               <div
                 key={value}
@@ -497,16 +523,18 @@ function KeysTab() {
                   <button
                     type="button"
                     aria-label={isActive ? `${label} is the active model` : `Set ${label} as active`}
-                    title={existing
-                      ? agentEnabled
-                        ? "Use this key for scoring, research, and the email agent"
-                        : "Use this key for scoring and research"
-                      : "Add a key first"}
-                    disabled={!existing}
-                    onClick={(e) => { e.stopPropagation(); if (existing) setActive(value); }}
+                    title={!existing
+                      ? "Add a key first"
+                      : needsModel
+                        ? "Choose a model for this key first"
+                        : agentEnabled
+                          ? "Use this key for scoring, research, and the email agent"
+                          : "Use this key for scoring and research"}
+                    disabled={!existing || needsModel}
+                    onClick={(e) => { e.stopPropagation(); if (existing && !needsModel) setActive(value); }}
                     className={`h-4 w-4 rounded-full border-2 shrink-0 flex items-center justify-center ${
                       isActive ? "border-primary" : "border-muted-foreground/40"
-                    } ${existing ? "cursor-pointer" : "cursor-not-allowed opacity-40"}`}
+                    } ${existing && !needsModel ? "cursor-pointer" : "cursor-not-allowed opacity-40"}`}
                   >
                     {isActive && <div className="h-2 w-2 rounded-full bg-primary" />}
                   </button>
@@ -515,6 +543,18 @@ function KeysTab() {
                       <span className="text-sm font-medium">{label}</span>
                       <span className="text-xs text-muted-foreground">{description}</span>
                       {isActive && <Badge className="text-xs">Active</Badge>}
+                      {/* The row only expands when it's the locally-preferred
+                          provider, so without these a user can save a key, never
+                          open the row, and never learn the model is missing. */}
+                      {needsModel && (
+                        <Badge variant="destructive" className="text-xs">No model</Badge>
+                      )}
+                      {!needsModel && rejected === "invalid_model" && (
+                        <Badge variant="destructive" className="text-xs">Model rejected</Badge>
+                      )}
+                      {!needsModel && rejected === "invalid_key" && (
+                        <Badge variant="destructive" className="text-xs">Key rejected</Badge>
+                      )}
                       {existing && (
                         <Badge variant="outline" className="font-mono text-xs ml-auto">
                           ••••{existing.key_hint}

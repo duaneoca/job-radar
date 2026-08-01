@@ -33,6 +33,28 @@ jobs:
         working-directory: services/tracker-api
         run: pytest --tb=short -q
 
+  test-ai-reviewer:
+    name: Test ai-reviewer
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/ai-reviewer/requirements.txt
+
+      - name: Install dependencies
+        working-directory: services/ai-reviewer
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run tests
+        working-directory: services/ai-reviewer
+        run: pytest --tb=short -q
+
   lint:
     name: Lint (ruff)
     runs-on: ubuntu-latest

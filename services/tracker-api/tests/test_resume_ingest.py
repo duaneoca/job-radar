@@ -40,6 +40,7 @@ def _seed_llm_key(db):
     db.add(models.UserAPIKey(
         user_id=TEST_USER_ID, provider=models.LLMProvider.ANTHROPIC,
         encrypted_key=encrypt_api_key("sk-test"),
+        preferred_model="claude-haiku-4-5",
     ))
     db.commit()
 

@@ -10,6 +10,8 @@ from typing import Optional
 
 import litellm
 
+from app.llm_errors import LLMCallFailed, classify_llm_error
+
 litellm.suppress_debug_info = True
 logger = logging.getLogger(__name__)
 
@@ -74,7 +76,10 @@ class JobReviewer:
 
     MAX_TOKENS = 1024
 
-    def __init__(self, api_key: str, model: str = "claude-haiku-4-5"):
+    def __init__(self, api_key: str, model: str):
+        # No default model — one is always supplied by the caller, which got it
+        # from the user's own explicit choice. Defaulting here would apply an
+        # Anthropic model string to (say) a Google key.
         self.api_key = api_key
         self.model = model
 
@@ -171,8 +176,15 @@ Salary range: {salary_line}
                 max_tokens=self.MAX_TOKENS,
             )
         except Exception as exc:
-            logger.error("LLM API error for job %s (model=%s): %s", job_id, self.model, exc)
-            return None
+            kind = classify_llm_error(exc)
+            # A permanent failure is the user's to fix and is surfaced to them as a
+            # banner — logged at WARNING so it never reaches the operator's error
+            # digest. Only genuinely unexplained failures deserve ERROR.
+            logger.warning(
+                "LLM call failed for job %s (model=%s, kind=%s): %s",
+                job_id, self.model, kind or "transient", exc,
+            )
+            raise LLMCallFailed(kind, str(exc)) from exc
 
         raw_text = response.choices[0].message.content.strip()
 
@@ -186,7 +198,9 @@ Salary range: {salary_line}
         try:
             data = json.loads(raw_text)
         except json.JSONDecodeError:
-            logger.error("Claude returned non-JSON for job %s: %.200s", job_id, raw_text)
+            # The model answered but not in JSON — a model-behaviour problem, not a
+            # key problem. Nothing is recorded against the key.
+            logger.error("Model returned non-JSON for job %s: %.200s", job_id, raw_text)
             return None
 
         try:
@@ -204,5 +218,5 @@ Salary range: {salary_line}
                 recommended=bool(data["recommended"]),
             )
         except (KeyError, TypeError, ValueError) as exc:
-            logger.error("Failed to parse Claude response for job %s: %s", job_id, exc)
+            logger.error("Failed to parse model response for job %s: %s", job_id, exc)
             return None

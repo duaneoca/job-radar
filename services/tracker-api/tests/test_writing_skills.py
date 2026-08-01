@@ -28,7 +28,8 @@ def _seed(db, skills=None):
                            job_titles=["Data Eng"], writing_skills=skills))
     from app.security import encrypt_api_key
     db.add(models.UserAPIKey(user_id=TEST_USER_ID, provider=models.LLMProvider.ANTHROPIC,
-                             encrypted_key=encrypt_api_key("sk-test")))
+                             encrypted_key=encrypt_api_key("sk-test"),
+                             preferred_model="claude-haiku-4-5"))
     db.commit()
 
 
@@ -134,7 +135,7 @@ def test_skill_defaults_exclude_scoring(client, db):
 def _capture(monkeypatch):
     seen = {}
 
-    def fake(system, messages, api_key, model, max_tokens=1024):
+    def fake(system, messages, api_key, model, max_tokens=1024, **kwargs):
         seen["system"] = system
         seen["user"] = messages[-1]["content"]
         return '{"questions": []}'
