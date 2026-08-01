@@ -54,11 +54,37 @@ def test_success_clears_a_recorded_verdict(client, db):
     assert key.last_error_at is None
 
 
+def test_rate_limited_is_recorded(client, db):
+    """Not a rejection — the key and model are both fine. Recorded anyway,
+    because a quota ceiling is the user's to act on and silence looks exactly
+    like having nothing to score."""
+    _key(db)
+    r = client.post(STATUS_URL, json={"kind": "rate_limited", "detail": "429 RESOURCE_EXHAUSTED"})
+    assert r.status_code == 200
+    assert _reload(db).last_error_kind == "rate_limited"
+
+
+def test_a_later_success_clears_rate_limited(client, db):
+    """Throttling passes on its own, so the banner must not outlive it."""
+    _key(db)
+    client.post(STATUS_URL, json={"kind": "rate_limited", "detail": "429"})
+    client.post(STATUS_URL, json={"kind": None})
+    assert _reload(db).last_error_kind is None
+
+
+def test_rate_limited_key_can_still_be_made_active(client, db):
+    """Unlike a rejected key, a throttled one still works — refusing to select it
+    would be telling the user to fix something that isn't broken."""
+    _key(db)
+    client.post(STATUS_URL, json={"kind": "rate_limited", "detail": "429"})
+    assert client.put("/keys/active", json={"provider": "anthropic"}).status_code == 200
+
+
 def test_unknown_kind_is_rejected(client, db):
     """The column is a small closed set. A typo'd or invented kind would render
     as a blank banner the user can't act on."""
     _key(db)
-    assert client.post(STATUS_URL, json={"kind": "rate_limited"}).status_code == 400
+    assert client.post(STATUS_URL, json={"kind": "quota_exceeded"}).status_code == 400
     assert _reload(db).last_error_kind is None
 
 

@@ -13,7 +13,7 @@ import httpx
 from celery import Celery
 
 from app.config import settings
-from app.llm_errors import LLMCallFailed
+from app.llm_errors import RATE_LIMITED, LLMCallFailed
 from app.logging_config import configure_logging
 from app.reviewer import JobReviewer
 
@@ -147,6 +147,26 @@ def review_job(self, job_id: str, user_id: str):
                 exc.kind, user_id, job_id,
             )
             return
+
+        if self.request.retries >= self.max_retries:
+            # Transient, but it has outlasted every retry — roughly three minutes
+            # of 429s. In practice that is a quota ceiling, which only the user
+            # can do anything about, so tell them rather than the operator.
+            # Reported as rate_limited, which does NOT stop future jobs: the next
+            # success clears it on its own.
+            #
+            # Returning here also keeps the exception from escaping the task.
+            # Celery re-raises the original exc once retries are exhausted and
+            # logs it at ERROR, which would put one user's quota problem in the
+            # operator's hourly digest.
+            _report_key_status(base, user_id, RATE_LIMITED, exc.message)
+            logger.warning(
+                "Transient LLM failure survived %d retries for user %s — "
+                "reporting as throttled, job %s not scored",
+                self.request.retries, user_id, job_id,
+            )
+            return
+
         raise self.retry(exc=exc, countdown=60)
 
     if result is None:

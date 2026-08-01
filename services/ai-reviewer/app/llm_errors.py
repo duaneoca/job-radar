@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 
 INVALID_MODEL = "invalid_model"
 INVALID_KEY = "invalid_key"
+# Reported only after every retry is exhausted — see main.py. classify_llm_error
+# never returns this: at classification time a 429 is still just transient, and
+# treating one as a ceiling would nag a user who is merely mid-burst.
+RATE_LIMITED = "rate_limited"
 
 # Substrings that identify the model — not the key, not the quota — as the thing
 # the provider rejected.

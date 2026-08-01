@@ -105,6 +105,11 @@ LLM_PROVIDERS = [
 # `preferred_model IS NULL`, derived rather than stored.
 KEY_ERROR_INVALID_MODEL = "invalid_model"
 KEY_ERROR_INVALID_KEY   = "invalid_key"
+# Not a rejection — the provider is throttling. Recorded anyway because a quota
+# ceiling the user keeps hitting is theirs to act on (raise the tier, pick a
+# cheaper model, or wait), and silence looks identical to "nothing to score".
+# Unlike the two above it does NOT stop future attempts; any success clears it.
+KEY_ERROR_RATE_LIMITED  = "rate_limited"
 
 
 # ── Users ────────────────────────────────────────────────────
