@@ -520,6 +520,19 @@ function ApiKeysTab() {
           <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" className="underline">console.groq.com/keys</a></Li>
       </ul>
 
+      <H3>Choosing a model</H3>
+      <P>After saving an AI key you must <strong>pick a model</strong> for it. Job Radar
+        deliberately doesn't choose one for you: which model you run is a spending decision
+        on your own account, and the gap between the cheapest and the most capable model is
+        large. Nothing AI-powered runs until you've picked one.</P>
+      <P>The dropdown is fetched live from the provider using your key, so it always shows
+        what your account can actually reach. Cheaper, faster models are perfectly good for
+        scoring; you can always switch later, and switching takes effect immediately.</P>
+      <P>Models get retired. If your provider stops accepting the one you picked, Job Radar
+        notices the first time a score fails, stops retrying, and shows you a banner —
+        rather than quietly scoring nothing. Choose a new model in Settings and the banner
+        clears on the next successful call.</P>
+
       <Separator />
 
       <H2>Recommended</H2>

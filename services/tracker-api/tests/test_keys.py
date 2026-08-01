@@ -59,7 +59,8 @@ def test_llm_provider_selected_alongside_adzuna(client, db, test_user):
     from app.llm import get_llm_provider
 
     client.put("/keys", json={"provider": "adzuna", "app_id": "1", "app_key": "k123"})
-    client.put("/keys", json={"provider": "anthropic", "api_key": "sk-ant-abcd"})
+    client.put("/keys", json={"provider": "anthropic", "api_key": "sk-ant-abcd",
+                              "preferred_model": "claude-haiku-4-5"})
     api_key, _model = get_llm_provider(test_user.id, db)
     assert api_key == "sk-ant-abcd"
 

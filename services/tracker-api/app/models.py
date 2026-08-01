@@ -98,6 +98,14 @@ LLM_PROVIDERS = [
     LLMProvider.GROQ,
 ]
 
+# Permanent, user-fixable verdicts recorded on user_api_keys.last_error_kind.
+# Only failures the *provider* rejected outright land here — a rate limit or a
+# 5xx is transient and must never be written, or a throttled user gets told
+# their model is retired. "No model selected" is NOT one of these: that state is
+# `preferred_model IS NULL`, derived rather than stored.
+KEY_ERROR_INVALID_MODEL = "invalid_model"
+KEY_ERROR_INVALID_KEY   = "invalid_key"
+
 
 # ── Users ────────────────────────────────────────────────────
 
@@ -336,6 +344,12 @@ class UserAPIKey(Base):
     provider      = Column(Enum(LLMProvider), nullable=False)
     encrypted_key   = Column(Text, nullable=False)   # Fernet-encrypted, never plaintext
     preferred_model = Column(String(100), nullable=True)  # LiteLLM model string, e.g. "gpt-4o"
+    # Last PERMANENT provider rejection for this key (see KEY_ERROR_* above).
+    # Set by whoever made the call, cleared on the next success or on re-save.
+    # NULL means "no known problem" — it is not evidence that the key works.
+    last_error_kind = Column(String(32), nullable=True)
+    last_error      = Column(Text, nullable=True)
+    last_error_at   = Column(DateTime(timezone=True), nullable=True)
     created_at      = Column(DateTime(timezone=True), default=utcnow)
     updated_at      = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

@@ -8,7 +8,15 @@ from app.security import encrypt_api_key
 from .conftest import TEST_USER_ID
 
 
-def _add_key(db, provider, model=None):
+_UNSET = object()
+
+
+def _add_key(db, provider, model=_UNSET):
+    """Seed a key. Defaults to having a model, because a model-less key is a
+    broken key — there is no default model — and most of these tests are about
+    which key wins, not about that failure mode. Pass model=None for that."""
+    if model is _UNSET:
+        model = f"test-model-{provider.value}"
     db.add(models.UserAPIKey(
         user_id=TEST_USER_ID, provider=provider,
         encrypted_key=encrypt_api_key(f"key-{provider.value}"),
@@ -93,3 +101,57 @@ def test_set_active_without_key_404(client, db):
 def test_set_active_rejects_non_llm(client, db):
     _add_key(db, models.LLMProvider.ADZUNA)
     assert client.put("/keys/active", json={"provider": "adzuna"}).status_code == 400
+
+
+# ── No default model ──────────────────────────────────────────
+# Job Radar never picks a model for the user: it's a cost decision on their own
+# account, and any model we hardcoded would eventually be retired.
+
+
+def test_model_for_key_returns_none_not_empty(db, test_user):
+    """None, never "" — a falsy-but-present model would reach litellm."""
+    from app.llm import model_for_key
+    _add_key(db, models.LLMProvider.ANTHROPIC, model=None)
+    key = get_active_llm_key(TEST_USER_ID, db)
+    assert model_for_key(key) is None
+
+
+def test_priority_prefers_a_key_that_has_a_model(db, test_user):
+    """Anthropic outranks Google, but a model-less Anthropic key is unusable."""
+    _add_key(db, models.LLMProvider.ANTHROPIC, model=None)
+    _add_key(db, models.LLMProvider.GOOGLE)
+    assert get_active_llm_key(TEST_USER_ID, db).provider == models.LLMProvider.GOOGLE
+
+
+def test_priority_falls_back_to_a_model_less_key(db, test_user):
+    """When nothing has a model, still return a key so the error names a real
+    provider rather than claiming no key is configured."""
+    _add_key(db, models.LLMProvider.GOOGLE, model=None)
+    assert get_active_llm_key(TEST_USER_ID, db).provider == models.LLMProvider.GOOGLE
+
+
+def test_explicit_selection_wins_even_without_a_model(db, test_user):
+    """Sliding to another provider would spend money on an account the user
+    didn't choose. Surface the error against their choice instead."""
+    _add_key(db, models.LLMProvider.ANTHROPIC)
+    _add_key(db, models.LLMProvider.GROQ, model=None)
+    _select(db, models.LLMProvider.GROQ)
+    assert get_active_llm_key(TEST_USER_ID, db).provider == models.LLMProvider.GROQ
+
+
+def test_get_llm_provider_400s_without_a_model(db, test_user):
+    from fastapi import HTTPException
+    from app.llm import get_llm_provider
+    import pytest
+    _add_key(db, models.LLMProvider.ANTHROPIC, model=None)
+    with pytest.raises(HTTPException) as exc:
+        get_llm_provider(TEST_USER_ID, db)
+    assert exc.value.status_code == 400
+    assert "model" in exc.value.detail.lower()
+
+
+def test_set_active_rejects_a_key_without_a_model(client, db):
+    _add_key(db, models.LLMProvider.GOOGLE, model=None)
+    r = client.put("/keys/active", json={"provider": "google"})
+    assert r.status_code == 400
+    assert "model" in r.json()["detail"].lower()

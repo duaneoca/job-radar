@@ -529,9 +529,23 @@ class APIKeyOut(BaseModel):
     preferred_model: Optional[str] = None
     updated_at: datetime
     active: bool = False                 # the LLM key currently used (selected, else priority)
+    # Last permanent provider rejection, if any — drives the broken-key banner.
+    last_error_kind: Optional[str] = None
+    last_error: Optional[str] = None
+    last_error_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
+
+class LLMKeyStatus(BaseModel):
+    """Verdict posted by ai-reviewer after a background LLM call.
+
+    `kind` is one of models.KEY_ERROR_*, or null to report success (which clears
+    any previously recorded failure).
+    """
+    kind: Optional[str] = None
+    detail: Optional[str] = None
 
 
 class ActiveKeyUpdate(BaseModel):

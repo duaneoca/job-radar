@@ -13,6 +13,7 @@ import httpx
 from celery import Celery
 
 from app.config import settings
+from app.llm_errors import LLMCallFailed
 from app.reviewer import JobReviewer
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,23 @@ def _internal_headers(user_id: str | None = None) -> dict:
     if user_id:
         h["X-Internal-User-Id"] = user_id
     return h
+
+
+def _report_key_status(base: str, user_id: str, kind: str | None, detail: str = "") -> None:
+    """Tell tracker-api how the user's LLM key behaved, so the UI can show it.
+
+    Fire-and-forget: a failure to report must never change the outcome of the
+    review task itself.
+    """
+    try:
+        httpx.post(
+            f"{base}/keys/internal/{user_id}/llm/status",
+            json={"kind": kind, "detail": detail[:1000]},
+            headers=_internal_headers(),
+            timeout=10,
+        ).raise_for_status()
+    except Exception as exc:
+        logger.warning("Could not report key status for user %s: %s", user_id, exc)
 
 
 @app.task(name="app.tasks.review_job", queue="review", bind=True, max_retries=3)
@@ -82,32 +100,60 @@ def review_job(self, job_id: str, user_id: str):
         if resp.status_code == 404:
             logger.warning("No AI key configured for user %s — skipping review", user_id)
             return
+        if resp.status_code == 409:
+            # The user has a key but has not chosen a model. There is no default,
+            # and the banner already tells them — nothing to retry, nothing to
+            # escalate to the operator.
+            logger.warning("No model selected for user %s — skipping review", user_id)
+            return
         resp.raise_for_status()
         key_data = resp.json()
         api_key = key_data["api_key"]
         model = key_data["model"]
+        had_error = bool(key_data.get("last_error_kind"))
     except Exception as exc:
         logger.exception("Failed to fetch API key for user %s", user_id)
         raise self.retry(exc=exc, countdown=30)
 
     # 5. Score the job
     reviewer = JobReviewer(api_key=api_key, model=model)
-    result = reviewer.review(
-        job_id=job_id,
-        job_title=job["title"],
-        company=job["company"],
-        description=job.get("description", ""),
-        location=job.get("location"),
-        remote=job.get("remote", False),
-        salary_min=job.get("salary_min"),
-        salary_max=job.get("salary_max"),
-        criteria=criteria,
-        profile=profile,
-    )
+    try:
+        result = reviewer.review(
+            job_id=job_id,
+            job_title=job["title"],
+            company=job["company"],
+            description=job.get("description", ""),
+            location=job.get("location"),
+            remote=job.get("remote", False),
+            salary_min=job.get("salary_min"),
+            salary_max=job.get("salary_max"),
+            criteria=criteria,
+            profile=profile,
+        )
+    except LLMCallFailed as exc:
+        if exc.permanent:
+            # The provider rejected the key or the model. Retrying would fail
+            # identically for every remaining job in the queue; record it once so
+            # the user sees a banner, and stop.
+            _report_key_status(base, user_id, exc.kind, exc.message)
+            logger.warning(
+                "Permanent LLM failure (%s) for user %s — not retrying job %s",
+                exc.kind, user_id, job_id,
+            )
+            return
+        raise self.retry(exc=exc, countdown=60)
 
     if result is None:
+        # The call succeeded; the model's answer was unusable. That is a scoring
+        # bug or a prompt problem, not a key problem — and it is the operator's
+        # to look at, so it stays at ERROR. reviewer.py already logged the detail.
         logger.error("Review returned None for job %s / user %s", job_id, user_id)
         return
+
+    # The key works. Only post back if there was actually a failure recorded —
+    # otherwise every review in a large backlog would make a pointless round trip.
+    if had_error:
+        _report_key_status(base, user_id, None)
 
     # 6. Post the result back
     payload = {

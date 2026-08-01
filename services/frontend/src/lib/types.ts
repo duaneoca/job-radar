@@ -369,6 +369,11 @@ export interface APIKey {
   preferred_model?: string;
   updated_at: string;
   active?: boolean;   // the LLM key currently used (explicit selection, else priority)
+  // Last permanent rejection by the provider — "invalid_model" | "invalid_key".
+  // Null means no known problem, not "verified working".
+  last_error_kind?: string | null;
+  last_error?: string | null;
+  last_error_at?: string | null;
 }
 
 export interface LinkedInConnection {

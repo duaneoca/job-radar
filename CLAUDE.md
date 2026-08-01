@@ -124,6 +124,34 @@ a time (H6). The shared `AGENT_INTERNAL_TOKEN` must match in `tracker-api-secret
 - Scores on 5 dimensions (Skills, Experience, Location, Education, Salary), each 1–10, averaged to overall score
 - Summary must be written in second person to the candidate ("Your background in X…"), not from a hiring manager perspective
 - Uses LiteLLM — priority order: Anthropic → OpenAI → Google → Groq
+  (`models.LLM_PROVIDERS`), preferring a key that has a model.
+
+**There is NO default model — this is an invariant, not an oversight.** Picking a
+model on the user's behalf spends *their* money on something they never chose, and
+any model hardcoded here eventually gets retired (a dead Gemini default once made
+every review for a user silently score nothing). `model_for_key()` returns `None`
+when `preferred_model` is unset; `get_llm_provider()` 400s; `PUT /keys/active`
+refuses a model-less key; `GET /keys/internal/{u}/llm` returns **409** (404 still
+means "no key at all"). Do not reintroduce a `PROVIDER_MODELS`-style fallback.
+
+**Permanent key failures are recorded, transient ones are not.**
+`user_api_keys.last_error_kind` holds `invalid_model` / `invalid_key`
+(`models.KEY_ERROR_*`); ai-reviewer classifies via `app/llm_errors.py` and posts to
+`POST /keys/internal/{user_id}/llm/status` (internal token; null `kind` clears).
+`classify_llm_error` checks exception **types** for the transient set *before* it
+sniffs message text — a 429 body containing "invalid" must never be read as a dead
+model, or a throttled user is told to change a setting that was correct. A permanent
+verdict also stops the retry; a transient one retries. Re-saving the key or changing
+the model clears the record. Coverage caveat: `llm_complete`'s `db`/`user_id` args
+are optional and `resume_tailor.py`'s two calls have no session in scope, so the
+recorded state covers background scoring plus most foreground calls — not literally
+every one. Background scoring is what matters, since that's the path where a failure
+is otherwise invisible.
+
+**Log level follows who can fix it.** A failure the user is shown (dead model,
+rejected key) is logged at `WARNING` — it is not an operator fault and must not
+reach an error digest. `ERROR` is reserved for unexpected exceptions, failed
+post-backs, and unparseable model output.
 
 **Writing skills** (`criteria.writing_skills`, JSON `[{id,name,content,enabled,scopes}]`):
 user-loadable blocks of style rules injected into the prompts named in each skill's

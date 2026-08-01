@@ -201,6 +201,8 @@ def generate_research(
         messages=[{"role": "user", "content": f"{_job_block(job)}{web_context}{_resume_block(profile)}\n\n## Research Request\n{research_prompt}"}],
         api_key=api_key,
         model=model,
+        db=db,
+        user_id=current_user.id,
     )
 
     review.research_summary = summary
@@ -243,6 +245,8 @@ def generate_application_answer(
         messages=[{"role": "user", "content": f"{_job_block(job)}{_resume_block(profile)}\n\n## Task: {template['label']}\n{template['prompt']}"}],
         api_key=api_key,
         model=model,
+        db=db,
+        user_id=current_user.id,
     )
 
     # Save answer back to the review
@@ -309,7 +313,8 @@ def refine_application(
     )
 
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
-    return {"response": llm_complete(system=system_prompt, messages=messages, api_key=api_key, model=model)}
+    return {"response": llm_complete(system=system_prompt, messages=messages, api_key=api_key,
+                                 model=model, db=db, user_id=current_user.id)}
 
 
 # ── Prompt-extraction (merge conversation learnings into existing prompts) ────
@@ -394,6 +399,8 @@ def extract_prompt_changes(
         messages=[{"role": "user", "content": user_content}],
         api_key=api_key,
         model=model,
+        db=db,
+        user_id=current_user.id,
     )}
 
 
@@ -451,6 +458,8 @@ def generate_interview_prep(
         messages=[{"role": "user", "content": user_content}],
         api_key=api_key,
         model=model,
+        db=db,
+        user_id=current_user.id,
         max_tokens=4096,
     ).strip()
 
