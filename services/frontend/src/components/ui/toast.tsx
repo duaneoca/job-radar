@@ -25,10 +25,17 @@ const Toast = React.forwardRef<
 >(({ className, variant = "default", ...props }, ref) => (
   <ToastPrimitive.Root
     ref={ref}
+    // Never auto-close. Radix's default is 5s, which beat our own 8s removal and
+    // was too fast to read a message, let alone screenshot one. Radix guards
+    // `duration === Infinity` explicitly, so no timer is ever started.
+    duration={Infinity}
     className={cn(
-      "group pointer-events-auto relative flex w-full items-center justify-between space-x-2 overflow-hidden rounded-md border p-4 pr-6 shadow-lg transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-bottom-full",
+      "group pointer-events-auto relative flex w-full items-start justify-between gap-3 overflow-hidden rounded-md border p-4 shadow-lg transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-bottom-full",
       variant === "destructive"
-        ? "border-destructive bg-destructive text-destructive-foreground"
+        // The bare `destructive` class is what the `group-[.destructive]:` rules
+        // on the OK button key off — without it the button is unreadable on the
+        // red background.
+        ? "destructive border-destructive bg-destructive text-destructive-foreground"
         : "border bg-background text-foreground",
       className
     )}
@@ -53,22 +60,29 @@ const ToastDescription = React.forwardRef<
 ));
 ToastDescription.displayName = ToastPrimitive.Description.displayName;
 
+/** The dismiss control. Was an X that stayed `opacity-0` until hover, which on a
+ *  toast that also closed itself after five seconds meant there was effectively
+ *  no way to dismiss one deliberately — or to keep one on screen long enough to
+ *  read it. Now a labelled button that is always visible. */
 const ToastClose = React.forwardRef<
   React.ElementRef<typeof ToastPrimitive.Close>,
   React.ComponentPropsWithoutRef<typeof ToastPrimitive.Close>
->(({ className, ...props }, ref) => (
+>(({ className, children, ...props }, ref) => (
   <ToastPrimitive.Close
     ref={ref}
     className={cn(
-      "absolute right-1 top-1 rounded-md p-1 opacity-0 transition-opacity hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 group-hover:opacity-100",
+      "shrink-0 rounded-md border px-3 py-1 text-xs font-medium transition-colors",
+      "focus:outline-none focus:ring-2 focus:ring-ring",
+      "group-[.destructive]:border-destructive-foreground/40 group-[.destructive]:hover:bg-destructive-foreground/10",
+      "border-border hover:bg-muted",
       className
     )}
     toast-close=""
     {...props}
   >
-    <X className="h-4 w-4" />
+    {children ?? "OK"}
   </ToastPrimitive.Close>
 ));
 ToastClose.displayName = ToastPrimitive.Close.displayName;
 
-export { ToastProvider, ToastViewport, Toast, ToastTitle, ToastDescription, ToastClose };
+export { ToastProvider, ToastViewport, Toast, ToastTitle, ToastDescription, ToastClose, X };
