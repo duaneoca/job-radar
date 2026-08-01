@@ -555,6 +555,11 @@ function KeysTab() {
                       {!needsModel && rejected === "invalid_key" && (
                         <Badge variant="destructive" className="text-xs">Key rejected</Badge>
                       )}
+                      {/* Not destructive — the key and model are both fine, the
+                          provider is just throttling. It clears on its own. */}
+                      {!needsModel && rejected === "rate_limited" && (
+                        <Badge variant="outline" className="text-xs">Rate limited</Badge>
+                      )}
                       {existing && (
                         <Badge variant="outline" className="font-mono text-xs ml-auto">
                           ••••{existing.key_hint}

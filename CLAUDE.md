@@ -4,7 +4,7 @@ AI-assisted job hunting tool. Scrapes job boards, scores postings against the us
 
 **Production:** https://job-radar.net  
 **Staging:** https://staging.job-radar.net (auto-deploys on every push to `main`)  
-**Current version:** v1.3.2
+**Current version:** v1.12.0
 
 ---
 
@@ -141,7 +141,14 @@ means "no key at all"). Do not reintroduce a `PROVIDER_MODELS`-style fallback.
 `classify_llm_error` checks exception **types** for the transient set *before* it
 sniffs message text — a 429 body containing "invalid" must never be read as a dead
 model, or a throttled user is told to change a setting that was correct. A permanent
-verdict also stops the retry; a transient one retries. Re-saving the key or changing
+verdict also stops the retry; a transient one retries — and if it survives all
+`max_retries`, it is reported as `rate_limited` and the task returns instead of
+raising. That last part matters: letting the exception escape makes Celery log it
+at ERROR, which would put one user's quota ceiling in the operator's digest.
+`classify_llm_error` never returns `rate_limited`; only retry exhaustion does,
+because a lone 429 mid-burst is normal. `rate_limited` does NOT block future
+jobs and does not stop `PUT /keys/active` — the key works, the provider is just
+throttling — and any success clears it. Re-saving the key or changing
 the model clears the record. Coverage caveat: `llm_complete`'s `db`/`user_id` args
 are optional and `resume_tailor.py`'s two calls have no session in scope, so the
 recorded state covers background scoring plus most foreground calls — not literally

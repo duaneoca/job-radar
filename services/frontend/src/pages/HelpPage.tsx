@@ -532,6 +532,12 @@ function ApiKeysTab() {
         notices the first time a score fails, stops retrying, and shows you a banner —
         rather than quietly scoring nothing. Choose a new model in Settings and the banner
         clears on the next successful call.</P>
+      <P>You may also see a <strong>rate-limited</strong> notice. That one isn't a
+        misconfiguration: your provider is throttling requests, usually because a free
+        tier's per-minute or per-day quota ran out while Job Radar was scoring a batch.
+        Nothing needs fixing if you're happy to wait — scoring retries on its own and the
+        notice clears itself. If it keeps coming back, raise your plan's quota or switch to
+        a cheaper model.</P>
 
       <Separator />
 

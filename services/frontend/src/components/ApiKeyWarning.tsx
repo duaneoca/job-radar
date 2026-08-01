@@ -80,6 +80,11 @@ export function LlmKeyProblemBanner() {
     message = `Your ${provider} key has no model selected, so AI features can't run. Job Radar doesn't pick one for you — that's a cost decision on your own account.`;
   } else if (problem === "invalid_key") {
     message = `${provider} rejected your API key, so AI features aren't running.`;
+  } else if (problem === "rate_limited") {
+    // Deliberately different advice from the two rejections: nothing is broken
+    // and nothing needs changing if they're willing to wait. Saying "choose a
+    // model" here would send them to fix a setting that is already correct.
+    message = `${provider} is rate-limiting Job Radar, so some jobs went unscored. Scoring retries on its own — if it keeps happening, raise your plan's quota or pick a cheaper model.`;
   } else {
     message = `${provider} rejected the model "${activeKey.preferred_model}" — it has most likely been retired. AI features aren't running until you choose another.`;
   }
@@ -96,7 +101,7 @@ export function LlmKeyProblemBanner() {
         <div className="flex-1 leading-relaxed">
           <span className="text-foreground">{message}</span>{" "}
           <Link to="/settings?tab=keys" className="font-medium underline">
-            Choose a model
+            {problem === "rate_limited" ? "Review your AI key" : "Choose a model"}
           </Link>
         </div>
         <button
