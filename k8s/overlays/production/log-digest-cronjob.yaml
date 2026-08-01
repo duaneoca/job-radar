@@ -1,0 +1,72 @@
+# Hourly error digest — reads every pod's logs in this namespace, groups the
+# ERROR/CRITICAL lines, and mails what it found.
+#
+# Production only. Staging is where things are expected to break; mailing about
+# it would train the reader to ignore the mail, which defeats the whole feature.
+#
+# Runs on the tracker-api image with a command override — same trick as the
+# backup job. No new image, no new dependency: httpx talks to the Kubernetes API
+# and boto3 sends the mail, and both are already in there.
+#
+# The tag is `latest`, not a SHA, because CI's `kubectl set image` loop hardcodes
+# five *deployment* names under `set -euo pipefail` and a CronJob cannot join it.
+# `latest` is pushed only by the production release workflow, so this tracks
+# production. It does mean a rollback to an earlier vX.Y.Z leaves this job on the
+# newer code — harmless for a read-only reporter, and worth knowing.
+#
+# NOTHING FOUND MEANS NOTHING SENT. A quiet hour is silence, not an empty email.
+# A repeat while an error persists is deliberate — fix the bug, or fix what's
+# being logged at ERROR.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: jobradar-log-digest
+  namespace: jobradar-production
+  labels:
+    app: log-digest
+    project: jobradar
+spec:
+  schedule: "5 * * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 300
+      # No retry: a re-run would re-read the same window and send a duplicate
+      # email. A missed hour is recoverable; two identical digests train you to
+      # skim them.
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app: log-digest
+            project: jobradar
+        spec:
+          restartPolicy: Never
+          serviceAccountName: jobradar-log-digest
+          containers:
+            - name: log-digest
+              image: ghcr.io/duaneoca/jobradar-tracker-api:latest
+              imagePullPolicy: Always
+              command: ["python", "-m", "app.log_digest"]
+              envFrom:
+                - configMapRef:
+                    name: tracker-api-config
+                - secretRef:
+                    name: tracker-api-secrets   # SES creds + ADMIN_NOTIFY_EMAIL
+              env:
+                - name: POD_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "128Mi"
+                limits:
+                  # Worst case is ~11 containers × the 5 MiB per-container cap,
+                  # read and discarded one at a time rather than held together.
+                  cpu: "500m"
+                  memory: "512Mi"

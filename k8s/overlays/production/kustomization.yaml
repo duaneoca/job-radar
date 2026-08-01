@@ -8,6 +8,10 @@ resources:
   - ../../base
   # Production only — staging data is disposable, so it gets no backup job.
   - backup-cronjob.yaml
+  # Production only — staging is where things are expected to break, and mailing
+  # about it would train the reader to ignore the mail.
+  - log-digest-rbac.yaml
+  - log-digest-cronjob.yaml
 
 patches:
   # Override ingress with hostname + TLS for production

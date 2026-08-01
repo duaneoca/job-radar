@@ -193,6 +193,51 @@ self-configure from `.env`; only in-cluster (cloud) agents fetch decrypted confi
 
 ---
 
+## Observability
+
+**One log format, everywhere.** `logging_config.configure_logging(level)` is called
+at import in tracker-api, ai-reviewer and scraper (each has its own copy — the
+services share no package). `LOG_LEVEL` sets the level; the **format is fixed**,
+because `log_digest.LOG_LINE` parses it:
+
+```
+2026-08-01 04:29:02 WARNING app.reviewer: LLM call failed for job …
+```
+
+Both Celery apps set `worker_hijack_root_logger = False`. Without it Celery
+re-installs its own root handler on worker startup and the workers silently revert
+to Celery's format — the digest then matches nothing and reports a permanently
+healthy system. `tests/test_log_digest.py` pins the parser against
+`configure_logging`'s actual output for the same reason; the two drifting apart
+produces no crash and no error, just silence.
+
+**Hourly error digest** (`app/log_digest.py`, `:05` past the hour, **production
+overlay only**) — runs on the tracker-api image via a `command:` override, like the
+backup job. No new image, no new dependency, and **not in CI's `kubectl set image`
+loop** (that loop hardcodes five *deployment* names under `set -euo pipefail`), so
+it uses `:latest` + `imagePullPolicy: Always` like email-agent. `:latest` is pushed
+only by the production release workflow.
+
+- **ERROR/CRITICAL only.** WARNING is where user-fixable problems live and must
+  stay out — see the log-level rule under ai-reviewer.
+- Grouped by `service|logger|normalised-message`, so one bug across 1,115 jobs is
+  one line with a count, not 1,115 paragraphs.
+- `FALLBACK_LINE` catches `ERROR:`/`FATAL:`/`PANIC:` from services we don't write
+  (postgres, redis, nginx), which never match our format.
+- Lists **all** pods in the namespace — no `labelSelector`. `project=jobradar` is
+  on the Deployment objects but **not** their pod templates, so selecting on it
+  matches zero pods.
+- **Nothing found → nothing sent.** Failure to read the cluster sends a `FAILED`
+  email and exits 1; one unreadable container is named in the footer, never dropped.
+- **Repeat mail while an error persists is intentional** — fix the bug or fix what
+  is being logged at ERROR. No cooldown, no suppression, no state.
+- Logs rotate, so coverage is best-effort; the footer says so rather than implying
+  completeness.
+
+**First RBAC in the repo** — `log-digest-rbac.yaml`: a dedicated ServiceAccount plus
+a namespaced **Role** (not ClusterRole) granting only `pods: list` and `pods/log:
+get`. It cannot read secrets and cannot see `jobradar-staging`.
+
 ## Data retention
 
 - **Two soft-expiry rules** (`_do_expire`), both flipping NEW/REVIEWED → EXPIRED:

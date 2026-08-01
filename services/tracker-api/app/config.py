@@ -5,6 +5,9 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://jobradar:jobradar_dev@localhost:5432/jobradar"
     redis_url: str = "redis://localhost:6379/0"
     environment: str = "development"
+    # Root log level. The format itself is fixed (see logging_config) because the
+    # hourly error digest parses it.
+    log_level: str = "INFO"
 
     # JWT — sign tokens with this secret (keep it long and random in production)
     secret_key: str = "change-me-in-production"

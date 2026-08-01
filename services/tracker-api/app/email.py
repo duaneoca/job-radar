@@ -32,13 +32,34 @@ def _ses_client():
         return None
 
 
+def send_email(to: str, subject: str, body: str) -> bool:
+    """Send a plain-text email. Returns False (never raises) when SES isn't
+    configured or the send fails — no caller here is important enough to crash
+    over a mail failure."""
+    if not to:
+        return False
+    client = _ses_client()
+    if client is None:
+        logger.info("SES not configured — skipping email %r to %s", subject, to)
+        return False
+    try:
+        client.send_email(
+            Source=settings.ses_from_email,
+            Destination={"ToAddresses": [to]},
+            Message={
+                "Subject": {"Data": subject},
+                "Body": {"Text": {"Data": body}},
+            },
+        )
+        return True
+    except Exception as exc:
+        logger.error("SES send_email failed (%r → %s): %s", subject, to, exc)
+        return False
+
+
 def notify_new_account(email: str, full_name: str | None = None) -> None:
     """Send admin notification when a new account signup is pending approval."""
     if not settings.admin_notify_email:
-        return
-    client = _ses_client()
-    if client is None:
-        logger.info("SES not configured — skipping new-account notification for %s", email)
         return
 
     name_line = f"Name:  {full_name}" if full_name else "Name:  (not provided)"
@@ -49,27 +70,13 @@ def notify_new_account(email: str, full_name: str | None = None) -> None:
         f"Approve or reject at:\n"
         f"https://job-radar.net/admin\n"
     )
-    try:
-        client.send_email(
-            Source=settings.ses_from_email,
-            Destination={"ToAddresses": [settings.admin_notify_email]},
-            Message={
-                "Subject": {"Data": f"Job Radar: new account request from {email}"},
-                "Body": {"Text": {"Data": body}},
-            },
-        )
+    if send_email(settings.admin_notify_email,
+                  f"Job Radar: new account request from {email}", body):
         logger.info("Sent new-account notification for %s → %s", email, settings.admin_notify_email)
-    except Exception as exc:
-        # Never crash the signup flow because of an email failure
-        logger.error("SES send_email failed: %s", exc)
 
 
 def notify_account_approved(email: str, full_name: str | None = None) -> None:
     """Notify a user that their account has been approved."""
-    client = _ses_client()
-    if client is None:
-        return
-
     name = full_name or email
     body = (
         f"Hi {name},\n\n"
@@ -77,15 +84,5 @@ def notify_account_approved(email: str, full_name: str | None = None) -> None:
         f"https://job-radar.net\n\n"
         f"— Job Radar\n"
     )
-    try:
-        client.send_email(
-            Source=settings.ses_from_email,
-            Destination={"ToAddresses": [email]},
-            Message={
-                "Subject": {"Data": "Your Job Radar account is approved"},
-                "Body": {"Text": {"Data": body}},
-            },
-        )
+    if send_email(email, "Your Job Radar account is approved", body):
         logger.info("Sent approval notification to %s", email)
-    except Exception as exc:
-        logger.error("SES send_email (approval) failed: %s", exc)

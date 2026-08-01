@@ -1,0 +1,53 @@
+# The first RBAC in this repo.
+#
+# The digest job reads other pods' logs, which nothing else here does, so it gets
+# its own identity rather than borrowing the default ServiceAccount — which every
+# unlabelled pod in the namespace shares.
+#
+# Role, NOT ClusterRole: this grants nothing outside jobradar-production. In
+# particular it cannot read jobradar-staging.
+#
+# `pods: list` and `pods/log: get` and nothing else. Note that `get secrets` is
+# deliberately absent — the job reads its own SES config from envFrom, which the
+# kubelet injects, not from the API.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: jobradar-log-digest
+  namespace: jobradar-production
+  labels:
+    app: log-digest
+    project: jobradar
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: jobradar-log-reader
+  namespace: jobradar-production
+  labels:
+    app: log-digest
+    project: jobradar
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: jobradar-log-digest
+  namespace: jobradar-production
+  labels:
+    app: log-digest
+    project: jobradar
+subjects:
+  - kind: ServiceAccount
+    name: jobradar-log-digest
+    namespace: jobradar-production
+roleRef:
+  kind: Role
+  name: jobradar-log-reader
+  apiGroup: rbac.authorization.k8s.io
