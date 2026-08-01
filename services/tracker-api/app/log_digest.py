@@ -74,6 +74,14 @@ LOG_LINE = re.compile(
 # our own tracebacks (a stack frame mentioning "ERROR:" is not a new fault).
 FALLBACK_LINE = re.compile(r"\b(?P<level>ERROR|FATAL|PANIC|CRITICAL|EMERG|ALERT):\s+(?P<message>.+)$")
 
+# Celery's own format, which puts the colon BEFORE the level:
+#   [2026-08-01 04:50:35,143: ERROR/ForkPoolWorker-1] Task … raised unexpected
+# `worker_hijack_root_logger = False` should mean this never appears — but a pod
+# predating that change, or a rolled-back image, would otherwise be silently
+# unmonitored, and a monitor that depends on its own fix having shipped is not
+# much of a monitor.
+CELERY_LINE = re.compile(r":\s*(?P<level>ERROR|CRITICAL)/[^\]]*\]\s*(?P<message>.+)$")
+
 # Applied in order. Broadest identifiers first, so a UUID isn't half-eaten by the
 # hex rule and a timestamp isn't shredded by the number rule.
 _NORMALISE = [
@@ -130,7 +138,7 @@ def collect(service: str, log_text: str, entries: "OrderedDict[tuple, Entry]") -
                 if raw.strip() and len(current.traceback) < 25:
                     current.traceback.append(raw.rstrip())
                 continue
-            fallback = FALLBACK_LINE.search(raw)
+            fallback = CELERY_LINE.search(raw) or FALLBACK_LINE.search(raw)
             if fallback is None:
                 continue
             message = fallback.group("message")
