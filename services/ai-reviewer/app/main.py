@@ -14,11 +14,17 @@ from celery import Celery
 
 from app.config import settings
 from app.llm_errors import LLMCallFailed
+from app.logging_config import configure_logging
 from app.reviewer import JobReviewer
 
+configure_logging(settings.log_level)
 logger = logging.getLogger(__name__)
 
 app = Celery("ai-reviewer", broker=settings.redis_url, backend=settings.redis_url)
+# Keep our format. Celery replaces the root logger's handlers on worker startup
+# unless told not to, which would leave the digest parsing a format that no
+# longer exists — the quiet way this feature ships looking fine and doing nothing.
+app.conf.worker_hijack_root_logger = False
 
 
 def _internal_headers(user_id: str | None = None) -> dict:

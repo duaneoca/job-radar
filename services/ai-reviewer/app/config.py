@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     # or CLAUDE_API_KEY for backwards compatibility.
     anthropic_api_key: str = ""
     environment: str = "development"
+    # Root log level. The format is fixed (see logging_config) because the
+    # hourly error digest parses it.
+    log_level: str = "INFO"
 
     # Shared secret for authenticating internal calls to tracker-api (sent as
     # X-Internal-Token). Must match AGENT_INTERNAL_TOKEN in tracker-api-secrets.

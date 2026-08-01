@@ -40,6 +40,9 @@ from app.scrapers.the_muse import TheMuseScraper
 logger = logging.getLogger(__name__)
 
 app = Celery("scraper", broker=settings.redis_url, backend=settings.redis_url)
+# Keep our format — see the ai-reviewer note; Celery otherwise re-installs its own
+# root handler on worker startup and the digest silently misses this service.
+app.conf.worker_hijack_root_logger = False
 
 
 def _internal_headers() -> dict:

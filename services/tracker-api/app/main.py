@@ -10,12 +10,14 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import SessionLocal
+from app.logging_config import configure_logging
 from app.models import User
 from app.routers import (
     admin, agent, auth, connections, criteria, generate, jobs, keys, profile, recruiters,
 )
 from app.security import hash_password
 
+configure_logging(settings.log_level)
 logger = logging.getLogger(__name__)
 
 _DEFAULT_SECRET_KEY   = "change-me-in-production"
