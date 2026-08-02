@@ -10,7 +10,7 @@ from typing import Optional
 
 import litellm
 
-from app.llm_errors import LLMCallFailed, classify_llm_error
+from app.llm_errors import LLMCallFailed, classify_llm_error, transient_kind
 
 litellm.suppress_debug_info = True
 logger = logging.getLogger(__name__)
@@ -184,7 +184,11 @@ Salary range: {salary_line}
                 "LLM call failed for job %s (model=%s, kind=%s): %s",
                 job_id, self.model, kind or "transient", exc,
             )
-            raise LLMCallFailed(kind, str(exc)) from exc
+            # transient_kind is recorded even though it only matters if every
+            # retry runs out — the original exception is gone by then.
+            raise LLMCallFailed(
+                kind, str(exc), None if kind else transient_kind(exc)
+            ) from exc
 
         raw_text = response.choices[0].message.content.strip()
 

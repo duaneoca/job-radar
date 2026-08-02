@@ -13,7 +13,7 @@ import httpx
 from celery import Celery
 
 from app.config import settings
-from app.llm_errors import RATE_LIMITED, LLMCallFailed
+from app.llm_errors import PROVIDER_UNAVAILABLE, LLMCallFailed
 from app.logging_config import configure_logging
 from app.reviewer import JobReviewer
 
@@ -149,21 +149,26 @@ def review_job(self, job_id: str, user_id: str):
             return
 
         if self.request.retries >= self.max_retries:
-            # Transient, but it has outlasted every retry — roughly three minutes
-            # of 429s. In practice that is a quota ceiling, which only the user
-            # can do anything about, so tell them rather than the operator.
-            # Reported as rate_limited, which does NOT stop future jobs: the next
-            # success clears it on its own.
+            # Transient, but it has outlasted every retry — roughly three
+            # minutes. Either the user is against a quota ceiling or their
+            # provider is down; both are theirs to see and neither is anything
+            # the operator can fix, so report it and stop.
+            #
+            # reviewer.py decided which flavour while it still had the original
+            # exception. Getting this wrong means confidently telling someone the
+            # wrong cause — "you are being rate-limited" during an outage sends
+            # them to change a quota that was never the problem.
             #
             # Returning here also keeps the exception from escaping the task.
             # Celery re-raises the original exc once retries are exhausted and
-            # logs it at ERROR, which would put one user's quota problem in the
-            # operator's hourly digest.
-            _report_key_status(base, user_id, RATE_LIMITED, exc.message)
+            # logs it at ERROR, which would put one user's provider trouble in
+            # the operator's hourly digest.
+            kind = exc.transient or PROVIDER_UNAVAILABLE
+            _report_key_status(base, user_id, kind, exc.message)
             logger.warning(
-                "Transient LLM failure survived %d retries for user %s — "
-                "reporting as throttled, job %s not scored",
-                self.request.retries, user_id, job_id,
+                "Transient LLM failure (%s) survived %d retries for user %s — "
+                "job %s not scored",
+                kind, self.request.retries, user_id, job_id,
             )
             return
 

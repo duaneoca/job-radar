@@ -110,6 +110,14 @@ KEY_ERROR_INVALID_KEY   = "invalid_key"
 # cheaper model, or wait), and silence looks identical to "nothing to score".
 # Unlike the two above it does NOT stop future attempts; any success clears it.
 KEY_ERROR_RATE_LIMITED  = "rate_limited"
+# The provider isn't answering at all — timeout, connection failure, 5xx. Kept
+# apart from rate_limited because the advice differs: a quota ceiling is worth
+# acting on, an outage is only worth waiting out. Telling someone they're being
+# throttled when the provider is down is a confident wrong diagnosis.
+KEY_ERROR_PROVIDER_UNAVAILABLE = "provider_unavailable"
+
+# Recorded but not the user's fault to fix, and never a reason to refuse a key.
+KEY_ERRORS_TRANSIENT = (KEY_ERROR_RATE_LIMITED, KEY_ERROR_PROVIDER_UNAVAILABLE)
 
 
 # ── Users ────────────────────────────────────────────────────

@@ -145,10 +145,15 @@ verdict also stops the retry; a transient one retries — and if it survives all
 `max_retries`, it is reported as `rate_limited` and the task returns instead of
 raising. That last part matters: letting the exception escape makes Celery log it
 at ERROR, which would put one user's quota ceiling in the operator's digest.
-`classify_llm_error` never returns `rate_limited`; only retry exhaustion does,
-because a lone 429 mid-burst is normal. `rate_limited` does NOT block future
-jobs and does not stop `PUT /keys/active` — the key works, the provider is just
-throttling — and any success clears it. Re-saving the key or changing
+`classify_llm_error` never returns the transient kinds; only retry exhaustion
+does, because a lone 429 mid-burst is normal. Which one is decided by
+`transient_kind()` **while the original exception is still in hand**:
+`rate_limited` for a real throttle, `PROVIDER_UNAVAILABLE` for a timeout,
+connection failure or 5xx — and that is the fallback, because "not responding"
+is vague but never wrong, whereas "you are being rate-limited" is a specific
+claim about the user's account. Neither blocks future jobs or
+`PUT /keys/active` (`models.KEY_ERRORS_TRANSIENT`) — the key works — and any
+success clears them. Re-saving the key or changing
 the model clears the record. Coverage caveat: `llm_complete`'s `db`/`user_id` args
 are optional and `resume_tailor.py`'s two calls have no session in scope, so the
 recorded state covers background scoring plus most foreground calls — not literally

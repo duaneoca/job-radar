@@ -11,7 +11,9 @@ import httpx
 import pytest
 
 from app import main as worker
-from app.llm_errors import INVALID_MODEL, LLMCallFailed
+from app.llm_errors import (
+    INVALID_MODEL, PROVIDER_UNAVAILABLE, RATE_LIMITED, LLMCallFailed,
+)
 
 JOB_ID = "8bca15d1-3f2e-4a1b-9c8d-1122334455aa"
 USER_ID = "f553ba2d-31c8-49e6-be6a-1b94119ce7b4"
@@ -103,8 +105,22 @@ def test_transient_failure_does_not_swallow_the_job_while_retries_remain(monkeyp
 # ── retries exhausted ─────────────────────────────────────────
 
 def test_exhausted_retries_report_rate_limited(monkeypatch, wired):
-    _run(monkeypatch, 3, LLMCallFailed(None, "429 RESOURCE_EXHAUSTED"))
+    _run(monkeypatch, 3, LLMCallFailed(None, "429 RESOURCE_EXHAUSTED", RATE_LIMITED))
     assert wired == [{"kind": "rate_limited", "detail": "429 RESOURCE_EXHAUSTED"}]
+
+
+def test_an_outage_is_not_reported_as_throttling(monkeypatch, wired):
+    """Regression: every exhausted transient used to be labelled rate_limited,
+    so a provider outage told the user to raise a quota."""
+    _run(monkeypatch, 3, LLMCallFailed(None, "Connection refused", PROVIDER_UNAVAILABLE))
+    assert wired == [{"kind": "provider_unavailable", "detail": "Connection refused"}]
+
+
+def test_a_flavourless_transient_falls_back_to_outage(monkeypatch, wired):
+    """"Not responding" is vague but never wrong; claiming a quota problem is a
+    specific assertion about the user's account."""
+    _run(monkeypatch, 3, LLMCallFailed(None, "mystery"))
+    assert wired[0]["kind"] == "provider_unavailable"
 
 
 def test_exhausted_retries_do_not_raise(monkeypatch, wired):

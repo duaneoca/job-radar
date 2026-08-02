@@ -538,6 +538,9 @@ function ApiKeysTab() {
         Nothing needs fixing if you're happy to wait — scoring retries on its own and the
         notice clears itself. If it keeps coming back, raise your plan's quota or switch to
         a cheaper model.</P>
+      <P>A <strong>not responding</strong> notice means the opposite: your provider couldn't
+        be reached at all. There's nothing to change on your side — scoring picks up again
+        once they're back.</P>
 
       <Separator />
 

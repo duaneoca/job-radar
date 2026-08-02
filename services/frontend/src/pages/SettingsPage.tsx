@@ -560,6 +560,9 @@ function KeysTab() {
                       {!needsModel && rejected === "rate_limited" && (
                         <Badge variant="outline" className="text-xs">Rate limited</Badge>
                       )}
+                      {!needsModel && rejected === "provider_unavailable" && (
+                        <Badge variant="outline" className="text-xs">Provider unreachable</Badge>
+                      )}
                       {existing && (
                         <Badge variant="outline" className="font-mono text-xs ml-auto">
                           ••••{existing.key_hint}
