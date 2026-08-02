@@ -180,3 +180,95 @@ def test_list_keys_exposes_the_error(client, db):
     row = next(k for k in client.get("/keys").json() if k["provider"] == "anthropic")
     assert row["last_error_kind"] == "invalid_model"
     assert row["last_error"] == "model gone"
+
+
+# ── foreground AI features ────────────────────────────────────
+# Tailoring, research and interview prep run in the request path, so the user
+# already gets an error toast. The recorded state is what explains why their
+# *background* scoring is also stalled — and it must reach the banner from every
+# one of these, not just from the worker.
+
+def _force(monkeypatch, exc):
+    """Make the next llm_complete call fail with `exc` at the litellm boundary."""
+    import litellm
+    from app import llm as llm_mod
+
+    def boom(**kwargs):
+        raise exc
+    monkeypatch.setattr(litellm, "completion", boom)
+    return llm_mod
+
+
+def _call(db, exc, monkeypatch):
+    """Invoke llm_complete exactly as a foreground route does."""
+    from fastapi import HTTPException
+    import pytest as _pytest
+    llm_mod = _force(monkeypatch, exc)
+    with _pytest.raises(HTTPException) as caught:
+        llm_mod.llm_complete(
+            system="s", messages=[{"role": "user", "content": "x"}],
+            api_key="k", model="m", db=db, user_id=TEST_USER_ID,
+        )
+    return caught.value
+
+
+def test_foreground_dead_model_raises_the_banner(client, db, monkeypatch):
+    """A retired model discovered while tailoring must not just show a toast and
+    vanish — the next page load should still say something is wrong."""
+    import litellm
+    _key(db)
+    err = _call(db, litellm.BadRequestError(
+        message="model gemini-1.5-flash is not found", llm_provider="google", model="m"), monkeypatch)
+    assert err.status_code == 400
+    assert _reload(db).last_error_kind == "invalid_model"
+
+
+def test_foreground_rate_limit_is_recorded(client, db, monkeypatch):
+    import litellm
+    _key(db)
+    err = _call(db, litellm.RateLimitError(
+        message="429 quota exceeded", llm_provider="google", model="m"), monkeypatch)
+    assert err.status_code == 429
+    assert _reload(db).last_error_kind == "rate_limited"
+
+
+def test_foreground_timeout_is_an_outage_not_throttling(client, db, monkeypatch):
+    """Same distinction as the worker: naming the wrong cause sends the user to
+    change a quota that was never the problem."""
+    import litellm
+    _key(db)
+    err = _call(db, litellm.Timeout(
+        message="timed out", llm_provider="google", model="m"), monkeypatch)
+    assert err.status_code == 502
+    assert _reload(db).last_error_kind == "provider_unavailable"
+
+
+def test_a_bug_in_our_own_code_is_not_blamed_on_the_provider(client, db, monkeypatch):
+    """The catch-all must stay an operator problem: recording it would tell the
+    user their provider is down when the fault is ours."""
+    _key(db)
+    err = _call(db, TypeError("we broke something"), monkeypatch)
+    assert err.status_code == 502
+    assert _reload(db).last_error_kind is None
+
+
+def test_foreground_success_clears_a_recorded_failure(client, db, monkeypatch):
+    """Tailoring working again should clear a banner the worker put up."""
+    import litellm
+    from app import llm as llm_mod
+    _key(db)
+    client.post(STATUS_URL, json={"kind": "invalid_model", "detail": "gone"})
+
+    class _Msg:
+        content = "ok"
+
+    class _Choice:
+        message = _Msg()
+
+    class _Resp:
+        choices = [_Choice()]
+
+    monkeypatch.setattr(litellm, "completion", lambda **kw: _Resp())
+    llm_mod.llm_complete(system="s", messages=[{"role": "user", "content": "x"}],
+                         api_key="k", model="m", db=db, user_id=TEST_USER_ID)
+    assert _reload(db).last_error_kind is None

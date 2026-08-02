@@ -148,7 +148,7 @@ def test_tailor_reparses_when_stale(client, db, monkeypatch):
     rid = _scrape(client)
     calls = {"parse": 0}
 
-    def fake_parse(text, key, model):
+    def fake_parse(text, key, model, **kwargs):
         calls["parse"] += 1
         return _s(ORIGINAL)
     monkeypatch.setattr(resume_tailor, "parse_resume_text", fake_parse)

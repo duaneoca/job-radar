@@ -65,9 +65,14 @@ Rules:
 - Output ONLY the JSON object — no prose, no markdown fences."""
 
 
-def parse_resume_text(resume_text: str, api_key: str, model: str) -> schemas.ResumeStructured:
+def parse_resume_text(resume_text: str, api_key: str, model: str, *,
+                      db=None, user_id=None) -> schemas.ResumeStructured:
     """Parse résumé text → validated ResumeStructured. Raises HTTPException on
-    empty input or malformed model output."""
+    empty input or malformed model output.
+
+    `db`/`user_id` are optional only so the signature stays usable from a script;
+    every caller in the app passes them, so a dead key found while parsing raises
+    the same banner as one found while scoring."""
     if not (resume_text or "").strip():
         raise HTTPException(status_code=400, detail="No résumé text to parse. Add your résumé first.")
 
@@ -77,6 +82,8 @@ def parse_resume_text(resume_text: str, api_key: str, model: str) -> schemas.Res
         api_key=api_key,
         model=model,
         max_tokens=4096,
+        db=db,
+        user_id=user_id,
     ).strip()
 
     try:
@@ -207,7 +214,7 @@ def _tailor_messages(structured, honesty_facts, job_text, style_prompt, extra=No
 
 
 def tailor_resume(structured, honesty_facts, job_text, style_prompt, api_key, model, *,
-                  extra=None, skills_text=""):
+                  extra=None, skills_text="", db=None, user_id=None):
     """Run the tailor LLM call. Returns (tailored ResumeStructured, model notes list).
     The honesty core is prepended here, server-side."""
     raw = llm_complete(
@@ -216,6 +223,8 @@ def tailor_resume(structured, honesty_facts, job_text, style_prompt, api_key, mo
         api_key=api_key,
         model=model,
         max_tokens=8192,
+        db=db,
+        user_id=user_id,
     ).strip()
 
     try:
