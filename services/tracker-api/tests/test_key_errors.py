@@ -80,6 +80,21 @@ def test_rate_limited_key_can_still_be_made_active(client, db):
     assert client.put("/keys/active", json={"provider": "anthropic"}).status_code == 200
 
 
+def test_provider_unavailable_is_recorded(client, db):
+    """An outage is neither the user's fault nor the operator's problem, but the
+    user should still know why nothing is being scored."""
+    _key(db)
+    r = client.post(STATUS_URL, json={"kind": "provider_unavailable", "detail": "Connection refused"})
+    assert r.status_code == 200
+    assert _reload(db).last_error_kind == "provider_unavailable"
+
+
+def test_an_unreachable_provider_does_not_block_the_key(client, db):
+    _key(db)
+    client.post(STATUS_URL, json={"kind": "provider_unavailable", "detail": "timeout"})
+    assert client.put("/keys/active", json={"provider": "anthropic"}).status_code == 200
+
+
 def test_unknown_kind_is_rejected(client, db):
     """The column is a small closed set. A typo'd or invented kind would render
     as a blank banner the user can't act on."""

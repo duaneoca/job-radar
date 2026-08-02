@@ -306,7 +306,7 @@ def report_llm_key_status(
         return {"status": "cleared"}
 
     if payload.kind not in (models.KEY_ERROR_INVALID_MODEL, models.KEY_ERROR_INVALID_KEY,
-                            models.KEY_ERROR_RATE_LIMITED):
+                            *models.KEY_ERRORS_TRANSIENT):
         raise HTTPException(status_code=400, detail=f"Unknown error kind: {payload.kind}")
 
     record_key_error(db, key_obj, payload.kind, payload.detail or "")

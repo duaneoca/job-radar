@@ -21,9 +21,14 @@ logger = logging.getLogger(__name__)
 INVALID_MODEL = "invalid_model"
 INVALID_KEY = "invalid_key"
 # Reported only after every retry is exhausted — see main.py. classify_llm_error
-# never returns this: at classification time a 429 is still just transient, and
+# never returns these: at classification time a 429 is still just transient, and
 # treating one as a ceiling would nag a user who is merely mid-burst.
+#
+# The two are kept apart because they call for different advice. Telling someone
+# their provider is throttling them when it is actually unreachable sends them to
+# change a quota that was never the problem.
 RATE_LIMITED = "rate_limited"
+PROVIDER_UNAVAILABLE = "provider_unavailable"
 
 # Substrings that identify the model — not the key, not the quota — as the thing
 # the provider rejected.
@@ -76,14 +81,40 @@ def classify_llm_error(exc: Exception) -> str | None:
     return None
 
 
+# Markers that a failure really is a quota/throttle rather than an outage.
+# Checked only after the exception TYPE, and only for errors already known to be
+# transient — so this can never turn a 429 into a "dead model".
+_RATE_LIMIT_PHRASES = ("rate limit", "ratelimit", "quota", "resource_exhausted", "too many requests")
+
+
+def transient_kind(exc: Exception) -> str:
+    """For a transient failure that outlasted every retry: which kind was it?
+
+    Only consulted at retry exhaustion. The distinction exists because a quota
+    ceiling is something the user can act on (raise the tier, pick a cheaper
+    model) while an unreachable provider is something they can only wait out.
+    """
+    if isinstance(exc, litellm.RateLimitError):
+        return RATE_LIMITED
+    err = str(exc).lower()
+    if any(p in err for p in _RATE_LIMIT_PHRASES):
+        return RATE_LIMITED
+    # Timeouts, connection failures, 5xx — the provider is not answering. Saying
+    # "you are being rate-limited" here would be a confident wrong diagnosis.
+    return PROVIDER_UNAVAILABLE
+
+
 class LLMCallFailed(Exception):
     """A completion call failed. `kind` is a permanent verdict, or None if the
     failure looks transient and the task should retry."""
 
-    def __init__(self, kind: str | None, message: str):
+    def __init__(self, kind: str | None, message: str, transient: str | None = None):
         super().__init__(message)
         self.kind = kind
         self.message = message
+        # Which flavour of transient this was, for the caller that runs out of
+        # retries. None for permanent failures, which never reach that branch.
+        self.transient = transient
 
     @property
     def permanent(self) -> bool:

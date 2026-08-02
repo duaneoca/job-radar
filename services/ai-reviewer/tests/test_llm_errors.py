@@ -10,7 +10,10 @@ protecting a user from bad advice, not just checking a branch.
 import litellm
 import pytest
 
-from app.llm_errors import INVALID_KEY, INVALID_MODEL, LLMCallFailed, classify_llm_error
+from app.llm_errors import (
+    INVALID_KEY, INVALID_MODEL, PROVIDER_UNAVAILABLE, RATE_LIMITED,
+    LLMCallFailed, classify_llm_error, transient_kind,
+)
 
 
 def _err(cls, message, **kw):
@@ -99,3 +102,49 @@ def test_bad_request_unrelated_to_the_model_is_not_permanent():
 def test_llm_call_failed_reports_permanence():
     assert LLMCallFailed(INVALID_MODEL, "gone").permanent is True
     assert LLMCallFailed(None, "timeout").permanent is False
+
+
+# ── which flavour of transient ────────────────────────────────
+# Only consulted once every retry is exhausted. Both are user-visible, and they
+# carry different advice, so a wrong label sends someone to change the wrong
+# thing — the same failure this whole area exists to avoid.
+
+def test_connection_refused_is_an_outage_not_throttling():
+    """The case that exposed this: a real staging run reported "rate_limited"
+    for `APIConnectionError: [Errno 111] Connection refused`, which would have
+    told the user to raise a quota during an outage."""
+    exc = _err(litellm.APIConnectionError, "OllamaException - [Errno 111] Connection refused")
+    assert transient_kind(exc) == PROVIDER_UNAVAILABLE
+
+
+@pytest.mark.parametrize("cls", [litellm.Timeout, litellm.InternalServerError,
+                                 litellm.ServiceUnavailableError])
+def test_timeouts_and_5xx_are_outages(cls):
+    assert transient_kind(_err(cls, "upstream is having a bad day")) == PROVIDER_UNAVAILABLE
+
+
+def test_rate_limit_type_is_throttling():
+    assert transient_kind(_err(litellm.RateLimitError, "slow down")) == RATE_LIMITED
+
+
+@pytest.mark.parametrize("message", [
+    "429 RESOURCE_EXHAUSTED: quota exceeded for gemini-2.5-flash",
+    "Rate limit reached for gpt-4o-mini",
+    "Too Many Requests",
+])
+def test_quota_wording_is_throttling_even_from_a_generic_error(message):
+    """Not every provider surfaces a throttle as RateLimitError."""
+    assert transient_kind(RuntimeError(message)) == RATE_LIMITED
+
+
+def test_unknown_transients_default_to_outage():
+    """The safer default: "not responding" is vague but never wrong, whereas
+    "you are being rate-limited" is a specific claim about the user's account."""
+    assert transient_kind(RuntimeError("something we've never seen")) == PROVIDER_UNAVAILABLE
+
+
+def test_llm_call_failed_carries_the_flavour():
+    exc = LLMCallFailed(None, "boom", RATE_LIMITED)
+    assert exc.permanent is False
+    assert exc.transient == RATE_LIMITED
+    assert LLMCallFailed(INVALID_MODEL, "gone").transient is None
