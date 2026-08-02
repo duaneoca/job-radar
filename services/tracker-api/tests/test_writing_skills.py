@@ -171,7 +171,8 @@ def test_skill_reaches_resume_tailor_below_the_contract(client, db, monkeypatch)
     rid = _scrape(client)
     seen = {}
 
-    def fake_tailor(structured, honesty, job_text, style, api_key, model, *, extra=None, skills_text=""):
+    def fake_tailor(structured, honesty, job_text, style, api_key, model, *,
+                    extra=None, skills_text="", **kwargs):
         seen["skills_text"] = skills_text
         seen["user"] = resume_tailor._tailor_messages(
             structured, honesty, job_text, style, extra, skills_text)

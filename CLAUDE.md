@@ -154,11 +154,20 @@ is vague but never wrong, whereas "you are being rate-limited" is a specific
 claim about the user's account. Neither blocks future jobs or
 `PUT /keys/active` (`models.KEY_ERRORS_TRANSIENT`) — the key works — and any
 success clears them. Re-saving the key or changing
-the model clears the record. Coverage caveat: `llm_complete`'s `db`/`user_id` args
-are optional and `resume_tailor.py`'s two calls have no session in scope, so the
-recorded state covers background scoring plus most foreground calls — not literally
-every one. Background scoring is what matters, since that's the path where a failure
-is otherwise invisible.
+the model clears the record. **Every** `llm_complete` call site
+passes `db`/`user_id` — the five in `generate.py` plus `resume_tailor.py`'s two,
+which take them through from their four routers — so scoring, research,
+application answers, interview prep, résumé parsing and tailoring all reach the
+same banner. The args stay optional only so the functions remain callable from a
+script; if you add a call site, wire them.
+
+Foreground calls record transient kinds too. `llm_complete` already sets
+`num_retries=2`, so a throttle that surfaces has outlasted its retries — the same
+bar the worker applies. `_PROVIDER_DOWN` (timeout / connection / 5xx) is handled
+explicitly and logged at WARNING; before that it fell through to the catch-all and
+logged at **ERROR**, which put a user's provider outage in the operator's digest.
+The catch-all still logs ERROR and records nothing, because an unexpected
+exception there is our bug, not the provider's.
 
 **Log level follows who can fix it.** A failure the user is shown (dead model,
 rejected key) is logged at `WARNING` — it is not an operator fault and must not

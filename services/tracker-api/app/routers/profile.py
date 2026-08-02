@@ -98,7 +98,8 @@ def ingest_resume(
         raise HTTPException(status_code=404, detail="No active profile found")
 
     api_key, model = get_llm_provider(current_user.id, db)
-    structured = resume_tailor.parse_resume_text(obj.resume_text, api_key, model)
+    structured = resume_tailor.parse_resume_text(obj.resume_text, api_key, model,
+                                                 db=db, user_id=current_user.id)
 
     obj.resume_structured = structured.model_dump()
     obj.resume_structured_stale = False

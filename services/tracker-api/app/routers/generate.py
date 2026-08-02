@@ -531,7 +531,8 @@ def _fresh_structured(profile: models.Profile, user_id: UUID, db: Session):
     if profile.resume_structured and not profile.resume_structured_stale:
         return schemas.ResumeStructured.model_validate(profile.resume_structured)
     api_key, model = get_llm_provider(user_id, db)
-    structured = resume_tailor.parse_resume_text(profile.resume_text, api_key, model)
+    structured = resume_tailor.parse_resume_text(profile.resume_text, api_key, model,
+                                                 db=db, user_id=user_id)
     profile.resume_structured = structured.model_dump()
     profile.resume_structured_stale = False
     db.commit()
@@ -592,7 +593,7 @@ def tailor_resume_endpoint(
 
     tailored, notes = resume_tailor.tailor_resume(
         structured, honesty, _job_block(review.job), style, api_key, model,
-        skills_text=skills_block(criteria, "resume"))
+        skills_text=skills_block(criteria, "resume"), db=db, user_id=current_user.id)
     state = resume_tailor.build_tailor_state(structured, tailored, notes, model, honesty)
 
     review.resume_tailor = state
@@ -639,7 +640,7 @@ def refine_tailored_resume(
 
     tailored, notes = resume_tailor.tailor_resume(
         current, honesty, _job_block(review.job), style, api_key, model, extra=extra,
-        skills_text=skills_block(criteria, "resume"))
+        skills_text=skills_block(criteria, "resume"), db=db, user_id=current_user.id)
     state = resume_tailor.build_tailor_state(original, tailored, notes, model, honesty)
 
     # Carry prior decisions forward by change id.

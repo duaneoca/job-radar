@@ -325,6 +325,30 @@ def _looks_like_dead_model(exc: Exception) -> bool:
     )
 
 
+# Mirrors ai-reviewer's transient_kind(). The two services share no package, and
+# this copy exists so a foreground failure reaches the same banner as a
+# background one — see llm_errors.py there for why the split matters.
+_RATE_LIMIT_PHRASES = ("rate limit", "ratelimit", "quota", "resource_exhausted", "too many requests")
+
+# The provider did not answer. Distinct from an unexpected exception in OUR code,
+# which stays an operator problem and is deliberately not recorded below.
+_PROVIDER_DOWN = (
+    litellm.Timeout,
+    litellm.APIConnectionError,
+    litellm.ServiceUnavailableError,
+    litellm.InternalServerError,
+)
+
+
+def _transient_kind(exc: Exception) -> str:
+    """Throttled, or simply not answering? Type first, then explicit wording."""
+    if isinstance(exc, litellm.RateLimitError):
+        return models.KEY_ERROR_RATE_LIMITED
+    if any(p in str(exc).lower() for p in _RATE_LIMIT_PHRASES):
+        return models.KEY_ERROR_RATE_LIMITED
+    return models.KEY_ERROR_PROVIDER_UNAVAILABLE
+
+
 def _remember(db: Session | None, user_id: UUID | None, kind: str, detail: str) -> None:
     """Best-effort record of a permanent failure against the user's active key.
 
@@ -374,9 +398,22 @@ def llm_complete(
     except litellm.AuthenticationError as e:
         _remember(db, user_id, models.KEY_ERROR_INVALID_KEY, str(e))
         raise HTTPException(status_code=400, detail="Invalid API key. Check Settings → API Keys.")
-    except litellm.RateLimitError:
-        # Transient by definition — deliberately NOT recorded.
+    except litellm.RateLimitError as e:
+        # litellm already retried this internally (num_retries above), so by the
+        # time it surfaces the throttle has outlasted its retries — the same bar
+        # the background worker uses before recording. The user gets an immediate
+        # error either way; the record is what explains why *background* scoring
+        # is also stalled.
+        _remember(db, user_id, models.KEY_ERROR_RATE_LIMITED, str(e))
+        logger.warning("Rate limited by provider (model=%s)", model)
         raise HTTPException(status_code=429, detail="AI provider rate limit reached. Try again later.")
+    except _PROVIDER_DOWN as e:
+        # WARNING, not ERROR: nothing here is the operator's to fix, and these
+        # used to fall through to the catch-all below and log at ERROR — which
+        # would put a user's provider outage in the hourly digest.
+        _remember(db, user_id, _transient_kind(e), str(e))
+        logger.warning("AI provider unreachable (model=%s): %s", model, e)
+        raise HTTPException(status_code=502, detail="The AI provider isn't responding. Try again shortly.")
     except litellm.BadRequestError as e:
         if _looks_like_dead_model(e):
             _remember(db, user_id, models.KEY_ERROR_INVALID_MODEL, str(e))
