@@ -13,6 +13,7 @@ import {
   loadSettings, saveSettings, mergeSettings,
   type ResumeSettings, type TemplateId,
 } from "../lib/resumeSettings";
+import { filenameFromName } from "../lib/resumeFilename";
 import type { TailorState } from "../lib/types";
 
 // Screen chrome for the Paged.js sheets (true page boxes) + print rules. In print the
@@ -42,6 +43,18 @@ const CSS = `
   .print-bg{ background:#fff !important; }
   .paged-target{ padding:0 !important; }
   .paged-target .pagedjs_page{ box-shadow:none !important; margin:0 auto !important; }
+  /* Paged.js sets break-after:page on EVERY page box, including the last one.
+     A forced break after the final element makes the browser start a sheet it
+     then has nothing to put on — the trailing blank page. Confirmed by toggling
+     exactly this rule in Chrome against a real two-page résumé: 3 sheets with
+     it, 2 without.
+
+     This is why stripTrailingBlankPages() never helped. That removes empty
+     *page boxes*; this sheet was never a box, so there was nothing to strip. */
+  .paged-target .pagedjs_page:last-child{
+    break-after: auto !important;
+    page-break-after: auto !important;   /* older engines */
+  }
 }
 `;
 
@@ -71,6 +84,17 @@ export function TailorPrintPage() {
 
   // Stable identity so Paged.js only re-chunks when the résumé actually changes.
   const data = useMemo(() => (state ? effectiveResume(state) : null), [state]);
+
+  // The tab title is what Chrome and Safari pre-fill as the PDF filename in
+  // "Save as PDF", so it is effectively a filename field. Default it to the
+  // candidate's own name rather than the app title.
+  useEffect(() => {
+    const name = (data?.contact?.name ?? "").trim();
+    if (!name) return;                       // keep whatever the app set
+    const previous = document.title;
+    document.title = filenameFromName(name);
+    return () => { document.title = previous; };
+  }, [data]);
 
   function updateSettings(next: ResumeSettings) {
     setSettings(next);
@@ -174,9 +198,6 @@ export function TailorPrintPage() {
       <p className="print-tip text-center text-xs text-muted-foreground pt-3 px-4">
         Tip: in the print dialog choose <b>Save as PDF</b>, margins <b>None</b>
         {template === "modern" && <>, and turn <b>Background graphics</b> ON for the sidebar</>}.
-        {pages != null && pages > 1 && (
-          <> If a blank page appears at the very end, set the print range to <b>1&ndash;{pages}</b> to skip it.</>
-        )}
         {template === "classic" && (
           <> Hover a section or job in the preview to <b>start it on a new page</b>.</>
         )}
