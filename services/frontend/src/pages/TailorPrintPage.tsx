@@ -43,6 +43,18 @@ const CSS = `
   .print-bg{ background:#fff !important; }
   .paged-target{ padding:0 !important; }
   .paged-target .pagedjs_page{ box-shadow:none !important; margin:0 auto !important; }
+  /* Paged.js sets break-after:page on EVERY page box, including the last one.
+     A forced break after the final element makes the browser start a sheet it
+     then has nothing to put on — the trailing blank page. Confirmed by toggling
+     exactly this rule in Chrome against a real two-page résumé: 3 sheets with
+     it, 2 without.
+
+     This is why stripTrailingBlankPages() never helped. That removes empty
+     *page boxes*; this sheet was never a box, so there was nothing to strip. */
+  .paged-target .pagedjs_page:last-child{
+    break-after: auto !important;
+    page-break-after: auto !important;   /* older engines */
+  }
 }
 `;
 
@@ -186,9 +198,6 @@ export function TailorPrintPage() {
       <p className="print-tip text-center text-xs text-muted-foreground pt-3 px-4">
         Tip: in the print dialog choose <b>Save as PDF</b>, margins <b>None</b>
         {template === "modern" && <>, and turn <b>Background graphics</b> ON for the sidebar</>}.
-        {pages != null && pages > 1 && (
-          <> If a blank page appears at the very end, set the print range to <b>1&ndash;{pages}</b> to skip it.</>
-        )}
         {template === "classic" && (
           <> Hover a section or job in the preview to <b>start it on a new page</b>.</>
         )}
