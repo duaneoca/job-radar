@@ -13,6 +13,7 @@ import {
   loadSettings, saveSettings, mergeSettings,
   type ResumeSettings, type TemplateId,
 } from "../lib/resumeSettings";
+import { filenameFromName } from "../lib/resumeFilename";
 import type { TailorState } from "../lib/types";
 
 // Screen chrome for the Paged.js sheets (true page boxes) + print rules. In print the
@@ -71,6 +72,17 @@ export function TailorPrintPage() {
 
   // Stable identity so Paged.js only re-chunks when the résumé actually changes.
   const data = useMemo(() => (state ? effectiveResume(state) : null), [state]);
+
+  // The tab title is what Chrome and Safari pre-fill as the PDF filename in
+  // "Save as PDF", so it is effectively a filename field. Default it to the
+  // candidate's own name rather than the app title.
+  useEffect(() => {
+    const name = (data?.contact?.name ?? "").trim();
+    if (!name) return;                       // keep whatever the app set
+    const previous = document.title;
+    document.title = filenameFromName(name);
+    return () => { document.title = previous; };
+  }, [data]);
 
   function updateSettings(next: ResumeSettings) {
     setSettings(next);
