@@ -19,6 +19,9 @@ const navItems = [
   { to: "/jobs",     label: "Jobs",     icon: Briefcase },
   { to: "/profile",  label: "Profile",  icon: User },
   { to: "/settings", label: "Settings", icon: Settings },
+  // Also in the header. Kept here too because the drawer is where a new user
+  // looks first, and on a narrow screen the header label is hidden.
+  { to: "/help",     label: "Setup/Help", icon: CircleHelp },
 ];
 
 const themeOptions: { value: ThemeMode; label: string; icon: typeof Sun }[] = [
@@ -106,9 +109,20 @@ export function Layout({ children }: LayoutProps) {
           {/* Spacer pushes the rest to the right */}
           <div className="flex-1" />
 
-          {/* Help link */}
-          <Link to="/help" aria-label="Help" className="text-muted-foreground hover:text-foreground transition-colors">
-            <CircleHelp className="h-5 w-5" />
+          {/* Setup/Help — labelled, not a bare "?". A new user has no reason to
+              guess that a question mark is where the API-key walkthrough lives,
+              and the first thing they need is setup, not help. */}
+          <Link
+            to="/help"
+            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+          >
+            <CircleHelp className="h-4 w-4" />
+            {/* Hidden below sm, like the Recruiters/Inbox labels. Measured at
+                375px with the Inbox tab showing: the label needs 396px, and
+                forcing it wraps the brand onto two lines. Mobile discoverability
+                is handled by the drawer entry instead, which is where a phone
+                user navigates anyway. */}
+            <span className="hidden sm:inline">Setup/Help</span>
           </Link>
 
           {/* User name / initials */}
