@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Search, SlidersHorizontal, ExternalLink, RefreshCw, ChevronLeft, ChevronRight,
   MapPin, Building2, DollarSign, Star, Check, UserCheck, Loader2, Plus, Trash2,
 } from "lucide-react";
 import { ColumnFilter } from "../components/ColumnFilter";
+import { ConnectionsTable } from "../components/ConnectionsTable";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Badge } from "../components/ui/badge";
@@ -107,7 +109,9 @@ function ScoreBreakdownDialog({ job, onClose }: { job: JobReview; onClose: () =>
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export function JobsPage() {
+/** The jobs table itself. Exported as a tab rather than a page — the tab strip
+ *  in JobsPage below acts as the heading, so this no longer renders its own. */
+function JobsTab() {
   const navigate = useNavigate();
   const qc = useQueryClient();
 
@@ -219,9 +223,9 @@ export function JobsPage() {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
+      {/* Actions. The <h1> lived here before tabs; the TabsList is the heading. */}
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-bold flex-1">Jobs</h1>
+        <div className="flex-1" />
         <Button
           size="sm"
           onClick={() => navigate("/jobs/add")}
@@ -581,5 +585,38 @@ export function JobsPage() {
         <ScoreBreakdownDialog job={scoreBreakdown} onClose={() => setScoreBreakdown(null)} />
       )}
     </div>
+  );
+}
+
+
+/** Jobs and Connections share a page because they are used together: you find a
+ *  role, then check who you know there. The tab lives in the URL (?tab=) so the
+ *  connections view can be linked to directly. */
+export function JobsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = searchParams.get("tab") === "connections" ? "connections" : "jobs";
+
+  return (
+    <Tabs
+      value={tab}
+      onValueChange={(next) => {
+        const params = new URLSearchParams(searchParams);
+        // Keep /jobs clean as the default rather than carrying ?tab=jobs around.
+        if (next === "jobs") params.delete("tab");
+        else params.set("tab", next);
+        setSearchParams(params, { replace: true });
+      }}
+      className="space-y-4"
+    >
+      <TabsList>
+        <TabsTrigger value="jobs">Jobs</TabsTrigger>
+        <TabsTrigger value="connections">Connections</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="jobs"><JobsTab /></TabsContent>
+      <TabsContent value="connections" className="space-y-4">
+        <ConnectionsTable />
+      </TabsContent>
+    </Tabs>
   );
 }

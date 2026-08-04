@@ -382,7 +382,15 @@ class LinkedInConnection(Base):
     email        = Column(String(255), nullable=True)
     company      = Column(String(255), nullable=True, index=True)
     position     = Column(String(255), nullable=True)
-    connected_on = Column(String(50), nullable=True)   # keep as string, format varies
+    connected_on = Column(String(50), nullable=True)   # raw CSV text, shown as-is
+    # Parsed from connected_on at import so the column can be SORTED. The raw
+    # string sorts wrong ("07 Apr 2026" < "08 Feb 2019"), and LinkedIn's format
+    # varies by region, so the parse is best-effort and this stays nullable.
+    connected_at = Column(Date(), nullable=True)
+    # The CSV's own "URL" column — the public LinkedIn profile. UNTRUSTED: it
+    # arrives in a user-uploaded file and is rendered as an href, so the importer
+    # accepts http(s) only (a javascript: URL here would be stored XSS).
+    profile_url  = Column(String(500), nullable=True)
     created_at   = Column(DateTime(timezone=True), default=utcnow)
 
     user = relationship("User", back_populates="connections")

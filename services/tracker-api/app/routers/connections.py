@@ -4,7 +4,9 @@ LinkedIn connections router — import CSV, list, match against a company.
 
 import csv
 import io
+from datetime import date, datetime
 from typing import Optional
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
@@ -23,6 +25,49 @@ _EMAIL = ("Email Address", "email", "Email")
 _COMPANY  = ("Company",  "company")
 _POSITION = ("Position", "position", "Title")
 _CONNECTED = ("Connected On", "connected_on", "ConnectedOn")
+_URL = ("URL", "url", "Profile URL", "ProfileUrl", "Public Profile Url")
+
+# LinkedIn writes "25 Jan 2008" in most regions; the others are what other
+# exports and hand-edited files have been seen to use. Anything unparseable
+# leaves connected_at NULL — the raw string is still shown, it just sorts last.
+_DATE_FORMATS = ("%d %b %Y", "%d %B %Y", "%Y-%m-%d", "%m/%d/%y", "%m/%d/%Y", "%b %d, %Y")
+
+_MAX_URL = 500
+
+
+def _parse_connected(raw: Optional[str]) -> Optional[date]:
+    """Best-effort date from LinkedIn's free-text 'Connected On'."""
+    if not raw:
+        return None
+    text = raw.strip()
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _clean_url(raw: Optional[str]) -> Optional[str]:
+    """http(s) URLs only.
+
+    This value comes from a file the user uploaded and is rendered as an href.
+    A `javascript:` or `data:` URL here would be stored XSS that fires on click,
+    so the scheme is allow-listed rather than filtered. Same rule as the agent's
+    recruiter cards (_clean_card in routers/recruiters.py).
+    """
+    if not raw:
+        return None
+    text = raw.strip()
+    if len(text) > _MAX_URL:
+        return None
+    try:
+        parsed = urlparse(text)
+    except ValueError:
+        return None
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return None
+    return text
 
 
 def _pick(row: dict, *keys: str) -> Optional[str]:
@@ -88,6 +133,8 @@ async def import_connections(
             company=company,
             position=_pick(row, *_POSITION),
             connected_on=_pick(row, *_CONNECTED),
+            connected_at=_parse_connected(_pick(row, *_CONNECTED)),
+            profile_url=_clean_url(_pick(row, *_URL)),
         )
         db.add(conn)
         inserted += 1

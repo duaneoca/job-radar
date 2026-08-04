@@ -461,6 +461,23 @@ function InboxRecruitersTab({ agentEnabled }: { agentEnabled: boolean }) {
           each contact before it's saved.</P>
       )}
 
+      <Separator />
+
+      <H2>Your LinkedIn connections</H2>
+      <P>Export your first-degree connections from LinkedIn (<strong>Settings → Data Privacy →
+        Get a copy of your data → Connections</strong>) and upload the{" "}
+        <code className="text-xs bg-muted px-1 rounded">Connections.csv</code> under{" "}
+        <strong>Profile → Connections</strong>. Uploading again replaces the whole list.</P>
+      <P>Browse them under <strong>Jobs → Connections</strong> — they sit beside your roles
+        because that's how they get used: you find a job, then check who you already know
+        there. Sort by name, company, position or when you connected, and search across
+        every column including email.</P>
+      <P>Two things worth knowing about LinkedIn's export. <strong>Email addresses are mostly
+        blank</strong> — LinkedIn only includes one where that person allowed it, so expect a
+        handful out of hundreds. And if you imported before profile links were supported,
+        that column will be empty until you upload the file again; the link was never stored,
+        so it can't be filled in retroactively.</P>
+
       {agentEnabled && (
         <>
           <Separator />

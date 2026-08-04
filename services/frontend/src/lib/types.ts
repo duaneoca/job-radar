@@ -383,7 +383,9 @@ export interface LinkedInConnection {
   email: string | null;
   company: string | null;
   position: string | null;
-  connected_on: string | null;
+  connected_on: string | null;   // raw CSV text, displayed as-is
+  connected_at: string | null;   // ISO date parsed at import — sort on this
+  profile_url: string | null;    // http(s) only, sanitised server-side
   created_at: string;
 }
 

@@ -2,7 +2,7 @@
 Pydantic schemas for request / response validation.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import List, Optional
 from uuid import UUID
 
@@ -589,7 +589,9 @@ class LinkedInConnectionOut(BaseModel):
     email: Optional[str]
     company: Optional[str]
     position: Optional[str]
-    connected_on: Optional[str]
+    connected_on: Optional[str]      # raw CSV text, shown as-is
+    connected_at: Optional[date]     # parsed, so the column can be sorted
+    profile_url: Optional[str]       # http(s) only — see _clean_url
     created_at: datetime
 
     class Config:
