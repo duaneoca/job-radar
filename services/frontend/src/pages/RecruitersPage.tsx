@@ -452,12 +452,14 @@ export function RecruitersPage() {
     setEditing({ recruiter: null, draft: draftFromSuggestion(s) });
   }
 
+  // Left-aligned rather than mx-auto: centring looked right when this was its own
+  // page, but under a left-aligned tab strip it reads as misaligned.
   return (
-    <div className="max-w-3xl mx-auto space-y-4">
-      {/* Header */}
+    <div className="max-w-3xl space-y-4">
+      {/* Actions. The heading and its icon lived here; the tab strip on the Jobs
+          page is the heading now, so both are gone rather than duplicated. */}
       <div className="flex items-center gap-2">
-        <Users className="h-5 w-5 text-primary" />
-        <h1 className="text-xl font-bold flex-1">Recruiters</h1>
+        <div className="flex-1" />
         <Button size="sm" onClick={() => setEditing({ recruiter: null, draft: EMPTY_DRAFT })}>
           <Plus className="h-4 w-4 mr-1" /> Add recruiter
         </Button>

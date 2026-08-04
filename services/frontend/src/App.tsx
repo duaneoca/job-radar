@@ -9,7 +9,6 @@ import { LoginPage } from "./pages/LoginPage";
 import { SignupPage } from "./pages/SignupPage";
 import { JobsPage } from "./pages/JobsPage";
 import { InboxPage } from "./pages/InboxPage";
-import { RecruitersPage } from "./pages/RecruitersPage";
 import { JobDetailPage } from "./pages/JobDetailPage";
 import { TailorReviewPage } from "./pages/TailorReviewPage";
 import { TailorPrintPage } from "./pages/TailorPrintPage";
@@ -117,16 +116,9 @@ export default function App() {
             </RequireAuth>
           }
         />
-        <Route
-          path="/recruiters"
-          element={
-            <RequireAuth>
-              <Layout>
-                <RecruitersPage />
-              </Layout>
-            </RequireAuth>
-          }
-        />
+        {/* Recruiters moved onto the Jobs page as a tab. Kept as a redirect so
+            existing bookmarks and links don't 404. */}
+        <Route path="/recruiters" element={<Navigate to="/jobs?tab=recruiters" replace />} />
         <Route
           path="/jobs/add"
           element={

@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { ColumnFilter } from "../components/ColumnFilter";
 import { ConnectionsTable } from "../components/ConnectionsTable";
+import { RecruitersPage } from "./RecruitersPage";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -594,7 +595,8 @@ function JobsTab() {
  *  connections view can be linked to directly. */
 export function JobsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const tab = searchParams.get("tab") === "connections" ? "connections" : "jobs";
+  const requested = searchParams.get("tab");
+  const tab = requested === "connections" || requested === "recruiters" ? requested : "jobs";
 
   return (
     <Tabs
@@ -611,12 +613,14 @@ export function JobsPage() {
       <TabsList>
         <TabsTrigger value="jobs">Jobs</TabsTrigger>
         <TabsTrigger value="connections">Connections</TabsTrigger>
+        <TabsTrigger value="recruiters">Recruiters</TabsTrigger>
       </TabsList>
 
       <TabsContent value="jobs"><JobsTab /></TabsContent>
       <TabsContent value="connections" className="space-y-4">
         <ConnectionsTable />
       </TabsContent>
+      <TabsContent value="recruiters"><RecruitersPage /></TabsContent>
     </Tabs>
   );
 }

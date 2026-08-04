@@ -451,7 +451,7 @@ function InboxRecruitersTab({ agentEnabled }: { agentEnabled: boolean }) {
       <Separator />
 
       <H2>Recruiters</H2>
-      <P>The <strong>Recruiters</strong> tab is a lightweight CRM for the people reaching out
+      <P>Under <strong>Jobs → Recruiters</strong> is a lightweight CRM for the people reaching out
         to you. Track each recruiter's name, employer, whether they're agency or in-house,
         the companies they represent, and your status with them — and link a recruiter to
         the jobs they sent you.</P>
@@ -468,9 +468,9 @@ function InboxRecruitersTab({ agentEnabled }: { agentEnabled: boolean }) {
         Get a copy of your data → Connections</strong>) and upload the{" "}
         <code className="text-xs bg-muted px-1 rounded">Connections.csv</code> under{" "}
         <strong>Profile → Connections</strong>. Uploading again replaces the whole list.</P>
-      <P>Browse them under <strong>Jobs → Connections</strong> — they sit beside your roles
-        because that's how they get used: you find a job, then check who you already know
-        there. Sort by name, company, position or when you connected, and search across
+      <P>Browse them under <strong>Jobs → Connections</strong> — connections and recruiters
+        both live beside your roles because that's how they get used: you find a job, then
+        check who you already know there. Sort by name, company, position or when you connected, and search across
         every column including email.</P>
       <P>Two things worth knowing about LinkedIn's export. <strong>Email addresses are mostly
         blank</strong> — LinkedIn only includes one where that person allowed it, so expect a

@@ -10,13 +10,22 @@ import type { LinkedInConnection } from "../lib/types";
 type SortKey = "name" | "company" | "position" | "connected";
 type Direction = "asc" | "desc";
 
+/** The name exactly as the cell renders it. Sorting and display MUST use the
+ *  same string: this sorted on "last first" while showing "First Last", so
+ *  ascending order looked like noise ("Giridhar Apparusu, Keith Berg, Michelle
+ *  Nadalin…") and read as a broken sort. It was sorting correctly on something
+ *  invisible, which is worse than not sorting at all. */
+export function displayName(c: Pick<LinkedInConnection, "first_name" | "last_name">): string {
+  return [c.first_name, c.last_name].filter(Boolean).join(" ");
+}
+
 /** Sort value for a row. Strings are lower-cased so ordering isn't case-driven;
  *  the date column sorts on the parsed ISO value, never the display text — as
  *  text, "07 Apr 2026" sorts before "08 Feb 2019". */
 function sortValue(c: LinkedInConnection, key: SortKey): string {
   switch (key) {
     case "name":
-      return `${c.last_name ?? ""} ${c.first_name ?? ""}`.trim().toLowerCase();
+      return displayName(c).toLowerCase();
     case "company":
       return (c.company ?? "").toLowerCase();
     case "position":
@@ -176,9 +185,7 @@ export function ConnectionsTable() {
             ) : (
               rows.map((c) => (
                 <tr key={c.id} className="border-b last:border-0 hover:bg-muted/30">
-                  <td className="px-3 py-2 font-medium">
-                    {[c.first_name, c.last_name].filter(Boolean).join(" ") || "—"}
-                  </td>
+                  <td className="px-3 py-2 font-medium">{displayName(c) || "—"}</td>
                   <td className="px-3 py-2 text-muted-foreground">{c.company || "—"}</td>
                   <td className="px-3 py-2 text-muted-foreground hidden md:table-cell">
                     {c.position || "—"}
@@ -192,7 +199,7 @@ export function ConnectionsTable() {
                         href={c.profile_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        aria-label={`Open ${[c.first_name, c.last_name].filter(Boolean).join(" ")} on LinkedIn`}
+                        aria-label={`Open ${displayName(c)} on LinkedIn`}
                         className="text-muted-foreground hover:text-foreground inline-block"
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
