@@ -4,7 +4,7 @@ AI-assisted job hunting tool. Scrapes job boards, scores postings against the us
 
 **Production:** https://job-radar.net  
 **Staging:** https://staging.job-radar.net (auto-deploys on every push to `main`)  
-**Current version:** v1.12.0
+**Current version:** v1.12.2
 
 ---
 
@@ -52,6 +52,20 @@ git tag vX.Y.Z && git push origin vX.Y.Z
     node's kubelet garbage-collects its local cache, so GHCR is what makes rollback
     possible. Images on the node need no management (kubelet GCs at 85% disk).
 - SES sending from `noreply@job-radar.net` (domain identity, not email address identity)
+- **Backups are two halves.** The nightly `pg_dump` CronJob (production overlay,
+  02:00 UTC → S3, verified with `pg_restore --list` before upload) covers the
+  data. It does NOT cover the Secrets, and a dump without them is largely
+  useless: every `user_api_keys.encrypted_key`, Gmail refresh token and Slack
+  token in it is Fernet-encrypted with `ENCRYPTION_KEY`, which is the one value
+  in the cluster that cannot be reissued. Keep an off-cluster copy and check it
+  hasn't drifted:
+  ```bash
+  scripts/check-secret-backup.py export -o ~/jobradar-secrets.json   # store in a password manager
+  scripts/check-secret-backup.py check  ~/jobradar-secrets.json      # names + verdicts only, no values
+  ```
+  `check` exits non-zero on drift. Run it after adding or rotating any secret —
+  a backup taken before v1.4.x lacks `AGENT_INTERNAL_TOKEN` and the OAuth pairs,
+  and would restore a system that starts but can't run the email agent.
 - IAM role on EC2 — no hardcoded AWS keys
 
 **Adzuna is BYOK** — each user stores their own `app_id`/`app_key` (Settings → API Keys,
