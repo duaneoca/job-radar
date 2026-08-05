@@ -426,6 +426,25 @@ def llm_complete(
         logger.exception("LLM completion failed (model=%s)", model)
         raise HTTPException(status_code=502, detail=f"AI generation failed: {e}")
 
+    # A response that hit the ceiling is not an answer — it's the first N tokens
+    # of one, and every caller that parses JSON will report the parser's
+    # confusion ("Unterminated string") rather than the actual cause. Interview
+    # prep failed this way for months and looked like a flaky model, because the
+    # user-facing message said "AI returned malformed JSON. Try regenerating."
+    # Regenerating truncates in the same place.
+    #
+    # ERROR, not WARNING: unlike a dead model or a throttle, this one is ours —
+    # we sized max_tokens, so it belongs in the operator's digest.
+    finish = getattr(response.choices[0], "finish_reason", None)
+    if finish == "length":
+        logger.error("Response truncated at max_tokens=%s (model=%s)", max_tokens, model)
+        raise HTTPException(
+            status_code=502,
+            detail=("The AI's response was cut off before it finished. This usually means the "
+                    "request asked for more than fits — try shortening your custom prompt or "
+                    "writing skills."),
+        )
+
     if db is not None and user_id is not None:
         try:
             key_obj = get_active_llm_key(user_id, db)

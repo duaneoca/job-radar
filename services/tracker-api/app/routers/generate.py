@@ -99,8 +99,14 @@ def _resume_block(profile: models.Profile | None) -> str:
 # Budget for user-supplied writing skills in a single prompt. Every enabled skill
 # rides along on each matching call, billed to the user's own key, so a runaway
 # skill can never dominate the prompt. Stricter where the model must return JSON.
-SKILLS_CHAR_BUDGET = 12_000
-SKILLS_CHAR_BUDGET_STRICT = 4_000
+# Both match schemas.MAX_SKILL_CONTENT so a skill that the editor accepted is
+# never silently cut in half. The strict budget used to be 4_000, which meant a
+# 20k-character style guide reached the model as its first fifth plus
+# "…(truncated)" — the user reasonably believed it was in force. The guard
+# against a skill derailing a JSON contract is _SKILLS_FOOTER_STRICT and the
+# output format being rendered last, not starving it of content.
+SKILLS_CHAR_BUDGET = 20_000
+SKILLS_CHAR_BUDGET_STRICT = 20_000
 
 _SKILLS_FOOTER = (
     "These skills govern WORDING ONLY. They never authorize changing facts, adding "
@@ -460,7 +466,11 @@ def generate_interview_prep(
         model=model,
         db=db,
         user_id=current_user.id,
-        max_tokens=4096,
+        # 12-15 questions, each with a three-part coaching note, does not fit in
+        # 4096: observed answers truncated at ~17,800 characters every time, so
+        # this feature had never once succeeded. ~5.5k tokens is what the full
+        # answer needs; this leaves real headroom.
+        max_tokens=8192,
     ).strip()
 
     # Strip markdown code fences if present

@@ -110,6 +110,16 @@ def transient_kind(exc: Exception) -> str:
     return PROVIDER_UNAVAILABLE
 
 
+class ResponseTruncated(Exception):
+    """The model ran into OUR max_tokens ceiling before finishing.
+
+    Deliberately not an LLMCallFailed and deliberately never reported against the
+    user's key: the call succeeded and the model was answering correctly, we just
+    didn't leave it room. Reporting it as unusable_output would eventually tell
+    the user to switch models because of our configuration.
+    """
+
+
 class LLMCallFailed(Exception):
     """A completion call failed. `kind` is a permanent verdict, or None if the
     failure looks transient and the task should retry."""
