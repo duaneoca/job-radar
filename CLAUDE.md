@@ -35,6 +35,19 @@ k8s/
 git tag vX.Y.Z && git push origin vX.Y.Z
 ```
 
+**Release notes are written before the tag, not generated from it.**
+`services/frontend/src/lib/releases.ts` holds the user-facing notes; the Help →
+What's new tab renders them and `ReleaseBanner` announces the top entry. The
+GitHub Release keeps `generate_release_notes: true` — that's the developer
+changelog and a different audience. Never send PR titles to users; "fix(ai-
+reviewer): stop the OOM loop" tells them only that something they relied on was
+broken in ways they hadn't noticed.
+
+Order: work merges → draft the notes → agree the wording with the user → merge
+that as its own small PR → tag. Adding no entry means no announcement, which is
+the intended behaviour for a quiet hotfix and a safe failure if it's forgotten.
+Say when something was broken, not only what is new.
+
 **Versioning (semver — always confirm with user before tagging):**
 - `vX.0.0` — major: breaking changes, big redesigns
 - `vX.Y.0` — minor: new features (backward compatible)

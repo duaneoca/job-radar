@@ -9,6 +9,7 @@ import { useAuthStore } from "../../store/auth";
 import { authApi, agentApi } from "../../lib/api";
 import { cn } from "../../lib/utils";
 import { LlmKeyProblemBanner, MissingKeysBanner, useApiKeyStatus } from "../ApiKeyWarning";
+import { ReleaseBanner } from "../ReleaseBanner";
 import type { PaginatedInbox } from "../../lib/types";
 
 interface LayoutProps {
@@ -249,6 +250,10 @@ export function Layout({ children }: LayoutProps) {
       {/* Present-but-unusable AI key: no model chosen, or the provider
           rejected it. Hides itself while the banner above is showing. */}
       <LlmKeyProblemBanner />
+
+      {/* New release. Last, and hides itself whenever either warning above is
+          showing — news should never compete with a broken key. */}
+      <ReleaseBanner />
 
       {/* Page content */}
       <main className="flex-1 container px-4 py-6">{children}</main>
