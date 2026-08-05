@@ -13,7 +13,9 @@ import httpx
 from celery import Celery
 
 from app.config import settings
-from app.llm_errors import PROVIDER_UNAVAILABLE, UNUSABLE_OUTPUT, LLMCallFailed
+from app.llm_errors import (
+    PROVIDER_UNAVAILABLE, UNUSABLE_OUTPUT, LLMCallFailed, ResponseTruncated,
+)
 from app.logging_config import configure_logging
 from app.reviewer import JobReviewer
 
@@ -151,6 +153,13 @@ def review_job(self, job_id: str, user_id: str):
             criteria=criteria,
             profile=profile,
         )
+    except ResponseTruncated as exc:
+        # Our ceiling, not their model. Nothing is recorded against the key —
+        # reporting this as unusable_output would blame the user for our
+        # configuration and eventually tell them to switch models. ERROR because
+        # it is the operator's to fix: raise MAX_TOKENS.
+        logger.error("Review response %s for job %s / user %s", exc, job_id, user_id)
+        return
     except LLMCallFailed as exc:
         if exc.permanent:
             # The provider rejected the key or the model. Retrying would fail

@@ -145,3 +145,31 @@ def test_permanent_failure_reports_its_own_kind_on_the_first_try(monkeypatch, wi
 def test_permanent_failure_at_max_retries_is_still_permanent(monkeypatch, wired):
     _run(monkeypatch, 3, LLMCallFailed(INVALID_MODEL, "404 model not found"))
     assert wired[0]["kind"] == "invalid_model"
+
+
+# ── truncation is ours, not the model's ───────────────────────
+
+def test_truncated_response_is_not_blamed_on_the_user(monkeypatch, wired):
+    """A response cut off at OUR max_tokens must not be reported as
+    unusable_output — three of those raise a banner telling the user to switch
+    models because of our configuration."""
+    from app.llm_errors import ResponseTruncated
+    _run(monkeypatch, 0, ResponseTruncated("truncated at max_tokens=4096"))
+    assert wired == []
+
+
+def test_unparseable_output_is_still_reported(monkeypatch, wired):
+    """The contrast: the model finished and what it said was unusable. That IS
+    theirs, and it is what the streak counts."""
+    class _Reviewer:
+        def __init__(self, **kw): pass
+        def review(self, **kw): return None
+
+    monkeypatch.setattr(worker, "JobReviewer", _Reviewer)
+    worker.review_job.push_request(retries=0, called_directly=False, id="t")
+    try:
+        worker.review_job.run(JOB_ID, USER_ID)
+    finally:
+        worker.review_job.pop_request()
+    assert wired == [{"kind": "unusable_output",
+                      "detail": "model gemini/x did not return usable JSON"}]

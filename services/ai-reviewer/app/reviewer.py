@@ -11,7 +11,9 @@ from typing import Optional
 
 import litellm
 
-from app.llm_errors import LLMCallFailed, classify_llm_error, transient_kind
+from app.llm_errors import (
+    LLMCallFailed, ResponseTruncated, classify_llm_error, transient_kind,
+)
 
 litellm.suppress_debug_info = True
 logger = logging.getLogger(__name__)
@@ -260,6 +262,15 @@ Salary range: {salary_line}
             raise LLMCallFailed(
                 kind, str(exc), None if kind else transient_kind(exc)
             ) from exc
+
+        # Truncation is OUR ceiling, not the model misbehaving. Without this the
+        # partial object falls through to the parser, returns None, and gets
+        # reported as unusable_output — blaming the user's model for our
+        # configuration and eventually raising a banner telling them to switch.
+        if getattr(response.choices[0], "finish_reason", None) == "length":
+            raise ResponseTruncated(
+                f"truncated at max_tokens={self.MAX_TOKENS} (model={self.model})"
+            )
 
         raw_text = (response.choices[0].message.content or "").strip()
 

@@ -81,7 +81,9 @@ def parse_resume_text(resume_text: str, api_key: str, model: str, *,
         messages=[{"role": "user", "content": f"{DEFAULT_RESUME_PARSE_PROMPT}\n\n--- RÉSUMÉ ---\n{resume_text}"}],
         api_key=api_key,
         model=model,
-        max_tokens=4096,
+        # A parsed résumé is structural JSON whose size scales with the résumé.
+        # Same failure mode as interview prep if the ceiling is too low.
+        max_tokens=8192,
         db=db,
         user_id=user_id,
     ).strip()

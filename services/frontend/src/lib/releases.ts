@@ -59,6 +59,21 @@ export const RELEASES: Release[] = [
           "pauses rather than repeatedly spending your quota on answers it can't use.",
       },
       {
+        title: "Interview prep works now",
+        detail:
+          "Interview prep had never actually succeeded — the answer was being cut off partway " +
+          "through and discarded, which showed up as \"AI returned malformed JSON\". There's now " +
+          "room for the full set of questions, and if a response ever is cut short you'll be told " +
+          "that plainly instead of it being blamed on your model.",
+      },
+      {
+        title: "Writing skills are used in full",
+        detail:
+          "Long writing skills were being trimmed to their first few thousand characters before " +
+          "reaching the AI on some features, so a detailed style guide was only partly in force. " +
+          "The whole skill is now sent.",
+      },
+      {
         title: "Your connections are a real table now",
         detail:
           "Under Jobs → Connections. Sort by name, company, position or when you connected, and " +

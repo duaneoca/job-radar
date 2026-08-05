@@ -227,3 +227,26 @@ def test_scope_narrowing_is_respected(client, db, monkeypatch):
     seen = _capture(monkeypatch)
     client.post(f"/jobs/{rid}/application/0")
     assert SKILL_TEXT not in seen["system"]
+
+
+def test_a_full_size_skill_is_not_truncated_in_a_strict_prompt(db, test_user):
+    """A 20k skill is what the editor accepts (schemas.MAX_SKILL_CONTENT), so the
+    strict budget must not silently deliver its first fifth. The user believed
+    their Humanizer was in force; ~80% of it never reached the model."""
+    from app.routers.generate import SKILLS_CHAR_BUDGET_STRICT, skills_block
+    from app import schemas
+
+    assert SKILLS_CHAR_BUDGET_STRICT >= schemas.MAX_SKILL_CONTENT
+
+    class _C:
+        writing_skills = [{
+            "id": "1", "name": "Humanizer", "enabled": True,
+            "scopes": ["interview_prep"], "content": "x" * schemas.MAX_SKILL_CONTENT,
+        }]
+
+    block = skills_block(_C(), "interview_prep", strict_output=True)
+    assert "…(truncated)" not in block
+    # Substring, not a character count — the strict footer itself contains "x"
+    # (in "exactly"), which made the first version of this assertion fail at
+    # 20002 and would have failed for the wrong reason if the budget regressed.
+    assert "x" * schemas.MAX_SKILL_CONTENT in block

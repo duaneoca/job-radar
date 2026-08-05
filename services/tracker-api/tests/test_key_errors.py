@@ -342,3 +342,61 @@ def test_an_unusable_key_can_still_be_made_active(client, db):
     for _ in range(models.UNUSABLE_OUTPUT_STREAK):
         client.post(STATUS_URL, json={"kind": "unusable_output"})
     assert client.put("/keys/active", json={"provider": "anthropic"}).status_code == 200
+
+
+# ── truncation is ours, not the model's ───────────────────────
+# A response cut off at max_tokens isn't a misbehaving model — it's a ceiling we
+# chose. Interview prep failed this way from the day it shipped and reported
+# "AI returned malformed JSON. Try regenerating", which is both wrong and
+# unactionable: regenerating truncates in the same place.
+
+def _truncated_response(content="{\"score\": 4.0, \"skills_rank\":"):
+    class _Msg: pass
+    class _Choice: pass
+    class _Resp: pass
+    m, ch, r = _Msg(), _Choice(), _Resp()
+    m.content = content
+    ch.message, ch.finish_reason = m, "length"
+    r.choices = [ch]
+    return r
+
+
+def test_truncation_raises_a_clear_error_not_a_parser_complaint(client, db, monkeypatch):
+    import litellm
+    from fastapi import HTTPException
+    import pytest as _pytest
+    from app import llm as llm_mod
+    _key(db)
+    monkeypatch.setattr(litellm, "completion", lambda **kw: _truncated_response())
+    with _pytest.raises(HTTPException) as caught:
+        llm_mod.llm_complete(system="s", messages=[{"role": "user", "content": "x"}],
+                             api_key="k", model="m", db=db, user_id=TEST_USER_ID)
+    assert caught.value.status_code == 502
+    assert "cut off" in caught.value.detail.lower()
+
+
+def test_truncation_is_not_recorded_against_the_key(client, db, monkeypatch):
+    """It's our configuration. Recording it would raise a banner telling the user
+    to change a model that was answering perfectly well."""
+    import litellm
+    from fastapi import HTTPException
+    import pytest as _pytest
+    from app import llm as llm_mod
+    _key(db)
+    monkeypatch.setattr(litellm, "completion", lambda **kw: _truncated_response())
+    with _pytest.raises(HTTPException):
+        llm_mod.llm_complete(system="s", messages=[{"role": "user", "content": "x"}],
+                             api_key="k", model="m", db=db, user_id=TEST_USER_ID)
+    assert _reload(db).last_error_kind is None
+
+
+def test_a_complete_response_is_unaffected(client, db, monkeypatch):
+    import litellm
+    from app import llm as llm_mod
+    _key(db)
+    resp = _truncated_response(content="all done")
+    resp.choices[0].finish_reason = "stop"
+    monkeypatch.setattr(litellm, "completion", lambda **kw: resp)
+    out = llm_mod.llm_complete(system="s", messages=[{"role": "user", "content": "x"}],
+                               api_key="k", model="m", db=db, user_id=TEST_USER_ID)
+    assert out == "all done"
