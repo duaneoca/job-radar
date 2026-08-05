@@ -476,7 +476,8 @@ function InboxRecruitersTab({ agentEnabled }: { agentEnabled: boolean }) {
         list — the same signal as the contact tick on the jobs table, seen from the other
         side. Sort by it to bring your warm introductions to the top. Company names have to
         match exactly (ignoring case and spacing), so a connection at "Apple Inc." won't tick
-        for a job posted by "Apple".</P>
+        for a job posted by "Apple". Where the box is ticked the company name is a link —
+        it drops you on the Jobs tab with that company already in the search box.</P>
       <P>Two things worth knowing about LinkedIn's export. <strong>Email addresses are mostly
         blank</strong> — LinkedIn only includes one where that person allowed it, so expect a
         handful out of hundreds. And if you imported before profile links were supported,
