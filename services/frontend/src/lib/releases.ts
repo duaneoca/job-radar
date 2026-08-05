@@ -38,6 +38,46 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   // Newest first. See the module comment before adding one.
+  {
+    version: "v1.13.0",
+    date: "2026-08-05",
+    headline: "Job scoring is fixed, and your LinkedIn connections are now a searchable table.",
+    notes: [
+      {
+        title: "Job scoring is working again",
+        detail:
+          "Scoring had stopped for some accounts. The service that scores jobs was running out " +
+          "of memory and restarting, and some AI models were replying with commentary instead of " +
+          "the exact format Job Radar needs. Both are fixed. Jobs that have been sitting unscored " +
+          "should start filling in.",
+      },
+      {
+        title: "You'll be told when your AI model can't be used",
+        detail:
+          "If your provider rejects your model, rate-limits you, or returns answers that can't be " +
+          "read as a score, you now get a notice instead of jobs quietly going unscored. Scoring " +
+          "pauses rather than repeatedly spending your quota on answers it can't use.",
+      },
+      {
+        title: "Your connections are a real table now",
+        detail:
+          "Under Jobs → Connections. Sort by name, company, position or when you connected, and " +
+          "search across every column. Profile links from LinkedIn's export are included — " +
+          "re-upload your Connections.csv to fill them in, as they weren't captured before.",
+      },
+      {
+        title: "See who you know where you're applying",
+        detail:
+          "A Job checkbox marks any connection whose employer has a role on your list, and " +
+          "clicking the company name jumps to those jobs.",
+      },
+      {
+        title: "Recruiters moved",
+        detail:
+          "Now a tab alongside Jobs and Connections instead of a link in the top bar.",
+      },
+    ],
+  },
 ];
 
 /** The release the banner announces, or null when there are none yet. */
