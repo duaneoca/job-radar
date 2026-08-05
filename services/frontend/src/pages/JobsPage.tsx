@@ -126,6 +126,20 @@ function JobsTab() {
     localStorage.setItem(FILTERS_KEY, JSON.stringify(filters));
   }, [filters]);
 
+  // A ?search= on the URL seeds the box — that's how the Connections tab hands
+  // over a company ("what jobs are there?"). Consumed once and removed, so it
+  // neither fights with typing nor reapplies on refresh.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const linked = searchParams.get("search");
+    if (!linked) return;
+    setFilters((f) => ({ ...f, search: linked }));
+    setPage(1);
+    const next = new URLSearchParams(searchParams);
+    next.delete("search");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
   function updateFilter(patch: Partial<Filters>) {
     setFilters((f) => ({ ...f, ...patch }));
     setPage(1);
@@ -336,7 +350,30 @@ function JobsTab() {
             ) : jobs.length === 0 ? (
               <tr>
                 <td colSpan={9} className="text-center py-12 text-muted-foreground">
-                  No jobs found. Try adjusting your filters.
+                  No jobs found.
+                  {activeFilterCount > 0 && filters.search ? (
+                    // The likely case when arriving from a connection's company:
+                    // the job exists but a saved filter hides it. Saying "adjust
+                    // your filters" is useless if you don't know any are on.
+                    <>
+                      {" "}You have {activeFilterCount} other filter
+                      {activeFilterCount === 1 ? "" : "s"} active.{" "}
+                      <button
+                        type="button"
+                        // Keeps the search: the message offers to clear the OTHER
+                        // filters, and resetFilters() would drop the company you
+                        // just clicked through from Connections to see.
+                        onClick={() => updateFilter({
+                          status: [], source: [], contact: [], remote_only: false, min_score: "",
+                        })}
+                        className="underline hover:text-foreground"
+                      >
+                        Clear them
+                      </button>
+                    </>
+                  ) : (
+                    " Try adjusting your filters."
+                  )}
                 </td>
               </tr>
             ) : (

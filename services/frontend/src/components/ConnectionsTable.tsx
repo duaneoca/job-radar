@@ -209,7 +209,22 @@ export function ConnectionsTable() {
                     )}
                   </td>
                   <td className="px-3 py-2 font-medium">{displayName(c) || "—"}</td>
-                  <td className="px-3 py-2 text-muted-foreground">{c.company || "—"}</td>
+                  <td className="px-3 py-2 text-muted-foreground">
+                    {/* Linked only when there IS a job there. The tick answers
+                        "anything here?"; this answers "what?". Linking companies
+                        with no jobs would just be a trip to an empty list. */}
+                    {c.company && c.has_job ? (
+                      <Link
+                        to={`/jobs?search=${encodeURIComponent(c.company)}`}
+                        className="underline decoration-dotted underline-offset-2 hover:text-foreground"
+                        title={`See your jobs at ${c.company}`}
+                      >
+                        {c.company}
+                      </Link>
+                    ) : (
+                      c.company || "—"
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-muted-foreground hidden md:table-cell">
                     {c.position || "—"}
                   </td>
