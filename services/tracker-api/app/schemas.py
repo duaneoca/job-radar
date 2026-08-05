@@ -593,6 +593,10 @@ class LinkedInConnectionOut(BaseModel):
     connected_at: Optional[date]     # parsed, so the column can be sorted
     profile_url: Optional[str]       # http(s) only — see _clean_url
     created_at: datetime
+    # True when this connection's company matches a job on the user's list.
+    # Computed per request in list_connections, not stored — the jobs list
+    # changes constantly. Mirrors UserJobReviewOut.has_contact.
+    has_job: bool = False
 
     class Config:
         from_attributes = True

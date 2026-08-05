@@ -9,6 +9,7 @@ from typing import Optional
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app import models, schemas
@@ -154,7 +155,35 @@ def list_connections(
     )
     if company:
         q = q.filter(models.LinkedInConnection.company.ilike(f"%{company}%"))
-    return q.order_by(models.LinkedInConnection.company).all()
+    rows = q.order_by(models.LinkedInConnection.company).all()
+
+    # `has_job` — the mirror of the contact checkbox on the jobs list. Same
+    # normalisation, opposite direction, so the two can never disagree: a job
+    # that shows "you know someone here" is a company whose connections show a
+    # tick, and vice versa. See routers/jobs.py::list_jobs.
+    #
+    # Exact match on lower(trim(...)), deliberately NOT the ILIKE '%…%' used by
+    # /match below. Against real data the substring rule added 38 matches to 123
+    # and most were junk: short scraped company names ("ey", "shi", "fin")
+    # matching inside "Birdeye", "Blueshift", "Finnplay". It was also 10s of
+    # query time versus 1ms for a set lookup.
+    job_companies = {
+        row[0]
+        for row in db.query(func.lower(func.trim(models.Job.company)))
+        .join(models.UserJobReview, models.UserJobReview.job_id == models.Job.id)
+        .filter(models.UserJobReview.user_id == current_user.id)
+        .distinct()
+        .all()
+        if row[0]
+    }
+
+    out = []
+    for r in rows:
+        item = schemas.LinkedInConnectionOut.model_validate(r)
+        norm = (r.company or "").strip().lower()
+        item.has_job = bool(norm) and norm in job_companies
+        out.append(item)
+    return out
 
 
 @router.get("/match")
