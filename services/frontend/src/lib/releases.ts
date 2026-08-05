@@ -59,12 +59,13 @@ export const RELEASES: Release[] = [
           "pauses rather than repeatedly spending your quota on answers it can't use.",
       },
       {
-        title: "Interview prep works now",
+        title: "Interview prep works with your writing skills",
         detail:
-          "Interview prep had never actually succeeded — the answer was being cut off partway " +
-          "through and discarded, which showed up as \"AI returned malformed JSON\". There's now " +
-          "room for the full set of questions, and if a response ever is cut short you'll be told " +
-          "that plainly instead of it being blamed on your model.",
+          "Attaching a detailed writing skill to interview prep made it fail — the answer ran " +
+          "past an internal limit and was thrown away, reported as \"AI returned malformed " +
+          "JSON\". There's now room for a full set of questions with your skills applied, and " +
+          "if a response is ever cut short you'll be told that plainly instead of it being " +
+          "blamed on your model.",
       },
       {
         title: "Writing skills are used in full",
