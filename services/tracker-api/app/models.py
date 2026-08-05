@@ -116,8 +116,29 @@ KEY_ERROR_RATE_LIMITED  = "rate_limited"
 # throttled when the provider is down is a confident wrong diagnosis.
 KEY_ERROR_PROVIDER_UNAVAILABLE = "provider_unavailable"
 
+# The provider answered, repeatedly, with something that isn't the JSON the
+# scorer needs — reasoning models narrating instead of replying in the required
+# shape. Recorded only after several in a row (see report_llm_key_status): one
+# rambling answer is noise, a streak is a model that won't comply.
+KEY_ERROR_UNUSABLE_OUTPUT = "unusable_output"
+
+# How many consecutive unparseable responses before we say so and stop trying.
+# Same reasoning as retry-exhaustion for rate limits: a single bad answer proves
+# nothing, and a permanent accusation from one sample is how banners lose trust.
+UNUSABLE_OUTPUT_STREAK = 3
+
 # Recorded but not the user's fault to fix, and never a reason to refuse a key.
 KEY_ERRORS_TRANSIENT = (KEY_ERROR_RATE_LIMITED, KEY_ERROR_PROVIDER_UNAVAILABLE)
+
+# States where another call would fail exactly as the last one did. The worker
+# skips scoring entirely rather than spending the user's quota to relearn it.
+# Every one of these is cleared by a user action (change the model, re-save the
+# key) or by any success, so this can't deadlock.
+KEY_ERRORS_BLOCKING = (
+    KEY_ERROR_INVALID_MODEL,
+    KEY_ERROR_INVALID_KEY,
+    KEY_ERROR_UNUSABLE_OUTPUT,
+)
 
 
 # ── Users ────────────────────────────────────────────────────
@@ -363,6 +384,10 @@ class UserAPIKey(Base):
     last_error_kind = Column(String(32), nullable=True)
     last_error      = Column(Text, nullable=True)
     last_error_at   = Column(DateTime(timezone=True), nullable=True)
+    # Consecutive unparseable responses. Reset by any success or by any other
+    # kind of failure — "consecutive" has to mean consecutive or the threshold
+    # is meaningless.
+    unusable_streak = Column(Integer, nullable=False, server_default="0", default=0)
     created_at      = Column(DateTime(timezone=True), default=utcnow)
     updated_at      = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

@@ -23,7 +23,7 @@ spec:
           image: ghcr.io/duaneoca/jobradar-ai-reviewer:staging
           # Pinned to one fork. Celery defaults concurrency to the CPU count (2 on
           # this node) and each fork loads litellm — roughly 150Mi apiece — which
-          # exceeds the 256Mi limit below as soon as both are busy. Light traffic
+          # exceeded the old 256Mi limit as soon as both were busy. Light traffic
           # never ran two at once; the first real backlog (843 queued jobs) OOM-
           # killed the worker into CrashLoopBackOff in production.
           #
@@ -53,8 +53,16 @@ spec:
                   key: AGENT_INTERNAL_TOKEN
           resources:
             requests:
+              # Measured, not guessed: the worker sits at ~213Mi RSS while IDLE
+              # with an empty queue — celery plus litellm's import graph. The old
+              # 96Mi request was less than half of that, so the scheduler was
+              # placing this pod on a completely wrong picture of its size.
               cpu: "50m"
-              memory: "96Mi"
-            limits:
-              cpu: "500m"
               memory: "256Mi"
+            limits:
+              # Was 256Mi, i.e. BELOW the idle footprint, so any actual review
+              # tipped it over: 157 OOMKills in 42 hours, one every ~16 minutes.
+              # Raising concurrency above 1 needs this raised again first — each
+              # fork carries its own litellm.
+              cpu: "500m"
+              memory: "512Mi"

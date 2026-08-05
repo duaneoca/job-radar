@@ -272,3 +272,73 @@ def test_foreground_success_clears_a_recorded_failure(client, db, monkeypatch):
     llm_mod.llm_complete(system="s", messages=[{"role": "user", "content": "x"}],
                          api_key="k", model="m", db=db, user_id=TEST_USER_ID)
     assert _reload(db).last_error_kind is None
+
+
+# ── unusable model output ─────────────────────────────────────
+# A model that narrates instead of returning JSON. Counted, not reacted to:
+# one rambling answer proves nothing, a streak is a model that won't comply.
+# Same rule as retry-exhaustion for rate limits.
+
+def test_a_single_unusable_response_says_nothing_to_the_user(client, db):
+    _key(db)
+    r = client.post(STATUS_URL, json={"kind": "unusable_output", "detail": "not json"})
+    assert r.json()["status"] == "counted"
+    assert _reload(db).last_error_kind is None      # no banner from one sample
+
+
+def test_the_streak_raises_it(client, db):
+    _key(db)
+    for _ in range(models.UNUSABLE_OUTPUT_STREAK - 1):
+        client.post(STATUS_URL, json={"kind": "unusable_output", "detail": "not json"})
+        assert _reload(db).last_error_kind is None
+    client.post(STATUS_URL, json={"kind": "unusable_output", "detail": "not json"})
+    assert _reload(db).last_error_kind == "unusable_output"
+
+
+def test_a_success_in_between_breaks_the_streak(client, db):
+    """"Consecutive" has to mean consecutive, or the threshold is meaningless."""
+    _key(db)
+    client.post(STATUS_URL, json={"kind": "unusable_output"})
+    client.post(STATUS_URL, json={"kind": "unusable_output"})
+    client.post(STATUS_URL, json={"kind": None})               # one good review
+    client.post(STATUS_URL, json={"kind": "unusable_output"})
+    assert _reload(db).last_error_kind is None
+    assert _reload(db).unusable_streak == 1
+
+
+def test_a_different_failure_also_breaks_the_streak(client, db):
+    _key(db)
+    client.post(STATUS_URL, json={"kind": "unusable_output"})
+    client.post(STATUS_URL, json={"kind": "rate_limited", "detail": "429"})
+    assert _reload(db).unusable_streak == 0
+
+
+def test_choosing_a_new_model_clears_the_streak(client, db):
+    """The escape hatch. If this didn't reset, a user who switched models would
+    still be one bad response away from an instant banner."""
+    _key(db)
+    for _ in range(models.UNUSABLE_OUTPUT_STREAK):
+        client.post(STATUS_URL, json={"kind": "unusable_output"})
+    assert _reload(db).last_error_kind == "unusable_output"
+
+    client.patch("/keys/anthropic", json={"preferred_model": "claude-sonnet-4-6"})
+    key = _reload(db)
+    assert key.last_error_kind is None and key.unusable_streak == 0
+
+
+def test_the_worker_is_told_to_stop(client, db):
+    """The blocking contract: once recorded, the internal endpoint reports it so
+    the worker skips instead of spending the user's quota to relearn it."""
+    _key(db)
+    for _ in range(models.UNUSABLE_OUTPUT_STREAK):
+        client.post(STATUS_URL, json={"kind": "unusable_output"})
+    assert client.get(LLM_URL).json()["last_error_kind"] == "unusable_output"
+    assert "unusable_output" in models.KEY_ERRORS_BLOCKING
+
+
+def test_an_unusable_key_can_still_be_made_active(client, db):
+    """Selecting the key is how you get to the model dropdown that fixes it."""
+    _key(db)
+    for _ in range(models.UNUSABLE_OUTPUT_STREAK):
+        client.post(STATUS_URL, json={"kind": "unusable_output"})
+    assert client.put("/keys/active", json={"provider": "anthropic"}).status_code == 200

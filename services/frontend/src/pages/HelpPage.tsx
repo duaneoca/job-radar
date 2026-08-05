@@ -551,6 +551,12 @@ function ApiKeysTab() {
       <P>The dropdown is fetched live from the provider using your key, so it always shows
         what your account can actually reach. Cheaper, faster models are perfectly good for
         scoring; you can always switch later, and switching takes effect immediately.</P>
+      <P>Job Radar asks for scores in a strict machine-readable format. Some models —
+        especially ones that "think out loud" — answer with commentary instead, which
+        can't be read as a score. If that happens three times in a row you'll get a
+        notice and scoring pauses rather than repeatedly spending your quota on answers
+        that can't be used. Pick a different model to resume; a more expensive one isn't
+        necessarily better here, since the chattier models are often the problem.</P>
       <P>Models get retired. If your provider stops accepting the one you picked, Job Radar
         notices the first time a score fails, stops retrying, and shows you a banner —
         rather than quietly scoring nothing. Choose a new model in Settings and the banner
