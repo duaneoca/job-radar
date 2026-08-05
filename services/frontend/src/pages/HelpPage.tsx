@@ -472,6 +472,11 @@ function InboxRecruitersTab({ agentEnabled }: { agentEnabled: boolean }) {
         both live beside your roles because that's how they get used: you find a job, then
         check who you already know there. Sort by name, company, position or when you connected, and search across
         every column including email.</P>
+      <P>The <strong>Job</strong> checkbox marks connections whose employer has a role on your
+        list — the same signal as the contact tick on the jobs table, seen from the other
+        side. Sort by it to bring your warm introductions to the top. Company names have to
+        match exactly (ignoring case and spacing), so a connection at "Apple Inc." won't tick
+        for a job posted by "Apple".</P>
       <P>Two things worth knowing about LinkedIn's export. <strong>Email addresses are mostly
         blank</strong> — LinkedIn only includes one where that person allowed it, so expect a
         handful out of hundreds. And if you imported before profile links were supported,

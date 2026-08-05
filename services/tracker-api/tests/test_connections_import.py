@@ -135,3 +135,101 @@ def test_list_exposes_the_new_fields(client, db):
     assert row["connected_at"] == "2008-01-25"
     assert row["connected_on"] == "25 Jan 2008"
     assert row["email"] == "ada@x.test"
+
+
+# ── the Job column ────────────────────────────────────────────
+# `has_job` is the mirror of `has_contact` on the jobs list. The property that
+# matters is that they agree: a job page claiming "you know someone here" while
+# the connections table shows no tick (or the reverse) is worse than either
+# signal alone, because it makes both untrustworthy.
+
+import uuid as _uuid
+
+from app.security import encrypt_api_key  # noqa: F401  (kept for parity with other tests)
+
+
+def _job_for(db, company: str, status=models.JobStatus.NEW):
+    job = models.Job(id=_uuid.uuid4(), external_id=str(_uuid.uuid4()), source="manual",
+                     title="Eng", company=company, url=f"https://x/{_uuid.uuid4()}")
+    db.add(job)
+    db.flush()
+    db.add(models.UserJobReview(id=_uuid.uuid4(), user_id=TEST_USER_ID,
+                                job_id=job.id, status=status))
+    db.commit()
+    return job
+
+
+def _connections(client):
+    return {c["company"]: c["has_job"] for c in client.get("/connections").json()}
+
+
+def test_has_job_is_true_when_a_job_shares_the_company(client, db):
+    _upload(client, _csv("Ada,Lovelace,,,Acme Corp,Engineer,25 Jan 2008"))
+    _job_for(db, "Acme Corp")
+    assert _connections(client)["Acme Corp"] is True
+
+
+def test_has_job_is_false_without_a_matching_job(client, db):
+    _upload(client, _csv("Ada,Lovelace,,,Acme Corp,Engineer,25 Jan 2008"))
+    _job_for(db, "Globex")
+    assert _connections(client)["Acme Corp"] is False
+
+
+def test_match_ignores_case_and_surrounding_space(client, db):
+    _upload(client, _csv("Ada,Lovelace,,,  ACME Corp ,Engineer,25 Jan 2008"))
+    _job_for(db, "acme corp")
+    assert list(_connections(client).values()) == [True]
+
+
+def test_substring_companies_do_NOT_match(client, db):
+    """The rule that keeps this useful. Against real data, substring matching
+    told the user they knew someone at EY because of a connection at Birdeye,
+    and at SHI because of Blueshift."""
+    _upload(client, _csv("A,One,,,Birdeye,Engineer,25 Jan 2008",
+                         "B,Two,,,Blueshift,Engineer,25 Jan 2008"))
+    _job_for(db, "EY")
+    _job_for(db, "SHI")
+    assert set(_connections(client).values()) == {False}
+
+
+def test_blank_company_never_matches(client, db):
+    """A connection with no company must not match a job with no company."""
+    _upload(client, _csv("Ada,Lovelace,,,,Engineer,25 Jan 2008"))
+    assert _connections(client) == {None: False}
+
+
+def test_agrees_with_the_jobs_list(client, db):
+    """The invariant. Same company, both directions, one answer."""
+    _upload(client, _csv("Ada,Lovelace,,,Acme Corp,Engineer,25 Jan 2008",
+                         "Bob,Stone,,,Globex,Engineer,25 Jan 2008"))
+    _job_for(db, "Acme Corp")
+
+    from_connections = _connections(client)
+    from_jobs = {j["company"]: j["has_contact"] for j in client.get("/jobs").json()["items"]}
+
+    assert from_connections["Acme Corp"] is True and from_jobs["Acme Corp"] is True
+    assert from_connections["Globex"] is False        # no job there
+    assert "Globex" not in from_jobs
+
+
+def test_any_status_counts_including_expired(client, db):
+    """It's "on my list", not "actively pursuing" — an expired posting is still
+    a company you have a way into."""
+    _upload(client, _csv("Ada,Lovelace,,,Acme Corp,Engineer,25 Jan 2008"))
+    _job_for(db, "Acme Corp", status=models.JobStatus.EXPIRED)
+    assert _connections(client)["Acme Corp"] is True
+
+
+def test_another_users_jobs_do_not_count(client, db):
+    _upload(client, _csv("Ada,Lovelace,,,Acme Corp,Engineer,25 Jan 2008"))
+    other = models.User(id=_uuid.uuid4(), email="other@x.com", password_hash="x", is_approved=True)
+    db.add(other)
+    db.flush()
+    job = models.Job(id=_uuid.uuid4(), external_id="o1", source="manual",
+                     title="Eng", company="Acme Corp", url="https://x/o1")
+    db.add(job)
+    db.flush()
+    db.add(models.UserJobReview(id=_uuid.uuid4(), user_id=other.id, job_id=job.id,
+                                status=models.JobStatus.NEW))
+    db.commit()
+    assert _connections(client)["Acme Corp"] is False

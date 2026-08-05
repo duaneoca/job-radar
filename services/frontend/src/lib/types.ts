@@ -386,6 +386,8 @@ export interface LinkedInConnection {
   connected_on: string | null;   // raw CSV text, displayed as-is
   connected_at: string | null;   // ISO date parsed at import — sort on this
   profile_url: string | null;    // http(s) only, sanitised server-side
+  /** This company has a job on your list — the mirror of JobReview.has_contact. */
+  has_job: boolean;
   created_at: string;
 }
 

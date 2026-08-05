@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, ChevronsUpDown, ExternalLink, Loader2, Search } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, ChevronsUpDown, ExternalLink, Loader2, Search } from "lucide-react";
 import { Input } from "./ui/input";
 import { connectionsApi } from "../lib/api";
 import { cn } from "../lib/utils";
 import type { LinkedInConnection } from "../lib/types";
 
-type SortKey = "name" | "company" | "position" | "connected";
+type SortKey = "job" | "name" | "company" | "position" | "connected";
 type Direction = "asc" | "desc";
 
 /** The name exactly as the cell renders it. Sorting and display MUST use the
@@ -24,6 +24,11 @@ export function displayName(c: Pick<LinkedInConnection, "first_name" | "last_nam
  *  text, "07 Apr 2026" sorts before "08 Feb 2019". */
 function sortValue(c: LinkedInConnection, key: SortKey): string {
   switch (key) {
+    // "1"/"0" rather than a boolean so it flows through the same string
+    // comparator — and neither value is falsy, so the blanks-sink rule below
+    // leaves it alone. `false` is a real answer here, not a missing one.
+    case "job":
+      return c.has_job ? "1" : "0";
     case "name":
       return displayName(c).toLowerCase();
     case "company":
@@ -36,6 +41,7 @@ function sortValue(c: LinkedInConnection, key: SortKey): string {
 }
 
 const COLUMNS: { key: SortKey; label: string; className?: string }[] = [
+  { key: "job",       label: "Job",      className: "w-14" },
   { key: "name",      label: "Name" },
   { key: "company",   label: "Company" },
   { key: "position",  label: "Position",  className: "hidden md:table-cell" },
@@ -81,8 +87,11 @@ export function ConnectionsTable() {
   const [direction, setDirection] = useState<Direction>("asc");
 
   function toggleSort(key: SortKey) {
-    if (key === sort) setDirection((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSort(key); setDirection("asc"); }
+    if (key === sort) { setDirection((d) => (d === "asc" ? "desc" : "asc")); return; }
+    setSort(key);
+    // Ticked-first when you first sort by Job. Nobody clicks that column to see
+    // the companies they have no connection at.
+    setDirection(key === "job" ? "desc" : "asc");
   }
 
   const rows = useMemo(() => {
@@ -178,13 +187,27 @@ export function ConnectionsTable() {
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="text-center py-12 text-muted-foreground">
+                <td colSpan={7} className="text-center py-12 text-muted-foreground">
                   No connections match "{search.trim()}".
                 </td>
               </tr>
             ) : (
               rows.map((c) => (
                 <tr key={c.id} className="border-b last:border-0 hover:bg-muted/30">
+                  <td className="px-3 py-2 text-center">
+                    {/* The same control as the contact column on the jobs list —
+                        it is the same fact viewed from the other side. */}
+                    {c.has_job ? (
+                      <span
+                        className="inline-flex h-4 w-4 items-center justify-center rounded-[3px] bg-blue-500 text-white"
+                        title={`You have a job at ${c.company} on your list`}
+                      >
+                        <Check className="h-3 w-3" strokeWidth={3} />
+                      </span>
+                    ) : (
+                      <span className="inline-block h-4 w-4 rounded-[3px] border border-muted-foreground/30" />
+                    )}
+                  </td>
                   <td className="px-3 py-2 font-medium">{displayName(c) || "—"}</td>
                   <td className="px-3 py-2 text-muted-foreground">{c.company || "—"}</td>
                   <td className="px-3 py-2 text-muted-foreground hidden md:table-cell">
