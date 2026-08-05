@@ -2,6 +2,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs"
 import { Separator } from "../components/ui/separator";
 import { useSearchParams } from "react-router-dom";
 import { useAuthStore } from "../store/auth";
+import { RELEASES } from "../lib/releases";
 
 // ─── Section heading helpers ──────────────────────────────────────────────────
 
@@ -501,6 +502,42 @@ function InboxRecruitersTab({ agentEnabled }: { agentEnabled: boolean }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+function WhatsNewTab() {
+  if (RELEASES.length === 0) {
+    return (
+      <div className="max-w-2xl">
+        <P>No release notes yet — they'll appear here as new versions ship.</P>
+      </div>
+    );
+  }
+  return (
+    <div className="max-w-2xl space-y-6">
+      <P>What changed in each release, in plain terms. Newest first.</P>
+      {RELEASES.map((r) => (
+        <div key={r.version} className="space-y-2">
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <h2 className="text-base font-semibold">{r.version}</h2>
+            <span className="text-xs text-muted-foreground">
+              {new Date(`${r.date}T00:00:00`).toLocaleDateString(undefined, {
+                year: "numeric", month: "long", day: "numeric",
+              })}
+            </span>
+          </div>
+          <P>{r.headline}</P>
+          <ul className="list-disc list-inside space-y-1.5 ml-2">
+            {r.notes.map((n, i) => (
+              <Li key={i}>
+                <strong className="text-foreground">{n.title}</strong> — {n.detail}
+              </Li>
+            ))}
+          </ul>
+          <Separator className="mt-4" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ApiKeysTab() {
   return (
     <div className="max-w-2xl space-y-4">
@@ -606,6 +643,7 @@ export function HelpPage() {
           <TabsTrigger value="tools">Application tools</TabsTrigger>
           <TabsTrigger value="inbox">{agentEnabled ? <>Inbox &amp; recruiters</> : "Recruiters"}</TabsTrigger>
           <TabsTrigger value="prompts">Prompts</TabsTrigger>
+          <TabsTrigger value="whats-new">What's new</TabsTrigger>
         </TabsList>
         <TabsContent value="start"    className="mt-6"><GettingStartedTab /></TabsContent>
         <TabsContent value="keys"     className="mt-6"><ApiKeysTab /></TabsContent>
@@ -613,6 +651,7 @@ export function HelpPage() {
         <TabsContent value="scoring"  className="mt-6"><ScoringTab /></TabsContent>
         <TabsContent value="tools"    className="mt-6"><ApplicationToolsTab /></TabsContent>
         <TabsContent value="inbox"    className="mt-6"><InboxRecruitersTab agentEnabled={agentEnabled} /></TabsContent>
+        <TabsContent value="whats-new" className="mt-6"><WhatsNewTab /></TabsContent>
         <TabsContent value="prompts"  className="mt-6"><PromptsTab /></TabsContent>
       </Tabs>
     </div>
