@@ -183,6 +183,18 @@ logged at **ERROR**, which put a user's provider outage in the operator's digest
 The catch-all still logs ERROR and records nothing, because an unexpected
 exception there is our bug, not the provider's.
 
+**A model that won't answer in JSON is the user's problem, not a bug.**
+`KEY_ERROR_UNUSABLE_OUTPUT` is recorded only after `UNUSABLE_OUTPUT_STREAK` (3)
+*consecutive* unparseable responses — one rambling answer proves nothing, and a
+permanent accusation from a single sample is how banners lose trust. Any success,
+any other failure kind, or changing the key/model resets the count. It joins
+`KEY_ERRORS_BLOCKING`: the worker skips scoring outright rather than spending the
+user's quota to relearn what is already on their screen. Every blocking kind is
+cleared by a user action or a success, so it cannot wedge. Reviewer asks for
+`response_format={"type":"json_object"}` where litellm reports support, and
+`extract_json_object()` takes the LAST brace-balanced object (models show their
+working, sometimes including an example object, before answering).
+
 **Log level follows who can fix it.** A failure the user is shown (dead model,
 rejected key) is logged at `WARNING` — it is not an operator fault and must not
 reach an error digest. `ERROR` is reserved for unexpected exceptions, failed

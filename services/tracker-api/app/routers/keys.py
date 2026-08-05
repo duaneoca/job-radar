@@ -140,6 +140,7 @@ def upsert_key(
         if "preferred_model" in payload.model_fields_set:
             existing.preferred_model = payload.preferred_model or None
         # A new secret deserves a fresh verdict.
+        existing.unusable_streak = 0
         existing.last_error_kind = None
         existing.last_error = None
         existing.last_error_at = None
@@ -209,7 +210,8 @@ def update_key_model(
     if not existing:
         raise HTTPException(status_code=404, detail="Key not found")
     existing.preferred_model = payload.preferred_model or None
-    # Whatever the provider rejected was about the old model.
+    # Whatever the provider rejected — or failed to format — was about the old model.
+    existing.unusable_streak = 0
     existing.last_error_kind = None
     existing.last_error = None
     existing.last_error_at = None
@@ -302,13 +304,28 @@ def report_llm_key_status(
         raise HTTPException(status_code=404, detail="No AI key configured")
 
     if payload.kind is None:
+        key_obj.unusable_streak = 0
         clear_key_error(db, key_obj)
+        db.commit()
         return {"status": "cleared"}
 
     if payload.kind not in (models.KEY_ERROR_INVALID_MODEL, models.KEY_ERROR_INVALID_KEY,
-                            *models.KEY_ERRORS_TRANSIENT):
+                            models.KEY_ERROR_UNUSABLE_OUTPUT, *models.KEY_ERRORS_TRANSIENT):
         raise HTTPException(status_code=400, detail=f"Unknown error kind: {payload.kind}")
 
+    if payload.kind == models.KEY_ERROR_UNUSABLE_OUTPUT:
+        # Count first, accuse later. A single rambling response is normal;
+        # only a run of them says the model won't answer in the required shape.
+        key_obj.unusable_streak = (key_obj.unusable_streak or 0) + 1
+        if key_obj.unusable_streak < models.UNUSABLE_OUTPUT_STREAK:
+            db.commit()
+            return {"status": "counted", "streak": key_obj.unusable_streak}
+        record_key_error(db, key_obj, payload.kind, payload.detail or "")
+        return {"status": "recorded", "kind": payload.kind,
+                "streak": key_obj.unusable_streak}
+
+    # Any other kind of failure breaks the run — "consecutive" has to mean it.
+    key_obj.unusable_streak = 0
     record_key_error(db, key_obj, payload.kind, payload.detail or "")
     return {"status": "recorded", "kind": payload.kind}
 

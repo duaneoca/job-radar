@@ -5,6 +5,7 @@ Job reviewer using the Claude API — Phase 3
 import json
 import logging
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
@@ -54,6 +55,61 @@ def _skills_block(criteria: dict) -> str:
     )
 
 
+@lru_cache(maxsize=64)
+def _supports_json_mode(model: str) -> bool:
+    """Whether this model accepts response_format={"type": "json_object"}.
+
+    Cached because it is a static table lookup in litellm and this runs per
+    review. Any failure answers "no": sending an unsupported parameter turns a
+    working review into a 400, while not sending it merely leaves us relying on
+    the prompt, which is where we already were.
+    """
+    try:
+        return "response_format" in (litellm.get_supported_openai_params(model=model) or [])
+    except Exception:
+        return False
+
+
+def extract_json_object(text: str) -> str | None:
+    """The last complete, brace-balanced {...} in `text`, or None.
+
+    Was `text[text.find("{") : text.rfind("}") + 1]`, which is wrong in both
+    directions when a model narrates around its answer: a "{" inside the prose
+    starts the slice too early, and a truncated final object means rfind lands on
+    an earlier "}" and returns a fragment. Scanning for balance also ignores
+    braces inside strings, which the naive version counted.
+
+    Returns the LAST balanced object because reasoning models tend to show
+    workings — sometimes including an example object — before the real answer.
+    """
+    best: str | None = None
+    depth = 0
+    start = -1
+    in_string = False
+    escaped = False
+    for i, ch in enumerate(text):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            if depth > 0:
+                depth -= 1
+                if depth == 0 and start != -1:
+                    best = text[start : i + 1]
+    return best
+
+
 @dataclass
 class ReviewResult:
     job_id: str
@@ -74,7 +130,13 @@ class JobReviewer:
     Scores a job against user-defined criteria using any supported LLM provider.
     """
 
-    MAX_TOKENS = 1024
+    # The JSON we ask for is ~250 tokens. The ceiling is this much larger because
+    # reasoning models narrate before answering, and that narration comes out of
+    # the same budget — at 1024 the commentary ate the response and the object was
+    # cut off mid-key ("location_rank":  with nothing after it). Only tokens
+    # actually generated are billed, so a high ceiling costs nothing on the models
+    # that answer straight away.
+    MAX_TOKENS = 4096
 
     def __init__(self, api_key: str, model: str):
         # No default model — one is always supplied by the caller, which got it
@@ -165,6 +227,14 @@ Salary range: {salary_line}
         # output format is kept LAST so a skill can never disturb the JSON contract.
         system_prompt = f"{rubric.strip()}{_skills_block(criteria)}\n\n{OUTPUT_FORMAT.strip()}"
 
+        # Ask for JSON at the API level, not just in the prompt. Gemini, OpenAI,
+        # Anthropic and Groq all support this; litellm tells us which. Guarded
+        # because an unknown or newly-added model that doesn't support it would
+        # otherwise fail every call with a 400.
+        kwargs = {}
+        if _supports_json_mode(self.model):
+            kwargs["response_format"] = {"type": "json_object"}
+
         try:
             response = litellm.completion(
                 model=self.model,
@@ -174,6 +244,7 @@ Salary range: {salary_line}
                 ],
                 api_key=self.api_key,
                 max_tokens=self.MAX_TOKENS,
+                **kwargs,
             )
         except Exception as exc:
             kind = classify_llm_error(exc)
@@ -190,17 +261,14 @@ Salary range: {salary_line}
                 kind, str(exc), None if kind else transient_kind(exc)
             ) from exc
 
-        raw_text = response.choices[0].message.content.strip()
+        raw_text = (response.choices[0].message.content or "").strip()
 
-        # Extract the JSON object robustly — handles markdown fences,
-        # preamble text, or any other wrapper Claude might add.
-        start = raw_text.find("{")
-        end = raw_text.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            raw_text = raw_text[start : end + 1]
+        # Handles markdown fences, a preamble, and models that show their working
+        # before answering.
+        candidate = extract_json_object(raw_text) or raw_text
 
         try:
-            data = json.loads(raw_text)
+            data = json.loads(candidate)
         except json.JSONDecodeError:
             # The model answered but not in JSON — a model-behaviour problem, not a
             # key problem. Nothing is recorded against the key.

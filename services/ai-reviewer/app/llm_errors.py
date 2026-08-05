@@ -30,6 +30,12 @@ INVALID_KEY = "invalid_key"
 RATE_LIMITED = "rate_limited"
 PROVIDER_UNAVAILABLE = "provider_unavailable"
 
+# The call succeeded and the model answered — with something that isn't the JSON
+# the scorer needs. Not a call failure at all, so it never comes from
+# classify_llm_error; reviewer.py returns None and main.py reports this.
+# tracker-api counts a streak before showing the user anything.
+UNUSABLE_OUTPUT = "unusable_output"
+
 # Substrings that identify the model — not the key, not the quota — as the thing
 # the provider rejected.
 _MODEL_GONE_PHRASES = ("not found", "deprecated", "invalid", "does not exist", "unsupported")

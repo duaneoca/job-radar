@@ -560,6 +560,12 @@ function KeysTab() {
                       {!needsModel && rejected === "rate_limited" && (
                         <Badge variant="outline" className="text-xs">Rate limited</Badge>
                       )}
+                      {/* Destructive: unlike a throttle or an outage, this one
+                          does not clear itself — scoring stays stopped until the
+                          model changes. */}
+                      {!needsModel && rejected === "unusable_output" && (
+                        <Badge variant="destructive" className="text-xs">Bad output</Badge>
+                      )}
                       {!needsModel && rejected === "provider_unavailable" && (
                         <Badge variant="outline" className="text-xs">Provider unreachable</Badge>
                       )}

@@ -13,7 +13,7 @@ import httpx
 from celery import Celery
 
 from app.config import settings
-from app.llm_errors import PROVIDER_UNAVAILABLE, LLMCallFailed
+from app.llm_errors import PROVIDER_UNAVAILABLE, UNUSABLE_OUTPUT, LLMCallFailed
 from app.logging_config import configure_logging
 from app.reviewer import JobReviewer
 
@@ -25,6 +25,10 @@ app = Celery("ai-reviewer", broker=settings.redis_url, backend=settings.redis_ur
 # unless told not to, which would leave the digest parsing a format that no
 # longer exists — the quiet way this feature ships looking fine and doing nothing.
 app.conf.worker_hijack_root_logger = False
+
+# Mirrors models.KEY_ERRORS_BLOCKING in tracker-api — the services share no
+# package, so this is a deliberate small duplicate.
+_BLOCKING_ERRORS = {"invalid_model", "invalid_key", UNUSABLE_OUTPUT}
 
 
 def _internal_headers(user_id: str | None = None) -> dict:
@@ -116,10 +120,21 @@ def review_job(self, job_id: str, user_id: str):
         key_data = resp.json()
         api_key = key_data["api_key"]
         model = key_data["model"]
-        had_error = bool(key_data.get("last_error_kind"))
+        recorded_error = key_data.get("last_error_kind")
+        had_error = bool(recorded_error)
     except Exception as exc:
         logger.exception("Failed to fetch API key for user %s", user_id)
         raise self.retry(exc=exc, countdown=30)
+
+    # A recorded blocking failure means the next call fails exactly as the last
+    # one did — a dead model, a rejected key, or a model that won't produce the
+    # required JSON. Calling anyway spends the user's quota to relearn something
+    # already on their screen as a banner. Every blocking state is cleared by a
+    # user action or by any success, so this cannot wedge permanently.
+    if recorded_error in _BLOCKING_ERRORS:
+        logger.warning("Skipping job %s — user %s has a recorded %s",
+                       job_id, user_id, recorded_error)
+        return
 
     # 5. Score the job
     reviewer = JobReviewer(api_key=api_key, model=model)
@@ -175,10 +190,14 @@ def review_job(self, job_id: str, user_id: str):
         raise self.retry(exc=exc, countdown=60)
 
     if result is None:
-        # The call succeeded; the model's answer was unusable. That is a scoring
-        # bug or a prompt problem, not a key problem — and it is the operator's
-        # to look at, so it stays at ERROR. reviewer.py already logged the detail.
-        logger.error("Review returned None for job %s / user %s", job_id, user_id)
+        # The call succeeded; the answer wasn't the JSON we need. That is the
+        # user's model misbehaving, not our bug — so WARNING, not ERROR, and it
+        # gets reported so a run of them raises a banner instead of filling the
+        # operator's digest. reviewer.py already logged the offending text.
+        _report_key_status(base, user_id, UNUSABLE_OUTPUT,
+                           f"model {model} did not return usable JSON")
+        logger.warning("Unusable model output for job %s / user %s (model=%s)",
+                       job_id, user_id, model)
         return
 
     # The key works. Only post back if there was actually a failure recorded —

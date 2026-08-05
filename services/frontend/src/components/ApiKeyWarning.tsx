@@ -80,6 +80,12 @@ export function LlmKeyProblemBanner() {
     message = `Your ${provider} key has no model selected, so AI features can't run. Job Radar doesn't pick one for you — that's a cost decision on your own account.`;
   } else if (problem === "invalid_key") {
     message = `${provider} rejected your API key, so AI features aren't running.`;
+  } else if (problem === "unusable_output") {
+    // Deliberately not "pick a more advanced model". The failure is a model
+    // narrating instead of answering in the required shape — often a *reasoning*
+    // model, so "more advanced" can cost more and fail identically. State what
+    // happened, name the likely cause, suggest the one action that helps.
+    message = `${provider} returned text that couldn't be read as a score. Job Radar needs the answer in a strict format, and some models add commentary instead. Nothing is being scored until you switch to a different model.`;
   } else if (problem === "provider_unavailable") {
     // Not throttling, and not a misconfiguration. Naming the wrong cause would
     // send them to change a quota that was never the problem.
@@ -107,7 +113,9 @@ export function LlmKeyProblemBanner() {
           <Link to="/settings?tab=keys" className="font-medium underline">
             {problem === "rate_limited" || problem === "provider_unavailable"
               ? "Review your AI key"
-              : "Choose a model"}
+              : problem === "unusable_output"
+                ? "Try a different model"
+                : "Choose a model"}
           </Link>
         </div>
         <button
