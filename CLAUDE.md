@@ -143,7 +143,13 @@ a time (H6). The shared `AGENT_INTERNAL_TOKEN` must match in `tracker-api-secret
 
 ### frontend (React + Vite)
 - shadcn/ui components in `src/components/ui/`
-- nginx proxies `/api/` → tracker-api
+- nginx proxies `/api/` → tracker-api. **`proxy_read_timeout` is 95s**, not the
+  60s default: AI generation is slow, and interview prep with a large writing
+  skill measured ~73s — nginx was returning 504 *thirteen seconds before* the
+  backend finished and saved a good answer, so the user saw "Generation failed"
+  for work that had succeeded. 95s is deliberately just under Cloudflare's 100s
+  cap, which nothing in our config can raise; anything genuinely slower than that
+  has to become a background job rather than a longer request.
 - Bookmarklet built inline in `src/pages/SettingsPage.tsx` — `buildBookmarklet()` function returns a `javascript:` URL. All JS inside is minified (newlines stripped at runtime). Escape backslashes twice in template literals (`\\s` → `\s` in output).
 
 ### ai-reviewer (Celery worker)
