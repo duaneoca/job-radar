@@ -39,6 +39,30 @@ export interface Release {
 export const RELEASES: Release[] = [
   // Newest first. See the module comment before adding one.
   {
+    version: "v1.13.2",
+    date: "2026-08-07",
+    headline: "Scoring works again if you use Claude, and long AI answers no longer time out.",
+    notes: [
+      {
+        title: "Job scoring is fixed for Anthropic keys",
+        detail:
+          "Last week's release broke scoring for anyone using an Anthropic (Claude) key — Job " +
+          "Radar was asking Claude for its answer in a way that made it reply with the right " +
+          "kind of data but the wrong fields, so nothing could be scored. If your jobs stopped " +
+          "getting scores on August 5th, that's why. It's fixed, and unscored jobs should start " +
+          "filling in. Other providers were unaffected.",
+      },
+      {
+        title: "Long AI answers aren't cut off any more",
+        detail:
+          "Interview prep and other generation could fail with \"Generation failed\" after about " +
+          "a minute, even when the answer had finished and been saved correctly — refreshing the " +
+          "page would show work that had been reported as an error. Requests now have the time " +
+          "they need.",
+      },
+    ],
+  },
+  {
     version: "v1.13.0",
     date: "2026-08-05",
     headline: "Job scoring is fixed, and your LinkedIn connections are now a searchable table.",
