@@ -57,19 +57,35 @@ def _skills_block(criteria: dict) -> str:
     )
 
 
+# Providers whose API has a NATIVE json_object mode. Deliberately an allow-list
+# of model prefixes rather than litellm.get_supported_openai_params(), which
+# answers "supported" for Anthropic too — but implements it by forcing a tool
+# call with an EMPTY schema (properties: {}, additionalProperties: true). Claude
+# then fills that tool with whatever fields it thinks suit the input and ignores
+# the output format the prompt asked for. Measured, same prompt and model:
+#
+#   without response_format → {"score": 0.5, "summary": "…"}          correct
+#   with    response_format → {"position": "Senior Engineer", …}      wrong keys
+#
+# The JSON parses; it is simply not our JSON. That reaches the KeyError path,
+# scores nothing, and after three strikes tells the user their model is broken —
+# blaming Anthropic for our parameter. Passing a real response_schema doesn't
+# help either: litellm then nests it under a "values" key, which our parser
+# would also miss.
+#
+# Unknown models fall through to False. Prompt-only JSON works everywhere and is
+# where we were before; sending an emulated parameter is the failure mode.
+_NATIVE_JSON_MODE_PREFIXES = (
+    "gpt-", "o1", "o3", "o4", "chatgpt-",   # OpenAI
+    "gemini/",                              # Google
+    "groq/",                                # Groq (OpenAI-compatible)
+)
+
+
 @lru_cache(maxsize=64)
 def _supports_json_mode(model: str) -> bool:
-    """Whether this model accepts response_format={"type": "json_object"}.
-
-    Cached because it is a static table lookup in litellm and this runs per
-    review. Any failure answers "no": sending an unsupported parameter turns a
-    working review into a 400, while not sending it merely leaves us relying on
-    the prompt, which is where we already were.
-    """
-    try:
-        return "response_format" in (litellm.get_supported_openai_params(model=model) or [])
-    except Exception:
-        return False
+    """Whether asking this model for JSON at the API level actually helps."""
+    return model.startswith(_NATIVE_JSON_MODE_PREFIXES)
 
 
 def extract_json_object(text: str) -> str | None:
