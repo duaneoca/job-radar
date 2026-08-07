@@ -19,6 +19,8 @@ from app.scrapers.filtering import keyword_tokens as _keyword_tokens
 from app.scrapers.filtering import matches_any_token as _matches_any_token
 from app.scrapers.filtering import strip_html as _strip_html
 
+from app.net_errors import log_fetch_failure
+
 logger = logging.getLogger(__name__)
 
 _ENDPOINT = "https://remotive.com/api/remote-jobs"
@@ -42,8 +44,8 @@ class RemotiveScraper(BaseScraper):
                     _ENDPOINT,
                     params={"category": "software-dev"},
                 )
-            except Exception:
-                logger.exception("Remotive request failed")
+            except Exception as exc:
+                log_fetch_failure(logger, exc, "Remotive request failed")
                 return []
 
             if resp.status_code != 200:
