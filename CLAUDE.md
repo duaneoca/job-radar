@@ -210,7 +210,12 @@ any other failure kind, or changing the key/model resets the count. It joins
 `KEY_ERRORS_BLOCKING`: the worker skips scoring outright rather than spending the
 user's quota to relearn what is already on their screen. Every blocking kind is
 cleared by a user action or a success, so it cannot wedge. Reviewer asks for
-`response_format={"type":"json_object"}` where litellm reports support, and
+`response_format={"type":"json_object"}` only for providers with NATIVE json
+mode (`_NATIVE_JSON_MODE_PREFIXES` — OpenAI, Gemini, Groq). **Not** via
+`litellm.get_supported_openai_params()`, which reports Anthropic as supported
+but implements it as a forced tool call with an empty schema: Claude then
+invents its own keys and every review fails the KeyError path. Unknown models
+fall through to prompt-only, which works everywhere. And
 `extract_json_object()` takes the LAST brace-balanced object (models show their
 working, sometimes including an example object, before answering).
 

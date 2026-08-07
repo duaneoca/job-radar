@@ -5,7 +5,6 @@ Job reviewer using the Claude API — Phase 3
 import json
 import logging
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
@@ -57,19 +56,38 @@ def _skills_block(criteria: dict) -> str:
     )
 
 
-@lru_cache(maxsize=64)
-def _supports_json_mode(model: str) -> bool:
-    """Whether this model accepts response_format={"type": "json_object"}.
+# Providers whose API has a NATIVE json_object mode.
+#
+# Keyed on PROVIDER, not on model names. Anthropic's problem belongs to litellm's
+# Anthropic adapter, not to any particular Claude model — and a list of model
+# prefixes rots the moment a model is retired, which is the same reason this
+# codebase has no default model.
+#
+# NOT litellm.get_supported_openai_params(), which reports Anthropic as
+# supporting response_format but implements it by forcing a tool call with an
+# EMPTY schema (properties: {}, additionalProperties: true). Claude then fills
+# that tool with whatever fields suit the input and ignores the output format the
+# prompt asked for. Measured, same prompt and model:
+#
+#   without response_format → {"score": 0.5, "summary": "…"}          correct
+#   with    response_format → {"position": "Senior Engineer", …}      wrong keys
+#
+# The JSON parses; it is simply not our JSON. That reaches the KeyError path,
+# scores nothing, and after three strikes tells the user their model is broken —
+# blaming Anthropic for our parameter. Passing a real response_schema doesn't
+# help either: litellm then nests it under a "values" key, which our parser
+# would also miss.
+#
+# An allow-list, not a deny-list: a provider nobody has verified gets prompt-only
+# JSON, which works everywhere and is where we were before. Sending an emulated
+# parameter is the failure mode, so "don't" is the safe default. Values are
+# models.LLMProvider members, delivered by GET /keys/internal/{user}/llm.
+_NATIVE_JSON_MODE_PROVIDERS = frozenset({"openai", "google", "groq"})
 
-    Cached because it is a static table lookup in litellm and this runs per
-    review. Any failure answers "no": sending an unsupported parameter turns a
-    working review into a 400, while not sending it merely leaves us relying on
-    the prompt, which is where we already were.
-    """
-    try:
-        return "response_format" in (litellm.get_supported_openai_params(model=model) or [])
-    except Exception:
-        return False
+
+def _supports_json_mode(provider: str | None) -> bool:
+    """Whether asking this provider for JSON at the API level actually helps."""
+    return (provider or "").lower() in _NATIVE_JSON_MODE_PROVIDERS
 
 
 def extract_json_object(text: str) -> str | None:
@@ -140,12 +158,18 @@ class JobReviewer:
     # that answer straight away.
     MAX_TOKENS = 4096
 
-    def __init__(self, api_key: str, model: str):
+    def __init__(self, api_key: str, model: str, provider: str | None = None):
         # No default model — one is always supplied by the caller, which got it
         # from the user's own explicit choice. Defaulting here would apply an
         # Anthropic model string to (say) a Google key.
+        #
+        # `provider` decides whether we ask for JSON at the API level. It arrives
+        # in the same payload as the key, so it cannot disagree with the model.
+        # Optional only so the class stays constructible from a script; None means
+        # prompt-only, which is the safe direction.
         self.api_key = api_key
         self.model = model
+        self.provider = provider
 
     def _build_user_message(
         self,
@@ -234,7 +258,7 @@ Salary range: {salary_line}
         # because an unknown or newly-added model that doesn't support it would
         # otherwise fail every call with a 400.
         kwargs = {}
-        if _supports_json_mode(self.model):
+        if _supports_json_mode(self.provider):
             kwargs["response_format"] = {"type": "json_object"}
 
         try:

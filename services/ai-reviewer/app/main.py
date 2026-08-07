@@ -122,6 +122,7 @@ def review_job(self, job_id: str, user_id: str):
         key_data = resp.json()
         api_key = key_data["api_key"]
         model = key_data["model"]
+        provider = key_data.get("provider")
         recorded_error = key_data.get("last_error_kind")
         had_error = bool(recorded_error)
     except Exception as exc:
@@ -139,7 +140,7 @@ def review_job(self, job_id: str, user_id: str):
         return
 
     # 5. Score the job
-    reviewer = JobReviewer(api_key=api_key, model=model)
+    reviewer = JobReviewer(api_key=api_key, model=model, provider=provider)
     try:
         result = reviewer.review(
             job_id=job_id,
