@@ -35,6 +35,8 @@ from app.scrapers.base import BoardScrape, CompanyBoardScraper, RawJob
 from app.scrapers.filtering import keyword_tokens, strip_html, title_matches
 from app.scrapers.slugs import SlugCache, candidate_slugs
 
+from app.net_errors import log_fetch_failure
+
 logger = logging.getLogger(__name__)
 
 _TIMEOUT = 20.0
@@ -92,8 +94,8 @@ class _ATSBase(CompanyBoardScraper):
                     await asyncio.sleep(_DELAY_BETWEEN_COMPANIES)
                 try:
                     items = await self._fetch_company(client, company)
-                except Exception:
-                    logger.exception("%s board fetch crashed for '%s'", self.source_name, company)
+                except Exception as exc:
+                    log_fetch_failure(logger, exc, "%s board fetch crashed for '%s'", self.source_name, company)
                     continue
                 # None = we never got a valid payload (transient failure, no board,
                 # cached miss). [] = the board really is empty. Only the latter is

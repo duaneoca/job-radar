@@ -17,6 +17,8 @@ import httpx
 
 from app.scrapers.base import BaseScraper, Creds, RawJob
 
+from app.net_errors import log_fetch_failure
+
 logger = logging.getLogger(__name__)
 
 _BASE = "https://api.adzuna.com/v1/api/jobs"
@@ -47,8 +49,8 @@ class AdzunaScraper(BaseScraper):
                     jobs = await self._scrape_keyword(client, keyword, location, app_id, app_key)
                     logger.info("Adzuna '%s' → %d jobs", keyword, len(jobs))
                     all_jobs.extend(jobs)
-                except Exception:
-                    logger.exception("Adzuna keyword '%s' failed", keyword)
+                except Exception as exc:
+                    log_fetch_failure(logger, exc, "Adzuna keyword '%s' failed", keyword)
 
         # Dedupe by external_id in case the same posting matched multiple keywords
         seen: set = set()

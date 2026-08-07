@@ -20,6 +20,8 @@ import httpx
 
 from app.scrapers.base import BaseScraper, Creds, RawJob
 
+from app.net_errors import log_fetch_failure
+
 logger = logging.getLogger(__name__)
 
 _BASE = "https://www.themuse.com/api/public/jobs"
@@ -80,8 +82,8 @@ class TheMuseScraper(BaseScraper):
                     jobs = await self._scrape_category(client, category, location)
                     logger.info("The Muse '%s' → %d jobs", category, len(jobs))
                     all_jobs.extend(jobs)
-                except Exception:
-                    logger.exception("The Muse category '%s' failed", category)
+                except Exception as exc:
+                    log_fetch_failure(logger, exc, "The Muse category '%s' failed", category)
 
         seen: set = set()
         unique: List[RawJob] = []
