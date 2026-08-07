@@ -1,4 +1,4 @@
-"""Which models we ask for JSON at the API level.
+"""Which providers we ask for JSON at the API level.
 
 Anthropic reports response_format as "supported" through litellm, but implements
 it by forcing a tool call with an EMPTY schema. Claude then fills that tool with
@@ -10,6 +10,10 @@ in production against claude-haiku-4-5, same prompt, one variable:
 
 The JSON parses; it just isn't ours. That scored nothing for a real user for a
 day and then told them their model was broken.
+
+Keyed on PROVIDER, never on model names: the behaviour belongs to litellm's
+adapter for a provider, and a list of model strings is stale the day a model is
+retired — the same rot that made us remove the default model.
 """
 
 import pytest
@@ -17,28 +21,33 @@ import pytest
 from app.reviewer import _supports_json_mode
 
 
-@pytest.mark.parametrize("model", [
-    "gpt-4o-mini", "gpt-4o", "o1-mini", "o3", "chatgpt-4o-latest",
-    "gemini/gemini-3.5-flash", "gemini/gemini-2.5-pro",
-    "groq/llama-3.3-70b-versatile",
-])
-def test_native_json_mode_providers_are_asked(model):
-    assert _supports_json_mode(model) is True
+@pytest.mark.parametrize("provider", ["openai", "google", "groq"])
+def test_native_json_mode_providers_are_asked(provider):
+    assert _supports_json_mode(provider) is True
 
 
-@pytest.mark.parametrize("model", [
-    "claude-haiku-4-5",
-    "claude-haiku-4-5-20251001",     # the exact string that broke in production
-    "claude-sonnet-4-6",
-    "claude-opus-4-7",
-])
-def test_anthropic_is_never_asked(model):
+def test_case_is_not_significant():
+    """The value comes over HTTP from another service; don't let casing decide."""
+    assert _supports_json_mode("OpenAI") is True
+
+
+def test_anthropic_is_never_asked():
     """The regression. litellm says "supported"; the result is unusable."""
-    assert _supports_json_mode(model) is False
+    assert _supports_json_mode("anthropic") is False
 
 
-@pytest.mark.parametrize("model", ["", "some-new-provider/model-x", "llama-local"])
-def test_unknown_models_fall_through_to_prompt_only(model):
+@pytest.mark.parametrize("provider", [None, "", "some-new-provider", "ollama"])
+def test_unknown_providers_fall_through_to_prompt_only(provider):
     """Fails to the behaviour that works everywhere. Sending an emulated
     parameter is the failure mode, not omitting it."""
-    assert _supports_json_mode(model) is False
+    assert _supports_json_mode(provider) is False
+
+
+def test_gate_values_are_real_providers():
+    """A typo here silently disables JSON mode for a whole provider — nothing
+    errors, answers just get slightly worse. These must be LLMProvider values.
+    Spelled out rather than imported: ai-reviewer shares no package with
+    tracker-api, so this list is the contract between them.
+    """
+    from app.reviewer import _NATIVE_JSON_MODE_PROVIDERS
+    assert _NATIVE_JSON_MODE_PROVIDERS <= {"anthropic", "openai", "google", "groq"}
