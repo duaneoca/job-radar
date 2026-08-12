@@ -17,6 +17,7 @@ from app.llm_errors import (
     PROVIDER_UNAVAILABLE, UNUSABLE_OUTPUT, LLMCallFailed, ResponseTruncated,
 )
 from app.logging_config import configure_logging
+from app.memlog import MemoryProbe, measured
 from app.reviewer import JobReviewer
 
 configure_logging(settings.log_level)
@@ -31,6 +32,18 @@ app.conf.worker_hijack_root_logger = False
 # Mirrors models.KEY_ERRORS_BLOCKING in tracker-api — the services share no
 # package, so this is a deliberate small duplicate.
 _BLOCKING_ERRORS = {"invalid_model", "invalid_key", UNUSABLE_OUTPUT}
+
+# One probe per worker process. Built lazily rather than at import: the prefork
+# child is forked AFTER import, so a probe created here would carry the parent's
+# baseline RSS and report every child as having leaked its whole startup cost.
+_probe: MemoryProbe | None = None
+
+
+def _get_probe() -> MemoryProbe:
+    global _probe
+    if _probe is None:
+        _probe = MemoryProbe()
+    return _probe
 
 
 def _internal_headers(user_id: str | None = None) -> dict:
@@ -63,6 +76,7 @@ def _report_key_status(base: str, user_id: str, kind: str | None, detail: str = 
 
 
 @app.task(name="app.tasks.review_job", queue="review", bind=True, max_retries=3)
+@measured(_get_probe, lambda self, job_id, user_id, *a, **k: f"job={job_id} user={user_id}")
 def review_job(self, job_id: str, user_id: str):
     """
     Fetch a job and the user's criteria/profile/API-key from tracker-api,
