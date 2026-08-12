@@ -224,6 +224,33 @@ rejected key) is logged at `WARNING` — it is not an operator fault and must no
 reach an error digest. `ERROR` is reserved for unexpected exceptions, failed
 post-backs, and unparseable model output.
 
+**The worker leaks, and `app/memlog.py` is how we find it — not a bigger limit.**
+A fresh ForkPoolWorker child sits at ~160Mi and reaches the 512Mi cgroup limit
+after ~2 days of reviews. The kernel then kills either the child (Celery logs
+`WorkerLostError: signal 9`, which the digest sees) or PID 1 (`OOMKilled`, exit
+137, which it **can never** see). Raising the ceiling was already tried on
+2026-08-05 — 256→512Mi because idle sat at 213Mi — and a week later idle sat at
+510Mi. A leak simply takes longer to reach a higher ceiling, so raising it again
+buys a week and loses the evidence.
+
+Ruled out by inspection, don't re-suspect: litellm's `in_memory_llm_clients_cache`
+is bounded (`max_size_in_memory=200`, ttl 600) and held 3 entries in production.
+The publicised litellm leaks don't match our usage either — #8993 is
+`stream=True` and #10126 is the Router; we use neither. Note we are pinned to
+`litellm==1.57.3` (Jan 2025), 378 releases behind, and its "session leak" fixes
+in 1.77.5/1.78.0 are a plausible but **unproven** match — measure before upgrading,
+because `llm_errors.py` classifies on litellm exception *types* and a jump that
+size can move them.
+
+Two levels: per-task RSS deltas (`/proc/self/status`, free, always on, one `mem
+task=…` line per review) and tracemalloc allocation-site attribution (opt-in via
+`MEMORY_PROFILE=1`, roughly doubles allocation cost — a diagnostic session, not a
+running state). `reviewer.py` logs a matching `size job=…` line so a steady
+per-task leak can be told from one pathological input. All at INFO: a leak under
+investigation is not an operator error yet, and putting our own diagnostics in the
+hourly digest would defeat it. Setting the env var restarts the pod and forks a
+child at its 160Mi floor, so leave it running for hours before reading the report.
+
 **Writing skills** (`criteria.writing_skills`, JSON `[{id,name,content,enabled,scopes}]`):
 user-loadable blocks of style rules injected into the prompts named in each skill's
 `scopes` (`application | research | interview_prep | resume | scoring`). Built by

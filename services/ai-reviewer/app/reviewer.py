@@ -298,6 +298,15 @@ Salary range: {salary_line}
 
         raw_text = (response.choices[0].message.content or "").strip()
 
+        # Sizes, so a memory delta can be attributed. A steady leak is roughly
+        # constant per task regardless of these; a leak driven by one enormous
+        # résumé or job description tracks them. Without this the RSS numbers
+        # say something grew but never which input caused it.
+        logger.info(
+            "size job=%s prompt=%dB reply=%dB model=%s",
+            job_id, len(system_prompt) + len(user_message), len(raw_text), self.model,
+        )
+
         # Handles markdown fences, a preamble, and models that show their working
         # before answering.
         candidate = extract_json_object(raw_text) or raw_text

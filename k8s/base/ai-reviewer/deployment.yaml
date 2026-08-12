@@ -51,6 +51,20 @@ spec:
                 secretKeyRef:
                   name: tracker-api-secrets
                   key: AGENT_INTERNAL_TOKEN
+            # Deep memory profiling (tracemalloc). OFF here on purpose — it
+            # roughly doubles allocation cost, so it is a diagnostic session, not
+            # a running state. Per-task RSS deltas are logged regardless and are
+            # free; this only adds allocation-site attribution.
+            #
+            #   kubectl -n jobradar-production set env deploy/jobradar-ai-reviewer MEMORY_PROFILE=1
+            #   ... read `mem top growth` lines ...
+            #   kubectl -n jobradar-production set env deploy/jobradar-ai-reviewer MEMORY_PROFILE-
+            #
+            # Note that setting it restarts the pod, which forks a fresh child at
+            # its ~160Mi floor — so the leak has to accumulate again before the
+            # report says anything. Leave it running for hours, not minutes.
+            - name: MEMORY_PROFILE
+              value: ""
           resources:
             requests:
               # Measured, not guessed: the worker sits at ~213Mi RSS while IDLE
