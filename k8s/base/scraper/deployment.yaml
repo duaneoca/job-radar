@@ -21,7 +21,20 @@ spec:
         - name: scraper
           # Image tag is overridden by CI via `kubectl set image` on every deploy.
           image: ghcr.io/duaneoca/jobradar-scraper:staging
-          command: ["celery", "-A", "app.main", "worker", "--loglevel=info", "--beat"]
+          # --concurrency=1: the node has 2 CPUs, so Celery would default to two
+          #   pool children. Our three tasks are network-bound and never actually
+          #   run at once (scrape every 6h, expire 02:45, cleanup 03:00), so the
+          #   second child is ~49Mi of the memory limit below bought for
+          #   parallelism we don't use.
+          # --max-tasks-per-child=20: a big ATS board is 13MB of JSON on the wire
+          #   and ~54MB once parsed (ashby/openai, 751 postings). CPython does not
+          #   return those freed arenas to the OS, so without recycling a child
+          #   ratchets to ~129Mi and every later scrape starts from there instead
+          #   of its ~46Mi fork baseline. That ratchet is what pushed three scrapes
+          #   into the OOM killer (cgroup memory.events oom_kill=3, peak pinned at
+          #   exactly 256Mi) between 2026-08-21 and 2026-08-24.
+          command: ["celery", "-A", "app.main", "worker", "--loglevel=info", "--beat",
+                    "--concurrency=1", "--max-tasks-per-child=20"]
           envFrom:
             - configMapRef:
                 name: tracker-api-config   # REDIS_URL + TRACKER_API_URL
