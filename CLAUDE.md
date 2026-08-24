@@ -273,6 +273,25 @@ Sources: **Adzuna** (BYOK per-user key; skipped for users without one), **The Mu
 category mapped from the user's job titles), **Remotive** (public, remote-only). HTML scraping
 was abandoned — Cloudflare blocks datacenter IPs on LinkedIn/Indeed/Glassdoor.
 
+**The worker runs one pool child on purpose, and recycles it.** A big ATS board is
+13MB of JSON on the wire and ~54MB parsed (ashby/openai, 751 postings), and
+`scrape_all` loops every user in a single task, so those spikes accumulate in one
+child. CPython never returns the freed arenas, so an un-recycled child ratchets from
+its ~46Mi fork baseline to ~129Mi and stays there. With the parent (~51Mi), the
+embedded beat process (~46Mi) and a second, permanently idle pool child (~49Mi)
+sharing the same 256Mi cgroup, that ratchet OOM-killed three scrapes between
+2026-08-21 and 2026-08-24 (`memory.events` `oom_kill=3`, `memory.peak` pinned at
+exactly 256Mi). Hence `--concurrency=1 --max-tasks-per-child=20` in
+`k8s/base/scraper/deployment.yaml`. **This is not the ai-reviewer leak** — the
+working set is bounded and reducible, which is why the fix is to shrink the
+footprint rather than raise the ceiling. Concurrency 1 costs nothing: the three
+tasks are network-bound and never genuinely overlap. If boards keep growing, the
+next lever is to stop materialising postings we filter out, not a bigger limit.
+
+A killed child loses only the tail of that cycle — jobs are POSTed one at a time as
+they're found, so everything scraped before the kill is saved; what's skipped is the
+rest of that user's pass and its board-sync, both picked up 6 hours later.
+
 ### email-agent (CronJob — cloud multi-user)
 `k8s/base/email-agent/` — a `*/15 * * * *` CronJob running
 `ghcr.io/duaneoca/job-radar-agent:latest` (image built by the **separate
