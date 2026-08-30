@@ -224,32 +224,38 @@ rejected key) is logged at `WARNING` — it is not an operator fault and must no
 reach an error digest. `ERROR` is reserved for unexpected exceptions, failed
 post-backs, and unparseable model output.
 
-**The worker leaks, and `app/memlog.py` is how we find it — not a bigger limit.**
-A fresh ForkPoolWorker child sits at ~160Mi and reaches the 512Mi cgroup limit
-after ~2 days of reviews. The kernel then kills either the child (Celery logs
-`WorkerLostError: signal 9`, which the digest sees) or PID 1 (`OOMKilled`, exit
-137, which it **can never** see). Raising the ceiling was already tried on
-2026-08-05 — 256→512Mi because idle sat at 213Mi — and a week later idle sat at
-510Mi. A leak simply takes longer to reach a higher ceiling, so raising it again
-buys a week and loses the evidence.
+**The worker's OOM was the retry path pinning frames — fixed, and `memlog.py` stays.**
+A fresh ForkPoolWorker child sits at ~160Mi; over ~2 days it climbed to the 512Mi
+cgroup limit and the kernel killed the child (`WorkerLostError: signal 9`, visible
+to the digest) or PID 1 (`OOMKilled` exit 137, invisible — SIGKILL logs nothing).
+memlog's tracemalloc attribution named it: `celery/app/trace.py:195`
+(`handle_retry` building an ExceptionInfo) and `billiard/einfo.py:119` (recursive
+frame copy). Every `self.retry()` pinned the task frame's locals — job
+description, profile, **decrypted api_key** — plus litellm/httpx buffers via the
+exception's cause chain. The garbage is collectable, but a retry storm (a
+permanently rate-limited free-tier user, 3 retries per job, hundreds of jobs per
+6h scrape) outruns gen2 GC, and CPython never returns freed arenas: each burst
+ratchets the floor. Fix: `_drop_frames(exc)` clears the traceback chain at every
+retry site in `main.py`, and the LLM site also `del`s its fat locals before
+raising. Measured in the production image via celery's real tracer: 2,000
+retries, baseline +26Mi → fixed +0Mi.
 
-Ruled out by inspection, don't re-suspect: litellm's `in_memory_llm_clients_cache`
-is bounded (`max_size_in_memory=200`, ttl 600) and held 3 entries in production.
-The publicised litellm leaks don't match our usage either — #8993 is
-`stream=True` and #10126 is the Router; we use neither. Note we are pinned to
-`litellm==1.57.3` (Jan 2025), 378 releases behind, and its "session leak" fixes
-in 1.77.5/1.78.0 are a plausible but **unproven** match — measure before upgrading,
-because `llm_errors.py` classifies on litellm exception *types* and a jump that
-size can move them.
+Verified dead ends, don't re-walk them: **upgrading celery does not fix this** —
+5.6.3 adds `traceback_clear` to `handle_retry` (celery#8882) but measured
+identical to 5.4.0 in the same harness in two environments (the Retry's own
+traceback still captures our frame). litellm's `in_memory_llm_clients_cache` is
+bounded (200 entries, ttl 600; held 3) and litellm's publicised leaks (#8993
+stream=True, #10126 Router) don't match our usage. We remain pinned to
+`litellm==1.57.3`; an upgrade is unrelated to this bug and `llm_errors.py`
+classifies on exception types, so it needs its own measured PR.
 
-Two levels: per-task RSS deltas (`/proc/self/status`, free, always on, one `mem
-task=…` line per review) and tracemalloc allocation-site attribution (opt-in via
-`MEMORY_PROFILE=1`, roughly doubles allocation cost — a diagnostic session, not a
-running state). `reviewer.py` logs a matching `size job=…` line so a steady
-per-task leak can be told from one pathological input. All at INFO: a leak under
-investigation is not an operator error yet, and putting our own diagnostics in the
-hourly digest would defeat it. Setting the env var restarts the pod and forks a
-child at its 160Mi floor, so leave it running for hours before reading the report.
+`memlog.py` remains for the next hunt: per-task RSS deltas are always on (one
+`mem task=…` line per review, free), tracemalloc attribution is opt-in via
+`MEMORY_PROFILE=1` (roughly doubles allocation cost — a diagnostic session, not a
+running state). Beware: the env var is set imperatively, and every deploy runs
+`kubectl apply -k`, which **silently reverts it** to the manifest's empty value —
+that cost us two weeks of blind profiling once. All memlog output is INFO on
+purpose: diagnostics must not feed the ERROR digest.
 
 **Writing skills** (`criteria.writing_skills`, JSON `[{id,name,content,enabled,scopes}]`):
 user-loadable blocks of style rules injected into the prompts named in each skill's

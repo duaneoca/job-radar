@@ -46,6 +46,45 @@ def _get_probe() -> MemoryProbe:
     return _probe
 
 
+def _drop_frames(exc: BaseException | None) -> None:
+    """Clear every traceback frame in exc's cause/context chain before a retry.
+
+    This is the ai-reviewer OOM, found by memlog (see CLAUDE.md). Celery's
+    handle_retry builds an ExceptionInfo for every retry, and billiard's einfo
+    copies the whole frame chain; the frames' locals pin whatever the task had
+    in scope — the job description, the user's profile, the DECRYPTED API KEY,
+    and litellm/httpx response buffers. The garbage is collectable, but a retry
+    storm creates it faster than gen2 GC runs, and CPython never returns the
+    freed arenas — so every burst ratchets the child's floor upward until the
+    kernel kills something at the 512Mi limit (~2 days in production, driven by
+    a permanently rate-limited free-tier user retrying 3x per job).
+
+    Measured, 2,000 simulated retries through celery's real tracer in the
+    production image: baseline +26Mi, with frames cleared +0Mi. Upgrading
+    celery does NOT fix it — 5.6.3 adds traceback_clear to handle_retry
+    (celery#8882) but measured identical to 5.4.0 in the same harness, in two
+    environments, because the Retry's own traceback (our task frame) is
+    captured either way. Hence: clear the chain ourselves, and the caller also
+    drops its fat locals before raising.
+
+    Frame.clear() raises RuntimeError on a frame still executing — that is the
+    frame that raised, which is exactly the one still on the stack, so it is
+    swallowed; its locals are dropped by the caller instead.
+    """
+    seen: set[int] = set()
+    while exc is not None and id(exc) not in seen:
+        seen.add(id(exc))
+        tb = exc.__traceback__
+        while tb is not None:
+            try:
+                tb.tb_frame.clear()
+            except RuntimeError:
+                pass
+            tb = tb.tb_next
+        exc = exc.__cause__ or exc.__context__
+
+
+
 def _internal_headers(user_id: str | None = None) -> dict:
     """Auth headers for internal tracker-api calls: X-Internal-Token when
     configured (tracker-api enforces it in a later phase), plus X-Internal-User-Id
@@ -95,6 +134,7 @@ def review_job(self, job_id: str, user_id: str):
         job = resp.json()
     except Exception as exc:
         logger.exception("Failed to fetch job %s", job_id)
+        _drop_frames(exc)
         raise self.retry(exc=exc, countdown=30)
 
     # 2. Fetch user's active criteria
@@ -108,6 +148,7 @@ def review_job(self, job_id: str, user_id: str):
         criteria = resp.json()
     except Exception as exc:
         logger.exception("Failed to fetch criteria for user %s", user_id)
+        _drop_frames(exc)
         raise self.retry(exc=exc, countdown=30)
 
     # 3. Fetch user's active profile (optional — degrade gracefully)
@@ -141,6 +182,7 @@ def review_job(self, job_id: str, user_id: str):
         had_error = bool(recorded_error)
     except Exception as exc:
         logger.exception("Failed to fetch API key for user %s", user_id)
+        _drop_frames(exc)
         raise self.retry(exc=exc, countdown=30)
 
     # A recorded blocking failure means the next call fails exactly as the last
@@ -211,6 +253,11 @@ def review_job(self, job_id: str, user_id: str):
             )
             return
 
+        # See _drop_frames: without this, every retry permanently pins this
+        # frame's locals (job, profile, plaintext api_key) plus the httpx
+        # buffers hanging off exc's cause chain.
+        _drop_frames(exc)
+        del job, criteria, profile, reviewer, key_data, api_key
         raise self.retry(exc=exc, countdown=60)
 
     if result is None:
@@ -255,4 +302,5 @@ def review_job(self, job_id: str, user_id: str):
                     job_id, user_id, result.score)
     except Exception as exc:
         logger.exception("Failed to post review for job %s / user %s", job_id, user_id)
+        _drop_frames(exc)
         raise self.retry(exc=exc, countdown=30)
