@@ -824,7 +824,9 @@ class InboxPostingOut(BaseModel):
 class InboxInteractionOut(BaseModel):
     id: UUID
     matched_review_id: Optional[UUID]
-    match_confidence: float
+    # Optional to match the column and AgentInteractionIn (null = no match).
+    # As a bare float, one no-match interaction 500'd the whole inbox listing.
+    match_confidence: Optional[float] = None
     previous_status: Optional[JobStatus]
     new_status: Optional[JobStatus]
     applied_at: Optional[datetime]
