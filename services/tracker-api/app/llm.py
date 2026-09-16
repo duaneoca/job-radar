@@ -17,6 +17,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app import models
+from app.logging_config import redact
 from app.security import decrypt_api_key
 
 logger = logging.getLogger(__name__)
@@ -284,7 +285,9 @@ def record_key_error(db: Session, key: models.UserAPIKey, kind: str, detail: str
     5xx must never reach here.
     """
     key.last_error_kind = kind
-    key.last_error = (detail or "")[:1000]
+    # redact(): the detail is str(exc), and litellm's Gemini errors embed the
+    # user's own key in the failing URL (?key=AIza…). The UI shows this text.
+    key.last_error = redact(detail or "")[:1000]
     key.last_error_at = models.utcnow()
     db.commit()
 
@@ -338,6 +341,11 @@ _PROVIDER_DOWN = (
     litellm.ServiceUnavailableError,
     litellm.InternalServerError,
 )
+
+
+# Status codes meaning "the provider did not answer" for exceptions that only
+# carry a number (provider-specific litellm errors). Mirrors _PROVIDER_DOWN.
+_PROVIDER_DOWN_STATUSES = {408, 500, 502, 503, 504, 529}
 
 
 def _transient_kind(exc: Exception) -> str:
@@ -418,13 +426,34 @@ def llm_complete(
         if _looks_like_dead_model(e):
             _remember(db, user_id, models.KEY_ERROR_INVALID_MODEL, str(e))
             raise HTTPException(status_code=400, detail=MODEL_GONE_DETAIL)
-        raise HTTPException(status_code=400, detail=f"Bad request to AI provider: {e}")
+        raise HTTPException(status_code=400, detail=f"Bad request to AI provider: {redact(str(e))}")
     except Exception as e:
+        # Status before text — same principle as the worker's classifier. A 429
+        # whose body happens to contain "invalid" and "model" (quota messages
+        # name the model) must never read as a retired model.
+        # litellm's provider-specific errors (VertexAIError et al., base
+        # BaseLLMException) are NOT subclasses of the litellm.* types the
+        # branches above catch — a Gemini free-tier 429 arrived here as an
+        # "unexpected" exception and went to the operator's digest at ERROR,
+        # with the user's key in the traceback. They do carry status_code,
+        # so classify on that before conceding it's our bug.
+        status = getattr(e, "status_code", None)
+        if status == 429:
+            _remember(db, user_id, models.KEY_ERROR_RATE_LIMITED, str(e))
+            logger.warning("Rate limited by provider (model=%s, status_code)", model)
+            raise HTTPException(status_code=429,
+                                detail="AI provider rate limit reached. Try again later.")
+        if status in _PROVIDER_DOWN_STATUSES:
+            _remember(db, user_id, models.KEY_ERROR_PROVIDER_UNAVAILABLE, str(e))
+            logger.warning("AI provider unreachable (model=%s, status=%s): %s",
+                           model, status, e)
+            raise HTTPException(status_code=502,
+                                detail="The AI provider isn't responding. Try again shortly.")
         if _looks_like_dead_model(e):
             _remember(db, user_id, models.KEY_ERROR_INVALID_MODEL, str(e))
             raise HTTPException(status_code=400, detail=MODEL_GONE_DETAIL)
         logger.exception("LLM completion failed (model=%s)", model)
-        raise HTTPException(status_code=502, detail=f"AI generation failed: {e}")
+        raise HTTPException(status_code=502, detail=f"AI generation failed: {redact(str(e))}")
 
     # A response that hit the ceiling is not an answer — it's the first N tokens
     # of one, and every caller that parses JSON will report the parser's

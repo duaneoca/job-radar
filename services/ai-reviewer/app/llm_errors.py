@@ -51,6 +51,16 @@ _TRANSIENT_TYPES = (
 )
 
 
+# Transient by HTTP status, for litellm's provider-specific errors
+# (VertexAIError et al., base BaseLLMException) which are NOT subclasses of the
+# litellm.* types above but do carry status_code. Observed in production
+# 2026-09-03: Google's free-tier 429 surfaced as VertexAIError and, being
+# unclassified, was treated as unexpected. 429 belongs here even though
+# classify_llm_error never RETURNS a transient kind — "in the set" means
+# "return None and let the retry machinery handle it".
+_TRANSIENT_STATUSES = {408, 429, 500, 502, 503, 504, 529}
+
+
 def classify_llm_error(exc: Exception) -> str | None:
     """Return INVALID_MODEL / INVALID_KEY for permanent failures, else None.
 
@@ -61,6 +71,10 @@ def classify_llm_error(exc: Exception) -> str | None:
     # Type first, always. A 429 body can easily contain the word "invalid", and
     # sniffing text before types would read that as a retired model.
     if isinstance(exc, _TRANSIENT_TYPES):
+        return None
+
+    # Status before text, same reasoning: a 429 body can contain "invalid".
+    if getattr(exc, "status_code", None) in _TRANSIENT_STATUSES:
         return None
 
     # A prompt too long for the model is about this one job, not the key.
@@ -100,7 +114,7 @@ def transient_kind(exc: Exception) -> str:
     ceiling is something the user can act on (raise the tier, pick a cheaper
     model) while an unreachable provider is something they can only wait out.
     """
-    if isinstance(exc, litellm.RateLimitError):
+    if isinstance(exc, litellm.RateLimitError) or getattr(exc, "status_code", None) == 429:
         return RATE_LIMITED
     err = str(exc).lower()
     if any(p in err for p in _RATE_LIMIT_PHRASES):

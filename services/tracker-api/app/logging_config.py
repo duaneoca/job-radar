@@ -14,9 +14,46 @@ Changing it means changing `log_digest.LOG_LINE`.
 """
 
 import logging
+import re
 
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+
+# ── Credential redaction ─────────────────────────────────────────────────
+# BYOK means user API keys ride through this code, and they leak into logs
+# through paths we don't control: litellm surfaces Google's 429 as a raw httpx
+# error whose URL is `…:generateContent?key=AIzaSy…` (Google authenticates via
+# query param), and logger.exception prints the traceback — which is how a
+# user's key reached the pod logs AND the hourly digest email on 2026-09-03.
+# The formatter is the one chokepoint that covers tracebacks, message text and
+# args alike, whoever does the logging; per-call-site redaction would be a
+# whack-a-mole we lose the first time someone adds a log line.
+
+_REDACT_PATTERNS = [
+    # Credential-bearing query params (Google `key=`, Adzuna `app_key=`, …).
+    re.compile(r"(?i)([?&](?:api_?key|key|token|access_token|app_key|app_id)=)[^&\s'\"]+"),
+    # Bare key material by shape, wherever it appears: Google (AIza…),
+    # OpenAI/Anthropic (sk-…), Groq (gsk_…). The prefix survives so a redacted
+    # log line still says which provider's key it was.
+    re.compile(r"\b(AIza)[0-9A-Za-z_\-]{30,}"),
+    re.compile(r"\b(sk-)[A-Za-z0-9_\-]{16,}"),
+    re.compile(r"\b(gsk_)[A-Za-z0-9_\-]{16,}"),
+]
+
+
+def redact(text: str) -> str:
+    """Strip credential material from text bound for logs, email or the DB."""
+    for pat in _REDACT_PATTERNS:
+        text = pat.sub(r"\1<redacted>", text)
+    return text
+
+
+class _RedactingFormatter(logging.Formatter):
+    """LOG_FORMAT unchanged — the digest parser sees the same shape, minus keys."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        return redact(super().format(record))
 
 # Libraries that are chatty at INFO and say nothing an operator wants. uvicorn's
 # access log in particular would be one line per request — it would bury real
@@ -38,10 +75,11 @@ def configure_logging(level: str = "INFO") -> None:
     configure logging on startup, and without this the service silently keeps
     their format instead of ours.
     """
+    handler = logging.StreamHandler()
+    handler.setFormatter(_RedactingFormatter(LOG_FORMAT, datefmt=DATE_FORMAT))
     logging.basicConfig(
         level=getattr(logging, level.upper(), logging.INFO),
-        format=LOG_FORMAT,
-        datefmt=DATE_FORMAT,
+        handlers=[handler],
         force=True,
     )
     for name, lvl in _QUIET.items():

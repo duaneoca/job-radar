@@ -148,3 +148,41 @@ def test_llm_call_failed_carries_the_flavour():
     assert exc.permanent is False
     assert exc.transient == RATE_LIMITED
     assert LLMCallFailed(INVALID_MODEL, "gone").transient is None
+
+
+# ── provider-specific exceptions that only carry a status code ────────────────
+# Mirrors tracker-api: litellm's VertexAIError (base BaseLLMException) is none
+# of the litellm.* types, so the type-first checks pass it by. Observed in
+# production 2026-09-03 as Google's free-tier 429.
+
+class _ProviderError(Exception):
+    def __init__(self, status_code, message):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def test_status_429_is_transient_even_when_body_says_invalid():
+    """The regression guard: a quota body mentioning "invalid" and "model" must
+    not be read as a retired model — status is checked before text."""
+    exc = _ProviderError(429, "quota invalid for model gemini-3.1-pro")
+    assert classify_llm_error(exc) is None
+
+
+def test_status_5xx_is_transient():
+    for code in (500, 502, 503, 504, 529):
+        assert classify_llm_error(_ProviderError(code, "upstream sad")) is None, code
+
+
+def test_status_429_exhaustion_reports_rate_limited():
+    assert transient_kind(_ProviderError(429, "no quota words here")) == RATE_LIMITED
+
+
+def test_status_503_exhaustion_reports_unavailable():
+    assert transient_kind(_ProviderError(503, "backend overloaded")) == PROVIDER_UNAVAILABLE
+
+
+def test_status_404_still_reads_as_dead_model():
+    """404 is NOT in the transient set — a missing model must keep raising the
+    invalid_model banner exactly as before."""
+    exc = _ProviderError(404, "model gemini-2.5-flash is not found for API version v1beta")
+    assert classify_llm_error(exc) == INVALID_MODEL

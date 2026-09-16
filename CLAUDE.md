@@ -173,7 +173,14 @@ means "no key at all"). Do not reintroduce a `PROVIDER_MODELS`-style fallback.
 `POST /keys/internal/{user_id}/llm/status` (internal token; null `kind` clears).
 `classify_llm_error` checks exception **types** for the transient set *before* it
 sniffs message text — a 429 body containing "invalid" must never be read as a dead
-model, or a throttled user is told to change a setting that was correct. A permanent
+model, or a throttled user is told to change a setting that was correct. Types are
+not enough on their own: litellm's provider-specific errors (`VertexAIError` et
+al., base `BaseLLMException`) subclass none of the `litellm.*` types but carry
+`status_code`, so both classifiers fall back to that — status, like type, is
+checked before text. Logs, the `last_error` column and user-facing error details
+are credential-redacted (`logging_config.redact`, applied at the log formatter so
+tracebacks are covered): Google authenticates via a `?key=` query param, and an
+unclassified Gemini error once put a user's key in the pod logs and digest email. A permanent
 verdict also stops the retry; a transient one retries — and if it survives all
 `max_retries`, it is reported as `rate_limited` and the task returns instead of
 raising. That last part matters: letting the exception escape makes Celery log it
