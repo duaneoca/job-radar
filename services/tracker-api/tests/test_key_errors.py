@@ -400,3 +400,71 @@ def test_a_complete_response_is_unaffected(client, db, monkeypatch):
     out = llm_mod.llm_complete(system="s", messages=[{"role": "user", "content": "x"}],
                                api_key="k", model="m", db=db, user_id=TEST_USER_ID)
     assert out == "all done"
+
+
+# ── provider-specific exceptions that only carry a status code ────────────────
+# litellm's per-provider errors (VertexAIError et al., base BaseLLMException)
+# are not subclasses of the litellm.* types the branches above catch. On
+# 2026-09-03 a Gemini free-tier 429 arrived that way, went to the operator's
+# digest at ERROR, and carried the user's API key in the traceback. These pin
+# the status_code fallback.
+
+class _ProviderError(Exception):
+    """Shape of VertexAIError: bare Exception plus a status_code attribute."""
+    def __init__(self, status_code, message):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def test_provider_specific_429_is_rate_limited_not_a_bug(client, db, monkeypatch, caplog):
+    import logging
+    _key(db)
+    with caplog.at_level(logging.WARNING, logger="app.llm"):
+        err = _call(db, _ProviderError(429, "You exceeded your current quota"), monkeypatch)
+    assert err.status_code == 429
+    assert _reload(db).last_error_kind == "rate_limited"
+    # The whole point: WARNING, so it stays out of the hourly digest.
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+
+
+def test_provider_specific_429_with_invalid_in_body_is_not_a_dead_model(client, db, monkeypatch):
+    """Status before text: a quota body mentioning the word "invalid" must not
+    read as a retired model."""
+    _key(db)
+    err = _call(db, _ProviderError(429, "quota invalid for model gemini-x"), monkeypatch)
+    assert err.status_code == 429
+    assert _reload(db).last_error_kind == "rate_limited"
+
+
+def test_provider_specific_503_is_an_outage(client, db, monkeypatch, caplog):
+    import logging
+    _key(db)
+    with caplog.at_level(logging.WARNING, logger="app.llm"):
+        err = _call(db, _ProviderError(503, "backend overloaded"), monkeypatch)
+    assert err.status_code == 502
+    assert _reload(db).last_error_kind == "provider_unavailable"
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+
+
+def test_unclassifiable_exception_is_still_our_bug(client, db, monkeypatch, caplog):
+    """The catch-all must survive as a catch-all — an exception with no status
+    and no recognisable text stays ERROR, because that one IS ours."""
+    import logging
+    _key(db)
+    with caplog.at_level(logging.ERROR, logger="app.llm"):
+        err = _call(db, ValueError("something novel"), monkeypatch)
+    assert err.status_code == 502
+    assert [r for r in caplog.records if r.levelno >= logging.ERROR]
+
+
+def test_recorded_detail_is_redacted(client, db, monkeypatch):
+    """last_error is shown in the UI and must never contain the key that
+    litellm embeds in Gemini's failing URL."""
+    _key(db)
+    _call(db, _ProviderError(
+        429,
+        "429 for url 'https://generativelanguage.googleapis.com/v1beta/models/g:generateContent"
+        "?key=AIzaSyTESTTESTTESTTESTTESTTESTTESTTEST0'"), monkeypatch)
+    detail = _reload(db).last_error
+    assert "AIzaSyTESTTESTTESTTESTTESTTESTTESTTEST0" not in detail
+    assert "key=<redacted>" in detail
