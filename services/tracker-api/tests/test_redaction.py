@@ -11,7 +11,7 @@ import io
 import logging
 
 from app.logging_config import (
-    DATE_FORMAT, LOG_FORMAT, _RedactingFormatter, configure_logging, redact,
+    DATE_FORMAT, LOG_FORMAT, _RedactingFormatter, redact,
 )
 
 # Same shape as a real Google key (AIza + 35 chars) but fabricated. NEVER put
