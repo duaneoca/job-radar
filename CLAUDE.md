@@ -156,7 +156,7 @@ a time (H6). The shared `AGENT_INTERNAL_TOKEN` must match in `tracker-api-secret
 - Prompts: `services/ai-reviewer/app/prompts/review_prompt.md` + `output_format.md`
 - Scores on 5 dimensions (Skills, Experience, Location, Education, Salary), each 1–10, averaged to overall score
 - Summary must be written in second person to the candidate ("Your background in X…"), not from a hiring manager perspective
-- Uses LiteLLM — priority order: Anthropic → OpenAI → Google → Groq
+- Uses LiteLLM — priority order: Anthropic → OpenAI → Google → xAI → Groq
   (`models.LLM_PROVIDERS`), preferring a key that has a model.
 
 **There is NO default model — this is an invariant, not an oversight.** Picking a

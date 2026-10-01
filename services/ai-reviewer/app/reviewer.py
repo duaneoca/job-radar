@@ -82,6 +82,9 @@ def _skills_block(criteria: dict) -> str:
 # JSON, which works everywhere and is where we were before. Sending an emulated
 # parameter is the failure mode, so "don't" is the safe default. Values are
 # models.LLMProvider members, delivered by GET /keys/internal/{user}/llm.
+#
+# xai is deliberately absent: xAI documents a native json_object mode, but no
+# Grok review has been measured here yet. Add it after one has.
 _NATIVE_JSON_MODE_PROVIDERS = frozenset({"openai", "google", "groq"})
 
 

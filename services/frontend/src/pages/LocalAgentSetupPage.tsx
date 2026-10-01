@@ -48,7 +48,7 @@ export function LocalAgentSetupPage() {
           <ul className="list-disc pl-4 space-y-1">
             <li><strong>Proton Mail Bridge</strong> installed, running, and logged in. Note its IMAP host/port (default <code>127.0.0.1:1143</code>) and the <strong>Bridge-specific password</strong> (not your Proton login).</li>
             <li>In Proton, create your funnel folder + sub-folders (e.g. <code>Hire Duane</code> + <code>Interaction / Postings / Social / Unprocessed</code>). The agent never creates folders.</li>
-            <li>An <strong>LLM API key</strong> (Anthropic / OpenAI / Google / Groq — set it on the API Keys tab).</li>
+            <li>An <strong>LLM API key</strong> (Anthropic / OpenAI / Google / xAI / Groq — set it on the API Keys tab).</li>
             <li><code>pipx</code>: <code>brew install pipx && pipx ensurepath</code> (restart your shell).</li>
           </ul>
         </Step>

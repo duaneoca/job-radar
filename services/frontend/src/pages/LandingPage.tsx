@@ -171,7 +171,7 @@ export function LandingPage() {
             Your keys, your data, your cost
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-muted-foreground">
-            Job Radar runs on your own AI API key — Anthropic, OpenAI, Google, or Groq. Nothing
+            Job Radar runs on your own AI API key — Anthropic, OpenAI, Google, xAI, or Groq. Nothing
             is scored on someone else's dime, and your search stays yours. Add your key in
             Settings and you're off.
           </p>

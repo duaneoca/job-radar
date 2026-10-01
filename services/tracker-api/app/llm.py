@@ -2,7 +2,7 @@
 Thin LiteLLM wrapper for multi-provider AI generation.
 
 Supported providers (tried in priority order when resolving a user's key):
-  Anthropic → OpenAI → Google → Groq
+  Anthropic → OpenAI → Google → xAI → Groq
 
 Usage:
     api_key, model = get_llm_provider(user_id, db)
@@ -54,6 +54,12 @@ MODEL_DESCRIPTORS: dict[str, str] = {
     "gemini-3.5-flash-lite": "Fastest · latest generation",
     "gemini-3.5-flash":      "Balanced · latest generation",
     "gemini-3.6-flash":      "Newest · balanced",
+    # xAI (keyed without prefix for matching after stripping "xai/").
+    # The Settings dropdown lists whatever xAI returns for the user's key.
+    "grok-4.7":                     "Newest · balanced",
+    "grok-4.3":                     "Lower cost",
+    "grok-4.20-0309-non-reasoning": "Fast · lower cost",
+    "grok-4.20-0309-reasoning":     "Reasoning · lower cost",
     # Groq (keyed without prefix for matching after stripping "groq/")
     "llama-3.3-70b-versatile": "Balanced · free tier",
     "llama-3.1-8b-instant":    "Fastest · free tier",
@@ -67,7 +73,7 @@ _OPENAI_CHAT_PREFIXES = ("gpt-", "o1", "o3", "o4", "chatgpt-")
 
 def _descriptor(model_id: str) -> str | None:
     """Return a human descriptor for a model ID, stripping provider prefixes."""
-    bare = model_id.removeprefix("gemini/").removeprefix("groq/")
+    bare = model_id.removeprefix("gemini/").removeprefix("groq/").removeprefix("xai/")
     return MODEL_DESCRIPTORS.get(bare) or MODEL_DESCRIPTORS.get(model_id)
 
 
@@ -87,6 +93,8 @@ def fetch_provider_models(provider: str, api_key: str) -> list[dict]:
             return _fetch_google_models(api_key)
         elif provider == "groq":
             return _fetch_groq_models(api_key)
+        elif provider == "xai":
+            return _fetch_xai_models(api_key)
     except httpx.HTTPStatusError as e:
         logger.warning("Provider model fetch failed (%s): %s", provider, e)
         raise HTTPException(
@@ -166,6 +174,39 @@ def _fetch_google_models(api_key: str) -> list[dict]:
     return results
 
 
+# xAI also serves image and video generation from the same key; those models
+# can't answer a chat completion. "multi-agent" models run their own agent loop
+# rather than answering one prompt.
+_XAI_NON_CHAT_MARKERS = ("image", "imagine", "video", "multi-agent", "embed")
+
+
+def _fetch_xai_models(api_key: str) -> list[dict]:
+    """xAI's OpenAI-compatible model list. Accepts both {"data": [...]} (the
+    OpenAI shape) and {"models": [...]}, since xAI documents neither."""
+    resp = httpx.get(
+        "https://api.x.ai/v1/models",
+        headers={"Authorization": f"Bearer {api_key}"},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    body = resp.json()
+    data = body.get("data") or body.get("models") or []
+    filtered = [
+        m for m in data
+        if m.get("id", "").startswith("grok-")
+        and not any(x in m["id"] for x in _XAI_NON_CHAT_MARKERS)
+    ]
+    filtered.sort(key=lambda m: m.get("created", 0), reverse=True)
+    return [
+        {
+            "id": f"xai/{m['id']}",
+            "label": m["id"],
+            "descriptor": _descriptor(f"xai/{m['id']}"),
+        }
+        for m in filtered
+    ]
+
+
 def _fetch_groq_models(api_key: str) -> list[dict]:
     resp = httpx.get(
         "https://api.groq.com/openai/v1/models",
@@ -243,7 +284,7 @@ def get_active_llm_key(user_id: UUID, db: Session):
        because the chosen one is misconfigured would spend money on an account
        the user didn't pick; better to surface the error against their choice.
     2. Otherwise best available by priority order (Anthropic → OpenAI → Google →
-       Groq), preferring a key that actually has a model. If none do, the first
+       xAI → Groq), preferring a key that actually has a model. If none do, the first
        key found is returned so the error can name a real provider.
 
     Returns the UserAPIKey row, or None if the user has no LLM key.
@@ -294,7 +335,7 @@ def get_llm_provider(
             status_code=400,
             detail=(
                 "No AI API key configured. "
-                "Add an Anthropic, OpenAI, Google, or Groq key in Settings → API Keys."
+                "Add an Anthropic, OpenAI, Google, xAI, or Groq key in Settings → API Keys."
             ),
         )
 

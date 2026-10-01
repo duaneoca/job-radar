@@ -7,7 +7,7 @@ import { isWritingModelError } from "../lib/types";
 import type { APIKey, LLMProvider } from "../lib/types";
 import { useAuthStore } from "../store/auth";
 
-const AI_PROVIDERS: LLMProvider[] = ["anthropic", "openai", "google", "groq"];
+const AI_PROVIDERS: LLMProvider[] = ["anthropic", "openai", "google", "xai", "groq"];
 const DISMISS_KEY = "jr-keys-banner-dismissed";
 
 /** Shared key-status hook. Reuses the ["keys"] query so adding a key in
@@ -50,6 +50,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   anthropic: "Anthropic",
   openai: "OpenAI",
   google: "Google",
+  xai: "xAI",
   groq: "Groq",
 };
 

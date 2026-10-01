@@ -34,11 +34,12 @@ _REDACT_PATTERNS = [
     # Credential-bearing query params (Google `key=`, Adzuna `app_key=`, …).
     re.compile(r"(?i)([?&](?:api_?key|key|token|access_token|app_key|app_id)=)[^&\s'\"]+"),
     # Bare key material by shape, wherever it appears: Google (AIza…),
-    # OpenAI/Anthropic (sk-…), Groq (gsk_…). The prefix survives so a redacted
-    # log line still says which provider's key it was.
+    # OpenAI/Anthropic (sk-…), Groq (gsk_…), xAI (xai-…). The prefix survives
+    # so a redacted log line still says which provider's key it was.
     re.compile(r"\b(AIza)[0-9A-Za-z_\-]{30,}"),
     re.compile(r"\b(sk-)[A-Za-z0-9_\-]{16,}"),
     re.compile(r"\b(gsk_)[A-Za-z0-9_\-]{16,}"),
+    re.compile(r"\b(xai-)[A-Za-z0-9_\-]{16,}"),
 ]
 
 

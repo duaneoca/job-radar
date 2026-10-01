@@ -29,7 +29,8 @@ def test_query_param_keys_are_redacted():
 
 
 def test_bare_key_material_is_redacted_by_shape():
-    for secret in (GOOGLE_KEY, "sk-ant-api03-abcdefghij0123456789", "gsk_abcdefghij0123456789"):
+    for secret in (GOOGLE_KEY, "sk-ant-api03-abcdefghij0123456789", "gsk_abcdefghij0123456789",
+                   "xai-abcdefghij0123456789ABCDEF"):
         out = redact(f"failed with credential {secret} somewhere")
         assert secret not in out, secret
         assert "<redacted>" in out

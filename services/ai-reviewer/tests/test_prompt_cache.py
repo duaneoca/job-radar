@@ -47,7 +47,7 @@ def test_other_providers_get_no_breakpoint(provider):
 
 def test_gate_values_are_real_providers():
     """These must be LLMProvider values — a typo silently disables caching."""
-    assert _PROMPT_CACHE_PROVIDERS <= {"anthropic", "openai", "google", "groq"}
+    assert _PROMPT_CACHE_PROVIDERS <= {"anthropic", "openai", "google", "groq", "xai"}
 
 
 def test_breakpoint_reaches_the_anthropic_request_body():

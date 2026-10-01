@@ -8,7 +8,7 @@ export type JobSource =
   | "monster" | "ziprecruiter" | "ashby" | "greenhouse"
   | "lever" | "jsearch" | "manual";
 
-export type LLMProvider = "anthropic" | "openai" | "google" | "groq" | "tavily" | "adzuna" | "jsearch";
+export type LLMProvider = "anthropic" | "openai" | "google" | "xai" | "groq" | "tavily" | "adzuna" | "jsearch";
 
 // ─── Email agent — keys & stats ───────────────────────────────
 export type AgentRunStatus = "success" | "partial" | "failed";

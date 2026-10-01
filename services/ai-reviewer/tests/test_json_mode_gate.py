@@ -50,4 +50,4 @@ def test_gate_values_are_real_providers():
     tracker-api, so this list is the contract between them.
     """
     from app.reviewer import _NATIVE_JSON_MODE_PROVIDERS
-    assert _NATIVE_JSON_MODE_PROVIDERS <= {"anthropic", "openai", "google", "groq"}
+    assert _NATIVE_JSON_MODE_PROVIDERS <= {"anthropic", "openai", "google", "groq", "xai"}
