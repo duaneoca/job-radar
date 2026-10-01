@@ -232,3 +232,107 @@ def test_create_recruiter_with_title(client):
     assert r.status_code == 201
     assert r.json()["title"] == "Lead Recruiter"
     assert client.get("/recruiters").json()[0]["title"] == "Lead Recruiter"
+
+
+# ── Shared relay senders (INTEGRATION_SPEC §3.7 relay rule) ───────────────────
+# One address, many people: every LinkedIn InMail recruiter writes from the same
+# relay, and replying to it reaches nobody. Grouped by address they all merged
+# into one suggestion; they must be grouped by person and offered with no email.
+
+INMAIL = "inmail-hit-reply@linkedin.com"
+
+
+def test_relay_recruiters_are_separate_people(client, db):
+    _seed_recruiter_email(db, f"Jane Smith <{INMAIL}>", message_prefix="a",
+                          card={"name": "Jane Smith",
+                                "linkedin_url": "https://www.linkedin.com/in/janesmith"})
+    _seed_recruiter_email(db, f"Raj Patel <{INMAIL}>", message_prefix="b", n=2,
+                          card={"name": "Raj Patel"})
+    sugg = client.get("/recruiters/suggestions").json()
+    assert [(s["name"], s["email"], s["email_count"]) for s in sugg] == [
+        ("Raj Patel", None, 2), ("Jane Smith", None, 1),
+    ]
+    assert sugg[1]["linkedin_url"] == "https://www.linkedin.com/in/janesmith"
+
+
+def test_relay_without_a_card_uses_the_display_name(client, db):
+    _seed_recruiter_email(db, f"Jane Smith via LinkedIn <{INMAIL}>")
+    s = client.get("/recruiters/suggestions").json()[0]
+    assert s["name"] == "Jane Smith" and s["email"] is None
+
+
+def test_same_profile_merges_across_name_spellings(client, db):
+    li = "https://www.linkedin.com/in/janesmith"
+    _seed_recruiter_email(db, INMAIL, message_prefix="a", card={"name": "Jane Smith", "linkedin_url": li})
+    _seed_recruiter_email(db, INMAIL, message_prefix="b", card={"name": "Jane A. Smith", "linkedin_url": li + "/"})
+    sugg = client.get("/recruiters/suggestions").json()
+    assert len(sugg) == 1 and sugg[0]["email_count"] == 2
+
+
+def test_card_with_a_real_address_is_keyed_by_it(client, db):
+    """The agent puts the signature's own address in the card when it finds one."""
+    _seed_recruiter_email(db, INMAIL, card={"name": "Jane Smith", "email": "jane@agency.com"})
+    assert client.get("/recruiters/suggestions").json()[0]["email"] == "jane@agency.com"
+
+
+def test_noreply_senders_are_shared(client, db):
+    _seed_recruiter_email(db, "Acme Talent <no-reply@acme.com>")
+    _seed_recruiter_email(db, "jobs-noreply@board.com")           # no name → nothing to offer
+    sugg = client.get("/recruiters/suggestions").json()
+    assert [(s["name"], s["email"]) for s in sugg] == [("Acme Talent", None)]
+
+
+def test_dice_relay_is_per_recruiter_and_kept(client, db):
+    """Replies to …@user.dice.com reach the recruiter, so it IS their address."""
+    _seed_recruiter_email(db, "Bo Lee <abc123@user.dice.com>")
+    assert client.get("/recruiters/suggestions").json()[0]["email"] == "abc123@user.dice.com"
+
+
+def test_relay_recruiter_already_tracked_by_profile(client, db):
+    _seed_recruiter_email(db, INMAIL, card={"name": "Jane Smith",
+                                            "linkedin_url": "https://linkedin.com/in/JaneSmith/"})
+    client.post("/recruiters", json={"name": "J. Smith",
+                                     "linkedin_url": "https://www.linkedin.com/in/janesmith"})
+    assert client.get("/recruiters/suggestions").json() == []
+
+
+def test_relay_recruiter_already_tracked_by_name(client, db):
+    _seed_recruiter_email(db, f"Jane Smith <{INMAIL}>")
+    client.post("/recruiters", json={"name": "jane  smith"})
+    assert client.get("/recruiters/suggestions").json() == []
+
+
+# ── Typed recruiter card on POST /agent/inbox (§3.5 Phase 2) ──────────────────
+
+def _post_inbox(client, **extra):
+    body = {"message_id": "<typed-1@x>", "subject": "Role", "sender": "Jane <jane@agency.com>",
+            "received_at": "2026-10-01T12:00:00Z", "category": "recruiter_outreach",
+            "confidence": 1.0, "postings": [], **extra}
+    return client.post("/agent/inbox", json=body, headers={"X-User-Id": str(TEST_USER_ID)})
+
+
+def test_typed_card_reaches_suggestions(client):
+    r = _post_inbox(client, recruiter={**FULL_CARD, "email": "jane@agency.com"})
+    assert r.status_code == 201, r.text
+    s = client.get("/recruiters/suggestions").json()[0]
+    assert s["phone"] == "212 389 9503" and s["type"] == "agency"
+
+
+def test_typed_card_wins_over_the_nested_copy(client):
+    _post_inbox(client, recruiter={"name": "Jane Typed", "email": "jane@agency.com"},
+                raw_extracted_json={"recruiter_contact": {"name": "Jane Nested"}, "other": 1})
+    assert client.get("/recruiters/suggestions").json()[0]["name"] == "Jane Typed"
+
+
+def test_nested_card_alone_still_works(client):
+    _post_inbox(client, raw_extracted_json={"recruiter_contact": {"name": "Jane Nested",
+                                                                  "email": "jane@agency.com"}})
+    assert client.get("/recruiters/suggestions").json()[0]["name"] == "Jane Nested"
+
+
+def test_malformed_typed_card_costs_the_card_not_the_email(client, db):
+    """Email-derived and optional: a garbled card must never reject the write."""
+    r = _post_inbox(client, recruiter={"represents": "not-a-list"})   # and no name
+    assert r.status_code == 201, r.text
+    row = db.query(models.InboxEmail).filter_by(message_id="<typed-1@x>").one()
+    assert not (row.raw_extracted_json or {}).get("recruiter_contact")
