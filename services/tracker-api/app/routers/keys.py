@@ -72,11 +72,13 @@ def list_keys(
             provider=k.provider,
             key_hint=hint,
             preferred_model=k.preferred_model,
+            writing_model=k.writing_model,
             updated_at=k.updated_at,
             active=(k.provider == active_provider),
             last_error_kind=k.last_error_kind,
             last_error=k.last_error,
             last_error_at=k.last_error_at,
+            last_error_model=k.last_error_model,
         ))
     return result
 
@@ -139,8 +141,11 @@ def upsert_key(
         # would break every AI feature for them.
         if "preferred_model" in payload.model_fields_set:
             existing.preferred_model = payload.preferred_model or None
+        if "writing_model" in payload.model_fields_set:
+            existing.writing_model = payload.writing_model or None
         # A new secret deserves a fresh verdict.
         existing.unusable_streak = 0
+        existing.last_error_model = None
         existing.last_error_kind = None
         existing.last_error = None
         existing.last_error_at = None
@@ -153,6 +158,7 @@ def upsert_key(
             provider=payload.provider,
             encrypted_key=encrypted,
             preferred_model=payload.preferred_model or None,
+            writing_model=payload.writing_model or None,
         )
         db.add(key_obj)
         db.commit()
@@ -162,6 +168,7 @@ def upsert_key(
         provider=key_obj.provider,
         key_hint=_hint_for(key_obj.provider, secret),
         preferred_model=key_obj.preferred_model,
+        writing_model=key_obj.writing_model,
         updated_at=key_obj.updated_at,
     )
 
@@ -191,6 +198,28 @@ def list_models_for_provider(
     return fetch_provider_models(provider.value, api_key)
 
 
+def _clear_error_if_model_dropped(key: models.UserAPIKey) -> None:
+    """After a model change, drop the recorded verdict unless it is about a model
+    the key still uses.
+
+    Changing a model is the fix the banner asks for, so the verdict normally goes.
+    But a key has two models now: replacing the writing model must not erase a
+    verdict about the analysis model, which scoring is still calling. Key-wide
+    and pre-split verdicts (no model recorded) clear on any change, as before.
+    """
+    from app.llm import model_for_key
+    in_use = {model_for_key(key, models.MODEL_PURPOSE_ANALYSIS),
+              model_for_key(key, models.MODEL_PURPOSE_WRITING)}
+    if (key.last_error_kind in models.KEY_ERRORS_MODEL_SCOPED
+            and key.last_error_model is not None
+            and key.last_error_model in in_use):
+        return
+    key.last_error_model = None
+    key.last_error_kind = None
+    key.last_error = None
+    key.last_error_at = None
+
+
 @router.patch("/{provider}", response_model=schemas.APIKeyOut)
 def update_key_model(
     provider: models.LLMProvider,
@@ -198,7 +227,8 @@ def update_key_model(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    """Update just the preferred model for an existing key — no key re-entry needed."""
+    """Update the analysis and/or writing model for an existing key — no key
+    re-entry needed. Only the fields sent are changed."""
     existing = (
         db.query(models.UserAPIKey)
         .filter(
@@ -209,12 +239,18 @@ def update_key_model(
     )
     if not existing:
         raise HTTPException(status_code=404, detail="Key not found")
-    existing.preferred_model = payload.preferred_model or None
-    # Whatever the provider rejected — or failed to format — was about the old model.
-    existing.unusable_streak = 0
-    existing.last_error_kind = None
-    existing.last_error = None
-    existing.last_error_at = None
+    sent = payload.model_fields_set
+    # Applied per field: this endpoint used to assign preferred_model
+    # unconditionally, so a request changing only the writing model would have
+    # wiped the analysis model — and with no default, every AI feature with it.
+    if "preferred_model" in sent:
+        if (payload.preferred_model or None) != existing.preferred_model:
+            # The streak counts the scorer's answers, which come from this model.
+            existing.unusable_streak = 0
+        existing.preferred_model = payload.preferred_model or None
+    if "writing_model" in sent:
+        existing.writing_model = payload.writing_model or None
+    _clear_error_if_model_dropped(existing)
     db.commit()
     db.refresh(existing)
     try:
@@ -226,6 +262,7 @@ def update_key_model(
         provider=existing.provider,
         key_hint=hint,
         preferred_model=existing.preferred_model,
+        writing_model=existing.writing_model,
         updated_at=existing.updated_at,
     )
 
@@ -264,7 +301,7 @@ def get_best_llm_key(
     Returns the decrypted API key and LiteLLM model string for the user's *active*
     LLM key — the explicit selection, else priority order. Called by ai-reviewer.
     """
-    from app.llm import NO_MODEL_DETAIL, get_active_llm_key, model_for_key
+    from app.llm import NO_MODEL_DETAIL, error_applies_to, get_active_llm_key, model_for_key
     key_obj = get_active_llm_key(user_id, db)
     if not key_obj:
         raise HTTPException(status_code=404, detail="No AI key configured")
@@ -278,8 +315,10 @@ def get_best_llm_key(
         "model": model,
         "provider": key_obj.provider.value,
         # Lets the worker skip the "clear my error" post-back on the overwhelming
-        # majority of reviews, where there was never an error to clear.
-        "last_error_kind": key_obj.last_error_kind,
+        # majority of reviews, where there was never an error to clear. It is
+        # also what the worker BLOCKS on, so it carries only verdicts about this
+        # (analysis) model — a retired writing model must not stop scoring.
+        "last_error_kind": key_obj.last_error_kind if error_applies_to(key_obj, model) else None,
     }
 
 
@@ -297,15 +336,17 @@ def report_llm_key_status(
     verdicts are ever sent — the worker classifies transient errors and retries
     them instead of reporting.
     """
-    from app.llm import clear_key_error, get_active_llm_key, record_key_error
+    from app.llm import clear_key_error, get_active_llm_key, model_for_key, record_key_error
 
     key_obj = get_active_llm_key(user_id, db)
     if not key_obj:
         raise HTTPException(status_code=404, detail="No AI key configured")
+    # The worker only ever scores, so its verdicts are about the analysis model.
+    model = model_for_key(key_obj, models.MODEL_PURPOSE_ANALYSIS)
 
     if payload.kind is None:
         key_obj.unusable_streak = 0
-        clear_key_error(db, key_obj)
+        clear_key_error(db, key_obj, model)
         db.commit()
         return {"status": "cleared"}
 
@@ -320,13 +361,13 @@ def report_llm_key_status(
         if key_obj.unusable_streak < models.UNUSABLE_OUTPUT_STREAK:
             db.commit()
             return {"status": "counted", "streak": key_obj.unusable_streak}
-        record_key_error(db, key_obj, payload.kind, payload.detail or "")
+        record_key_error(db, key_obj, payload.kind, payload.detail or "", model)
         return {"status": "recorded", "kind": payload.kind,
                 "streak": key_obj.unusable_streak}
 
     # Any other kind of failure breaks the run — "consecutive" has to mean it.
     key_obj.unusable_streak = 0
-    record_key_error(db, key_obj, payload.kind, payload.detail or "")
+    record_key_error(db, key_obj, payload.kind, payload.detail or "", model)
     return {"status": "recorded", "kind": payload.kind}
 
 

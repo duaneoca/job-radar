@@ -21,6 +21,10 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.llm import get_llm_provider, get_tavily_key, llm_complete
 
+# Employer-facing output (application answers, tailored résumés, interview prep)
+# uses the key's writing model; everything else defaults to the analysis model.
+WRITING = models.MODEL_PURPOSE_WRITING
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/jobs", tags=["generate"])
@@ -230,7 +234,7 @@ def generate_application_answer(
 
     criteria = _get_criteria(current_user.id, db)
     profile = _get_profile(current_user.id, db)
-    api_key, model = get_llm_provider(current_user.id, db)
+    api_key, model = get_llm_provider(current_user.id, db, WRITING)
 
     templates = (criteria.application_templates if criteria else None) or DEFAULT_APPLICATION_TEMPLATES
     if template_idx < 0 or template_idx >= len(templates):
@@ -290,7 +294,7 @@ def refine_application(
 
     criteria = _get_criteria(current_user.id, db)
     profile = _get_profile(current_user.id, db)
-    api_key, model = get_llm_provider(current_user.id, db)
+    api_key, model = get_llm_provider(current_user.id, db, WRITING)
 
     templates = (criteria.application_templates if criteria else None) or DEFAULT_APPLICATION_TEMPLATES
     if body.template_idx < 0 or body.template_idx >= len(templates):
@@ -441,7 +445,7 @@ def generate_interview_prep(
 
     criteria = _get_criteria(current_user.id, db)
     profile = _get_profile(current_user.id, db)
-    api_key, model = get_llm_provider(current_user.id, db)
+    api_key, model = get_llm_provider(current_user.id, db, WRITING)
     prep_prompt = (criteria.interview_prep_prompt if criteria else None) or DEFAULT_INTERVIEW_PREP_PROMPT
 
     # Build career stories block
@@ -599,7 +603,7 @@ def tailor_resume_endpoint(
     honesty = resume_tailor.derive_honesty_facts(structured)
     criteria = _get_criteria(current_user.id, db)
     style = (criteria.resume_tailor_prompt if criteria else None) or resume_tailor.DEFAULT_RESUME_TAILOR_PROMPT
-    api_key, model = get_llm_provider(current_user.id, db)
+    api_key, model = get_llm_provider(current_user.id, db, WRITING)
 
     tailored, notes = resume_tailor.tailor_resume(
         structured, honesty, _job_block(review.job), style, api_key, model,
@@ -631,7 +635,7 @@ def refine_tailored_resume(
     honesty = resume_tailor.derive_honesty_facts(original)
     criteria = _get_criteria(current_user.id, db)
     style = (criteria.resume_tailor_prompt if criteria else None) or resume_tailor.DEFAULT_RESUME_TAILOR_PROMPT
-    api_key, model = get_llm_provider(current_user.id, db)
+    api_key, model = get_llm_provider(current_user.id, db, WRITING)
 
     # Reorder cards carry a numbered listing in `before`, not a phrasing — feeding
     # that to "keep EXACTLY as written" would garble the prompt. They get their own

@@ -193,19 +193,45 @@ NO_MODEL_DETAIL = (
     "Go to Settings → API Keys and choose a model."
 )
 
-MODEL_GONE_DETAIL = (
-    "The selected model is no longer available. "
-    "Go to Settings → API Keys and choose a different model."
-)
+def _model_gone_detail(model: str) -> str:
+    """The retired-model error, naming the model — a key has two, and "the
+    selected model" would not say which one to change."""
+    return (
+        f"The model {model} is no longer available. "
+        "Go to Settings → API Keys and choose a different model."
+    )
 
 
-def model_for_key(key: models.UserAPIKey) -> str | None:
+def model_for_key(
+    key: models.UserAPIKey, purpose: str = models.MODEL_PURPOSE_ANALYSIS,
+) -> str | None:
     """LiteLLM model string for a key, or None when the user hasn't chosen one.
 
     Returns None rather than "" so callers can't accidentally pass a falsy-but-
     present model to litellm.
+
+    `purpose` picks which of the key's two models: ANALYSIS (preferred_model) for
+    output only the user reads, WRITING for text an employer may read. An unset
+    writing model means the user's own analysis choice — never one of ours, so
+    the no-default-model rule holds.
     """
+    if purpose == models.MODEL_PURPOSE_WRITING:
+        return key.writing_model or key.preferred_model or None
     return key.preferred_model or None
+
+
+def error_applies_to(key: models.UserAPIKey, model: str | None) -> bool:
+    """Whether the key's recorded verdict concerns a call made with `model`.
+
+    Key-wide verdicts (rejected key, provider down) apply to every model, and so
+    does a model-scoped one recorded without a model (rows from before a key had
+    two). Otherwise it applies only to the model that failed.
+    """
+    if key.last_error_kind is None:
+        return False
+    if key.last_error_kind not in models.KEY_ERRORS_MODEL_SCOPED:
+        return True
+    return key.last_error_model is None or key.last_error_model == model
 
 
 def get_active_llm_key(user_id: UUID, db: Session):
@@ -254,9 +280,12 @@ def get_active_llm_key(user_id: UUID, db: Session):
     return fallback
 
 
-def get_llm_provider(user_id: UUID, db: Session) -> tuple[str, str]:
+def get_llm_provider(
+    user_id: UUID, db: Session, purpose: str = models.MODEL_PURPOSE_ANALYSIS,
+) -> tuple[str, str]:
     """
-    Return (api_key, litellm_model) for the user's active LLM key.
+    Return (api_key, litellm_model) for the user's active LLM key — the analysis
+    or writing model per `purpose` (see model_for_key).
     Raises 400 if no key is configured, or if the active key has no model.
     """
     key_obj = get_active_llm_key(user_id, db)
@@ -269,7 +298,7 @@ def get_llm_provider(user_id: UUID, db: Session) -> tuple[str, str]:
             ),
         )
 
-    model = model_for_key(key_obj)
+    model = model_for_key(key_obj, purpose)
     if not model:
         raise HTTPException(status_code=400, detail=NO_MODEL_DETAIL)
 
@@ -278,13 +307,19 @@ def get_llm_provider(user_id: UUID, db: Session) -> tuple[str, str]:
 
 # ── Recording permanent key failures ──────────────────────────────────────────
 
-def record_key_error(db: Session, key: models.UserAPIKey, kind: str, detail: str) -> None:
+def record_key_error(
+    db: Session, key: models.UserAPIKey, kind: str, detail: str, model: str | None = None,
+) -> None:
     """Remember a PERMANENT provider rejection so the UI can tell the user.
 
     Callers must have already decided the failure is permanent — a rate limit or a
     5xx must never reach here.
+
+    `model` is the model the call used. It is kept only for model-scoped kinds;
+    a rejected key is rejected whichever model asked.
     """
     key.last_error_kind = kind
+    key.last_error_model = model if kind in models.KEY_ERRORS_MODEL_SCOPED else None
     # redact(): the detail is str(exc), and litellm's Gemini errors embed the
     # user's own key in the failing URL (?key=AIza…). The UI shows this text.
     key.last_error = redact(detail or "")[:1000]
@@ -292,11 +327,19 @@ def record_key_error(db: Session, key: models.UserAPIKey, kind: str, detail: str
     db.commit()
 
 
-def clear_key_error(db: Session, key: models.UserAPIKey) -> None:
-    """Clear a recorded failure after a successful call. No-op when nothing is set,
-    so the happy path doesn't write on every completion."""
+def clear_key_error(db: Session, key: models.UserAPIKey, model: str | None = None) -> None:
+    """Clear a recorded failure after a successful call with `model`. No-op when
+    nothing is set, so the happy path doesn't write on every completion.
+
+    A success only clears what it disproves: scoring working on Haiku says nothing
+    about a retired writing model. `model=None` clears unconditionally.
+    """
     if key.last_error_kind is None and key.last_error is None and key.last_error_at is None:
         return
+    if model is not None and key.last_error_kind is not None \
+            and not error_applies_to(key, model):
+        return
+    key.last_error_model = None
     key.last_error_kind = None
     key.last_error = None
     key.last_error_at = None
@@ -357,7 +400,9 @@ def _transient_kind(exc: Exception) -> str:
     return models.KEY_ERROR_PROVIDER_UNAVAILABLE
 
 
-def _remember(db: Session | None, user_id: UUID | None, kind: str, detail: str) -> None:
+def _remember(
+    db: Session | None, user_id: UUID | None, kind: str, detail: str, model: str | None = None,
+) -> None:
     """Best-effort record of a permanent failure against the user's active key.
 
     Never raises: the caller is already returning an error to the user, and losing
@@ -368,7 +413,7 @@ def _remember(db: Session | None, user_id: UUID | None, kind: str, detail: str) 
     try:
         key_obj = get_active_llm_key(user_id, db)
         if key_obj is not None:
-            record_key_error(db, key_obj, kind, detail)
+            record_key_error(db, key_obj, kind, detail, model)
     except Exception:
         logger.warning("Could not record key error for user %s", user_id, exc_info=True)
 
@@ -404,7 +449,7 @@ def llm_complete(
             num_retries=2,
         )
     except litellm.AuthenticationError as e:
-        _remember(db, user_id, models.KEY_ERROR_INVALID_KEY, str(e))
+        _remember(db, user_id, models.KEY_ERROR_INVALID_KEY, str(e), model)
         raise HTTPException(status_code=400, detail="Invalid API key. Check Settings → API Keys.")
     except litellm.RateLimitError as e:
         # litellm already retried this internally (num_retries above), so by the
@@ -412,20 +457,20 @@ def llm_complete(
         # the background worker uses before recording. The user gets an immediate
         # error either way; the record is what explains why *background* scoring
         # is also stalled.
-        _remember(db, user_id, models.KEY_ERROR_RATE_LIMITED, str(e))
+        _remember(db, user_id, models.KEY_ERROR_RATE_LIMITED, str(e), model)
         logger.warning("Rate limited by provider (model=%s)", model)
         raise HTTPException(status_code=429, detail="AI provider rate limit reached. Try again later.")
     except _PROVIDER_DOWN as e:
         # WARNING, not ERROR: nothing here is the operator's to fix, and these
         # used to fall through to the catch-all below and log at ERROR — which
         # would put a user's provider outage in the hourly digest.
-        _remember(db, user_id, _transient_kind(e), str(e))
+        _remember(db, user_id, _transient_kind(e), str(e), model)
         logger.warning("AI provider unreachable (model=%s): %s", model, e)
         raise HTTPException(status_code=502, detail="The AI provider isn't responding. Try again shortly.")
     except litellm.BadRequestError as e:
         if _looks_like_dead_model(e):
-            _remember(db, user_id, models.KEY_ERROR_INVALID_MODEL, str(e))
-            raise HTTPException(status_code=400, detail=MODEL_GONE_DETAIL)
+            _remember(db, user_id, models.KEY_ERROR_INVALID_MODEL, str(e), model)
+            raise HTTPException(status_code=400, detail=_model_gone_detail(model))
         raise HTTPException(status_code=400, detail=f"Bad request to AI provider: {redact(str(e))}")
     except Exception as e:
         # Status before text — same principle as the worker's classifier. A 429
@@ -439,19 +484,19 @@ def llm_complete(
         # so classify on that before conceding it's our bug.
         status = getattr(e, "status_code", None)
         if status == 429:
-            _remember(db, user_id, models.KEY_ERROR_RATE_LIMITED, str(e))
+            _remember(db, user_id, models.KEY_ERROR_RATE_LIMITED, str(e), model)
             logger.warning("Rate limited by provider (model=%s, status_code)", model)
             raise HTTPException(status_code=429,
                                 detail="AI provider rate limit reached. Try again later.")
         if status in _PROVIDER_DOWN_STATUSES:
-            _remember(db, user_id, models.KEY_ERROR_PROVIDER_UNAVAILABLE, str(e))
+            _remember(db, user_id, models.KEY_ERROR_PROVIDER_UNAVAILABLE, str(e), model)
             logger.warning("AI provider unreachable (model=%s, status=%s): %s",
                            model, status, e)
             raise HTTPException(status_code=502,
                                 detail="The AI provider isn't responding. Try again shortly.")
         if _looks_like_dead_model(e):
-            _remember(db, user_id, models.KEY_ERROR_INVALID_MODEL, str(e))
-            raise HTTPException(status_code=400, detail=MODEL_GONE_DETAIL)
+            _remember(db, user_id, models.KEY_ERROR_INVALID_MODEL, str(e), model)
+            raise HTTPException(status_code=400, detail=_model_gone_detail(model))
         logger.exception("LLM completion failed (model=%s)", model)
         raise HTTPException(status_code=502, detail=f"AI generation failed: {redact(str(e))}")
 
@@ -478,7 +523,7 @@ def llm_complete(
         try:
             key_obj = get_active_llm_key(user_id, db)
             if key_obj is not None:
-                clear_key_error(db, key_obj)
+                clear_key_error(db, key_obj, model)
         except Exception:
             logger.warning("Could not clear key error for user %s", user_id, exc_info=True)
 
