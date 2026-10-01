@@ -298,3 +298,34 @@ def test_replacing_the_analysis_model_resets_the_unusable_streak(client, db):
     assert _reload(db).unusable_streak == 2      # scorer's model unchanged
     client.patch("/keys/anthropic", json={"preferred_model": SONNET})
     assert _reload(db).unusable_streak == 0
+
+
+# ── the unusable-output count ─────────────────────────────────
+
+def test_scoring_config_reports_the_unusable_count(client, db):
+    """The worker needs it to know a success must be reported."""
+    key = _key(db)
+    key.unusable_streak = 2
+    db.commit()
+    assert client.get(LLM_URL).json()["unusable_streak"] == 2
+
+
+def test_count_is_consecutive_end_to_end(client, db):
+    _key(db)
+    for _ in range(2):
+        client.post(STATUS_URL, json={"kind": "unusable_output", "detail": "x"})
+    client.post(STATUS_URL, json={"kind": None})
+    r = client.post(STATUS_URL, json={"kind": "unusable_output", "detail": "x"})
+    assert r.json() == {"status": "counted", "streak": 1}
+
+
+def test_clearing_an_unusable_verdict_resets_its_count(client, db):
+    """Staging, 2026-10-01: a pre-split verdict cleared on a writing-model change
+    but left the count at 4, so the next single bad answer would re-raise it."""
+    key = _key(db)
+    key.last_error_kind = models.KEY_ERROR_UNUSABLE_OUTPUT
+    key.unusable_streak = 4
+    db.commit()
+    client.patch("/keys/anthropic", json={"writing_model": "claude-opus-4-7"})
+    key = _reload(db)
+    assert key.last_error_kind is None and key.unusable_streak == 0

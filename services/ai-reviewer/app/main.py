@@ -179,7 +179,12 @@ def review_job(self, job_id: str, user_id: str):
         model = key_data["model"]
         provider = key_data.get("provider")
         recorded_error = key_data.get("last_error_kind")
-        had_error = bool(recorded_error)
+        # A success must also be reported while unusable answers are being
+        # COUNTED, not only once one is recorded. Otherwise nothing ever resets
+        # the count between bad answers, "three in a row" becomes "three ever",
+        # and a model that fails one review in a few hundred eventually gets
+        # blamed, with scoring stopped.
+        had_error = bool(recorded_error) or (key_data.get("unusable_streak") or 0) > 0
     except Exception as exc:
         logger.exception("Failed to fetch API key for user %s", user_id)
         _drop_frames(exc)
@@ -271,8 +276,9 @@ def review_job(self, job_id: str, user_id: str):
                        job_id, user_id, model)
         return
 
-    # The key works. Only post back if there was actually a failure recorded —
-    # otherwise every review in a large backlog would make a pointless round trip.
+    # The key works. Only post back if there was a failure recorded or being
+    # counted — otherwise every review in a large backlog would make a pointless
+    # round trip.
     if had_error:
         _report_key_status(base, user_id, None)
 

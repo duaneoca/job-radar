@@ -214,6 +214,10 @@ def _clear_error_if_model_dropped(key: models.UserAPIKey) -> None:
             and key.last_error_model is not None
             and key.last_error_model in in_use):
         return
+    if key.last_error_kind == models.KEY_ERROR_UNUSABLE_OUTPUT:
+        # The count that raised the verdict goes with it, or the next single
+        # bad answer re-raises the banner the user just cleared.
+        key.unusable_streak = 0
     key.last_error_model = None
     key.last_error_kind = None
     key.last_error = None
@@ -319,6 +323,9 @@ def get_best_llm_key(
         # also what the worker BLOCKS on, so it carries only verdicts about this
         # (analysis) model — a retired writing model must not stop scoring.
         "last_error_kind": key_obj.last_error_kind if error_applies_to(key_obj, model) else None,
+        # So the worker reports a success while unusable answers are only being
+        # counted — that is what makes the streak "consecutive".
+        "unusable_streak": key_obj.unusable_streak or 0,
     }
 
 
