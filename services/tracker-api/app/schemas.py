@@ -8,7 +8,7 @@ from uuid import UUID
 
 import re
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, ValidationError, field_validator
 
 from app.models import (
     AgentEnvironment, AgentRunStatus,
@@ -723,6 +723,23 @@ class AgentPostingIn(BaseModel):
     matched_review_id: Optional[UUID] = None
 
 
+class AgentRecruiterIn(BaseModel):
+    """The agent's recruiter card (INTEGRATION_SPEC §3.5), typed.
+
+    Shapes are checked here; lengths, URL schemes and the rest are left to
+    recruiters._clean_card, which sanitizes every card on read whichever way it
+    arrived. Unknown keys are ignored."""
+    name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    employer: Optional[str] = None
+    title: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    is_agency: Optional[bool] = None
+    represents: Optional[List[str]] = None
+    recruiter_confidence: Optional[float] = None
+
+
 class AgentInboxIn(BaseModel):
     message_id: str
     subject: str
@@ -733,6 +750,21 @@ class AgentInboxIn(BaseModel):
     langfuse_trace_id: Optional[str] = None
     raw_extracted_json: Optional[dict] = None
     postings: List[AgentPostingIn] = []
+    # Typed recruiter card (§3.5 Phase 2). The agent also nests the same card at
+    # raw_extracted_json.recruiter_contact (Phase 1); when both arrive, this one
+    # wins. Stored at the nested key, which is where suggestions read it.
+    recruiter: Optional[AgentRecruiterIn] = None
+
+    @field_validator("recruiter", mode="wrap")
+    @classmethod
+    def _drop_malformed_card(cls, value, handler):
+        # The card is email-derived and optional. A malformed one must cost the
+        # card, never the email: rejecting the whole write would lose the inbox
+        # entry and its postings over a garbled signature.
+        try:
+            return handler(value)
+        except ValidationError:
+            return None
 
 
 class AgentInboxOut(BaseModel):

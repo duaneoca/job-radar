@@ -989,6 +989,13 @@ def create_inbox_entry(
             posting_ids=[p.id for p in existing.postings],
         )
 
+    raw = payload.raw_extracted_json
+    if payload.recruiter is not None:
+        # The typed card goes where suggestions already read it, so there is one
+        # place to look whichever way the agent sent it.
+        raw = {**(raw or {}),
+               "recruiter_contact": payload.recruiter.model_dump(exclude_none=True)}
+
     email = models.InboxEmail(
         user_id=user.id,
         message_id=payload.message_id,
@@ -998,7 +1005,7 @@ def create_inbox_entry(
         category=payload.category,
         confidence=payload.confidence,
         langfuse_trace_id=payload.langfuse_trace_id,
-        raw_extracted_json=payload.raw_extracted_json,
+        raw_extracted_json=raw,
         status=models.EmailStatus.PROCESSED,
     )
     db.add(email)

@@ -10,6 +10,7 @@ values) and never auto-create — suggestions are review-and-confirm. The React
 client also escapes on render and routes linkedin_url through safeHref.
 """
 
+import re
 from email.utils import parseaddr
 from typing import Optional
 from urllib.parse import urlparse
@@ -92,6 +93,35 @@ def _card_score(card: dict) -> tuple[int, float]:
     return (filled, card.get("recruiter_confidence") or 0.0)
 
 
+# Shared senders: one address for many people, and replying doesn't reach any of
+# them. Every LinkedIn InMail recruiter writes from inmail-hit-reply@linkedin.com,
+# so grouping suggestions by address merged them all into one. Dice's relay
+# (…@user.dice.com) is per recruiter and replies reach them, so it is NOT here.
+# Must cover the agent's own RELAY_DOMAINS (job-radar-agent agent/recruiter.py):
+# any relay it files as recruiter_outreach and we don't know would merge again.
+_RELAY_DOMAINS = ("linkedin.com", "indeed.com", "glassdoor.com", "ziprecruiter.com")
+_NOREPLY = re.compile(r"(?:^|[._+-])(?:no-?reply|do-?not-?reply|no_reply)(?:[._+-]|$)")
+# "Jane Smith via LinkedIn" — the relay's decoration on the display name.
+_VIA_SUFFIX = re.compile(r"\s+(?:via|from|on)\s+(?:linkedin|indeed|glassdoor|ziprecruiter)\b.*$",
+                         re.IGNORECASE)
+
+
+def _is_shared_sender(addr: str) -> bool:
+    local, _, domain = addr.lower().rpartition("@")
+    return (any(domain == d or domain.endswith("." + d) for d in _RELAY_DOMAINS)
+            or bool(_NOREPLY.search(local)))
+
+
+def _norm_profile(url: str) -> str:
+    """Comparable form of a LinkedIn profile URL: host + path, no www/query/slash."""
+    u = urlparse(url)
+    return f"{u.netloc.lower().removeprefix('www.')}{u.path.rstrip('/').lower()}"
+
+
+def _norm_name(name: str) -> str:
+    return " ".join(name.lower().split())
+
+
 def _get_recruiter_or_404(recruiter_id: UUID, user: models.User, db: Session) -> models.Recruiter:
     rec = (
         db.query(models.Recruiter)
@@ -142,31 +172,53 @@ def recruiter_suggestions(
         .all()
     )
 
-    # Emails already tracked — skip those.
-    existing = {
-        e.lower()
-        for (e,) in db.query(models.Recruiter.email)
-        .filter(models.Recruiter.user_id == current_user.id, models.Recruiter.email.isnot(None))
+    # Recruiters already tracked — skip those. By email normally; by LinkedIn
+    # profile or name for people only ever seen through a shared relay, who
+    # have no email to match on.
+    tracked = (
+        db.query(models.Recruiter.email, models.Recruiter.name, models.Recruiter.linkedin_url)
+        .filter(models.Recruiter.user_id == current_user.id)
         .all()
-        if e
-    }
+    )
+    existing = {e.lower() for e, _, _ in tracked if e}
+    existing_names = {_norm_name(n) for _, n, _ in tracked if n}
+    existing_profiles = {_norm_profile(li) for _, _, li in tracked if li}
 
-    # Group by email address, merging the best card across this sender's emails.
-    by_email: dict[str, dict] = {}
+    # Group by person — normally their email address, merging the best card
+    # across their emails.
+    by_key: dict[str, dict] = {}
     for sender, raw in rows:
         card = _clean_card(raw.get("recruiter_contact")) if isinstance(raw, dict) else {}
 
         parsed_name, parsed_email = parseaddr(sender or "")
         # Prefer the card's reply-to address, fall back to the parsed sender.
         email = (card.get("email") or parsed_email or "").strip().lower()[:_EMAIL_MAX]
-        if not email or "@" not in email or email in existing:
+        if not email or "@" not in email:
             continue
 
-        name = (card.get("name") or (parsed_name or "").strip() or email.split("@")[0])[:_NAME_MAX]
-        slot = by_email.get(email)
+        if _is_shared_sender(email):
+            # A relay address identifies the relay, not the person. Key by the
+            # LinkedIn profile when the agent found one, else by name, and offer
+            # no email — replying to the relay reaches nobody.
+            name = (card.get("name") or _VIA_SUFFIX.sub("", parsed_name or "").strip())[:_NAME_MAX]
+            if not name:
+                continue
+            profile = card.get("linkedin_url")
+            if _norm_name(name) in existing_names or (
+                    profile and _norm_profile(profile) in existing_profiles):
+                continue
+            key = f"li:{_norm_profile(profile)}" if profile else f"name:{_norm_name(name)}"
+            email = None
+        else:
+            if email in existing:
+                continue
+            name = (card.get("name") or (parsed_name or "").strip() or email.split("@")[0])[:_NAME_MAX]
+            key = email
+
+        slot = by_key.get(key)
         if slot is None:
             slot = {"name": name, "email": email, "count": 0, "card": {}}
-            by_email[email] = slot
+            by_key[key] = slot
         slot["count"] += 1
         if name and "@" not in slot["name"] and len(name) > len(slot["name"]):
             slot["name"] = name
@@ -174,7 +226,7 @@ def recruiter_suggestions(
         if _card_score(card) > _card_score(slot["card"]):
             slot["card"] = card
 
-    suggestions = sorted(by_email.values(), key=lambda s: s["count"], reverse=True)
+    suggestions = sorted(by_key.values(), key=lambda s: s["count"], reverse=True)
     return [
         schemas.RecruiterSuggestion(
             name=s["name"], email=s["email"], email_count=s["count"],

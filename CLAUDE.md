@@ -96,7 +96,7 @@ PostgreSQL in-cluster with PVC. Alembic migrations in `services/tracker-api/alem
 - `user_job_reviews` — per-user AI scores, status, notes; FK → `jobs` with `ondelete=CASCADE`
 - `timeline_events` — FK → `user_job_reviews` with `ondelete=CASCADE`
 - `criteria`, `profiles`, `user_api_keys`, `linkedin_connections`, `recruiters`, `email_credentials`, `slack_connections` — all cascade on user delete
-- `recruiters` — per-user recruiter CRM. `user_job_reviews.recruiter_id` FK → `recruiters` with `ondelete=SET NULL` (deleting a recruiter unlinks its jobs, never deletes them). Seedable from inbox `recruiter_outreach` senders via `GET /recruiters/suggestions` — enriched (phone/title/employer/linkedin/type/companies) from the agent's `recruiter_contact` card in `inbox_emails.raw_extracted_json` when present. All agent-derived fields are untrusted (C2): sanitized server-side (`_clean_card` — length-caps, http(s)-only linkedin), review-and-confirm, never auto-created.
+- `recruiters` — per-user recruiter CRM. `user_job_reviews.recruiter_id` FK → `recruiters` with `ondelete=SET NULL` (deleting a recruiter unlinks its jobs, never deletes them). Seedable from inbox `recruiter_outreach` senders via `GET /recruiters/suggestions` — enriched (phone/title/employer/linkedin/type/companies) from the agent's `recruiter_contact` card in `inbox_emails.raw_extracted_json` when present (a typed `recruiter` on `POST /agent/inbox` is stored at that same key and wins over the nested copy; a malformed one is dropped, never the email). **Shared relay senders** (`*@linkedin.com`, `*@indeed.com`, `noreply`-style addresses — one address, many people) are grouped by LinkedIn profile, else name, and suggested with no email; Dice's per-recruiter relay is a real address. All agent-derived fields are untrusted (C2): sanitized server-side (`_clean_card` — length-caps, http(s)-only linkedin), review-and-confirm, never auto-created.
 
 **Cascade rule:** deleting a `User` cascades to all their rows. Deleting a `UserJobReview` cascades to `TimelineEvent`. Deleting a `Recruiter` only nulls `user_job_reviews.recruiter_id`. The shared `jobs` row is only deleted when zero reviews reference it (handled in code, not DB FK).
 
@@ -332,6 +332,11 @@ they're found, so everything scraped before the kill is saved; what's skipped is
 rest of that user's pass and its board-sync, both picked up 6 hours later.
 
 ### email-agent (CronJob — cloud multi-user)
+**The contract is `job-radar-agent/INTEGRATION_SPEC.md`** — tables, `/agent/*` payloads, auth,
+security obligations, and the open Job Radar work items (§3.6–§3.8). Read it before touching
+`/agent/*` or the inbox/recruiter code; contract changes are PRs against that file first. It
+lives only in the agent repo on purpose — don't copy it here.
+
 `k8s/base/email-agent/` — a `*/15 * * * *` CronJob running
 `ghcr.io/duaneoca/job-radar-agent:latest` (image built by the **separate
 `job-radar-agent` repo**, NOT this repo's CI — do not add it to the `kubectl set image`
