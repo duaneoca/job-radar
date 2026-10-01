@@ -167,6 +167,18 @@ when `preferred_model` is unset; `get_llm_provider()` 400s; `PUT /keys/active`
 refuses a model-less key; `GET /keys/internal/{u}/llm` returns **409** (404 still
 means "no key at all"). Do not reintroduce a `PROVIDER_MODELS`-style fallback.
 
+**Each key has two models: analysis and writing.** `preferred_model` is the
+ANALYSIS model (output only the user reads: scoring, research, résumé parsing,
+extract-changes, the email agent). `writing_model` is for text an employer may
+read: application answers + refine, tailored résumé + refine, interview prep —
+those routes call `get_llm_provider(..., WRITING)`, pinned by
+`test_model_purposes.py`. A NULL writing model means the user's own analysis
+model, which doesn't break the no-default rule. Verdicts in
+`KEY_ERRORS_MODEL_SCOPED` carry `last_error_model` and apply only to that model
+(`error_applies_to`): a dead writing model must not block scoring (the internal
+`/llm` endpoint filters it), and a success only clears what it disproves.
+`PATCH /keys/{provider}` applies only the fields sent.
+
 **Permanent key failures are recorded, transient ones are not.**
 `user_api_keys.last_error_kind` holds `invalid_model` / `invalid_key`
 (`models.KEY_ERROR_*`); ai-reviewer classifies via `app/llm_errors.py` and posts to

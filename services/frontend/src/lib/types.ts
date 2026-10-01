@@ -366,7 +366,8 @@ export interface Profile {
 export interface APIKey {
   provider: LLMProvider;
   key_hint: string;
-  preferred_model?: string;
+  preferred_model?: string;   // the ANALYSIS model — scoring, research, parsing
+  writing_model?: string | null;  // employer-facing text; null = same as analysis
   updated_at: string;
   active?: boolean;   // the LLM key currently used (explicit selection, else priority)
   // Last permanent rejection by the provider — "invalid_model" | "invalid_key".
@@ -374,6 +375,17 @@ export interface APIKey {
   last_error_kind?: string | null;
   last_error?: string | null;
   last_error_at?: string | null;
+  // Which model a model-scoped verdict (invalid_model, unusable_output,
+  // rate_limited) is about. Null for key-wide verdicts.
+  last_error_model?: string | null;
+}
+
+/** Whether the key's recorded problem is about its WRITING model only — the
+ *  analysis model (and so scoring) is unaffected. */
+export function isWritingModelError(k: APIKey | null | undefined): boolean {
+  return !!k?.last_error_model && !!k.writing_model
+    && k.last_error_model === k.writing_model
+    && k.writing_model !== k.preferred_model;
 }
 
 export interface LinkedInConnection {

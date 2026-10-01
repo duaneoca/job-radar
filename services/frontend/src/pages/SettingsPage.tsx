@@ -17,6 +17,7 @@ import { toast } from "../hooks/useToast";
 import { useConfirmLinks } from "../hooks/useConfirmLinks";
 import { formatDate } from "../lib/utils";
 import { AgentStatsView } from "../components/AgentStatsView";
+import { isWritingModelError } from "../lib/types";
 import type { APIKey, LLMProvider, AgentApiKey, AgentApiKeyCreated, AgentFolderConfig, EmailCredentialStatus, MailboxFolders, SlackStatus, SlackChannel } from "../lib/types";
 
 // ─── Account Details tab ──────────────────────────────────────────────────────
@@ -153,11 +154,18 @@ const PREFERRED_PROVIDER_KEY = "jobradar-ai-provider";
 
 interface ProviderModel { id: string; label: string; descriptor?: string | null; }
 
-function ModelSelector({ provider, existing, onSave }: {
+type ModelField = "preferred_model" | "writing_model";
+
+/** One model dropdown. A key has two: ANALYSIS (preferred_model — output only
+ *  the user reads) and WRITING (text an employer may read). The writing one may
+ *  be left unset, which means "same as the analysis model". */
+function ModelSelector({ provider, existing, field, onSave }: {
   provider: LLMProvider;
   existing: APIKey;
-  onSave: (model: string) => Promise<void>;
+  field: ModelField;
+  onSave: (model: string | null) => Promise<void>;
 }) {
+  const isWriting = field === "writing_model";
   const { data: modelList, isLoading, isError } = useQuery<ProviderModel[]>({
     queryKey: ["models", provider],
     queryFn: () => keysApi.get(`/keys/${provider}/models`).then(r => r.data),
@@ -165,11 +173,12 @@ function ModelSelector({ provider, existing, onSave }: {
     retry: 1,
   });
 
-  const currentModel = existing.preferred_model ?? "";
+  const currentModel = (isWriting ? existing.writing_model : existing.preferred_model) ?? "";
   const inList = modelList?.some(m => m.id === currentModel);
-  // A key with no model is broken, not defaulted — there is no fallback model —
-  // so an empty selection warns just as loudly as a retired one.
-  const noModel = !currentModel && !!modelList;
+  // A key with no analysis model is broken, not defaulted — there is no
+  // fallback model — so an empty selection warns just as loudly as a retired one.
+  // An empty WRITING model is fine: it uses the analysis model, the user's own.
+  const noModel = !isWriting && !currentModel && !!modelList;
   const stale = !!currentModel && !!modelList && !inList;
 
   if (isLoading) return (
@@ -178,7 +187,7 @@ function ModelSelector({ provider, existing, onSave }: {
     </div>
   );
 
-  if (isError) return (
+  if (isError) return isWriting ? null : (
     <p className="text-xs text-destructive mt-2">Could not load model list. Check your API key.</p>
   );
 
@@ -186,7 +195,16 @@ function ModelSelector({ provider, existing, onSave }: {
 
   return (
     <div className="space-y-1.5 mt-2">
-      <label className="text-xs font-medium text-muted-foreground">Model</label>
+      <div>
+        <label className="text-xs font-medium text-muted-foreground">
+          {isWriting ? "Writing model" : "Analysis model"}
+        </label>
+        <p className="text-xs text-muted-foreground/80">
+          {isWriting
+            ? "Text an employer may read — application answers, tailored résumés, interview prep."
+            : "Work only you read — job scoring, fit summaries, research, résumé parsing."}
+        </p>
+      </div>
       {stale && (
         <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
@@ -207,9 +225,14 @@ function ModelSelector({ provider, existing, onSave }: {
       <select
         className="w-full rounded-md border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         value={inList ? currentModel : ""}
-        onChange={(e) => { if (e.target.value) onSave(e.target.value); }}
+        onChange={(e) => {
+          if (e.target.value) onSave(e.target.value);
+          else if (isWriting) onSave(null);
+        }}
       >
-        {!inList && <option value="">— choose a model —</option>}
+        {isWriting
+          ? <option value="">Same as analysis model</option>
+          : !inList && <option value="">— choose a model —</option>}
         {modelList.map(({ id, label, descriptor }) => (
           <option key={id} value={id}>
             {label}{descriptor ? ` — ${descriptor}` : ""}
@@ -390,11 +413,12 @@ function KeysTab() {
     }
   }
 
-  async function saveModel(provider: LLMProvider, preferred_model: string) {
+  async function saveModel(provider: LLMProvider, field: ModelField, model: string | null) {
     try {
-      await keysApi.patch(`/keys/${provider}`, { preferred_model });
+      // Send only the field that changed — the backend leaves the other alone.
+      await keysApi.patch(`/keys/${provider}`, { [field]: model });
       qc.invalidateQueries({ queryKey: ["keys"] });
-      toast({ title: "Model preference saved" });
+      toast({ title: field === "writing_model" ? "Writing model saved" : "Analysis model saved" });
     } catch (err: any) {
       toast({ title: "Failed to save model", description: err?.response?.data?.detail, variant: "destructive" });
     }
@@ -493,11 +517,13 @@ function KeysTab() {
         <div>
           <h3 className="font-medium">AI model provider</h3>
           <p className="text-sm text-muted-foreground mt-0.5">
-            The <span className="font-medium">active</span> key is used by job scoring{agentEnabled
-              ? ", research, and the email agent" : " and research"}. Click the dot to switch. If you don't pick one, it falls back to
+            The <span className="font-medium">active</span> key is used by every AI feature{agentEnabled
+              ? ", including the email agent" : ""}. Click the dot to switch. If you don't pick one, it falls back to
             Anthropic → OpenAI → Google → Groq. Click a row to add or edit its key.
-            Every key needs a model — Job Radar never picks one for you, because
-            that's a cost decision on your own account.
+            Each key has an <span className="font-medium">analysis model</span> for work only you read, and
+            an optional <span className="font-medium">writing model</span> for text an employer may read —
+            a cheap model for the first and a stronger one for the second is a good split.
+            Job Radar never picks a model for you, because that's a cost decision on your own account.
           </p>
         </div>
         <div className="space-y-2">
@@ -509,6 +535,9 @@ function KeysTab() {
             // fall back on, so selecting it would break every AI feature.
             const needsModel = !!existing && !existing.preferred_model;
             const rejected = existing?.last_error_kind ?? null;
+            // A problem with the writing model alone leaves scoring running, so
+            // the badge says which model, not just "Model".
+            const which = isWritingModelError(existing) ? "Writing model" : "Model";
             return (
               <div
                 key={value}
@@ -550,7 +579,7 @@ function KeysTab() {
                         <Badge variant="destructive" className="text-xs">No model</Badge>
                       )}
                       {!needsModel && rejected === "invalid_model" && (
-                        <Badge variant="destructive" className="text-xs">Model rejected</Badge>
+                        <Badge variant="destructive" className="text-xs">{which} rejected</Badge>
                       )}
                       {!needsModel && rejected === "invalid_key" && (
                         <Badge variant="destructive" className="text-xs">Key rejected</Badge>
@@ -585,11 +614,19 @@ function KeysTab() {
                       onDelete={() => deleteKey(value)}
                     />
                     {existing && (
-                      <ModelSelector
-                        provider={value}
-                        existing={existing}
-                        onSave={(m) => saveModel(value, m)}
-                      />
+                      <>
+                        <ModelSelector
+                          provider={value} existing={existing} field="preferred_model"
+                          onSave={(m) => saveModel(value, "preferred_model", m)}
+                        />
+                        {/* Only once there is an analysis model to fall back on. */}
+                        {existing.preferred_model && (
+                          <ModelSelector
+                            provider={value} existing={existing} field="writing_model"
+                            onSave={(m) => saveModel(value, "writing_model", m)}
+                          />
+                        )}
+                      </>
                     )}
                   </div>
                 )}

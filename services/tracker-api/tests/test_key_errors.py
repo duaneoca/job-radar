@@ -269,8 +269,10 @@ def test_foreground_success_clears_a_recorded_failure(client, db, monkeypatch):
         choices = [_Choice()]
 
     monkeypatch.setattr(litellm, "completion", lambda **kw: _Resp())
+    # The same model the worker's verdict was about — a success on a different
+    # model proves nothing about this one (see test_model_purposes.py).
     llm_mod.llm_complete(system="s", messages=[{"role": "user", "content": "x"}],
-                         api_key="k", model="m", db=db, user_id=TEST_USER_ID)
+                         api_key="k", model="claude-haiku-4-5", db=db, user_id=TEST_USER_ID)
     assert _reload(db).last_error_kind is None
 
 

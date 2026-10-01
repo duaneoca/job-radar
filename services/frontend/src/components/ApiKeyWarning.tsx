@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, X } from "lucide-react";
 import { keysApi } from "../lib/api";
+import { isWritingModelError } from "../lib/types";
 import type { APIKey, LLMProvider } from "../lib/types";
 import { useAuthStore } from "../store/auth";
 
@@ -38,6 +39,8 @@ export function useApiKeyStatus() {
     // broken key, not a defaulted one.
     activeNeedsModel: !!activeKey && !activeKey.preferred_model,
     activeKeyError: activeKey?.last_error_kind ?? null,
+    // The error is about the writing model only — scoring is unaffected.
+    activeWritingError: isWritingModelError(activeKey),
     // Required to use the product at all:
     missingRequired: !hasAdzuna || !hasAI,
   };
@@ -57,15 +60,24 @@ const PROVIDER_LABELS: Record<string, string> = {
  *  Deliberately hidden while MissingKeysBanner is showing: two stacked amber bars
  *  read as one broken page rather than two problems. */
 export function LlmKeyProblemBanner() {
-  const { isLoading, activeKey, activeNeedsModel, activeKeyError, missingRequired } =
-    useApiKeyStatus();
+  const { isLoading, activeKey, activeNeedsModel, activeKeyError, activeWritingError,
+    missingRequired } = useApiKeyStatus();
 
   // Re-dismissable when the *nature* of the problem changes, so dismissing "pick
   // a model" doesn't also silence a later "that model was rejected".
-  const problem = activeNeedsModel ? "no_model" : activeKeyError;
+  //
+  // Writing-model problems are surfaced only when the model is gone. A throttle
+  // or outage there happened during a generation the user was watching, and
+  // they already saw the error inline; the scoring-flavoured banners below
+  // ("some jobs went unscored") would also be untrue for it.
+  const problem = activeNeedsModel
+    ? "no_model"
+    : activeWritingError
+      ? (activeKeyError === "invalid_model" ? "writing_model_gone" : null)
+      : activeKeyError;
   const dismissKey = `jr-llm-key-banner:${activeKey?.provider ?? ""}:${problem ?? ""}:${
     activeKey?.preferred_model ?? ""
-  }`;
+  }:${activeKey?.writing_model ?? ""}`;
   const [dismissedKey, setDismissedKey] = useState(() =>
     sessionStorage.getItem("jr-llm-key-banner-dismissed")
   );
@@ -76,7 +88,9 @@ export function LlmKeyProblemBanner() {
   const provider = PROVIDER_LABELS[activeKey.provider] ?? activeKey.provider;
 
   let message: string;
-  if (problem === "no_model") {
+  if (problem === "writing_model_gone") {
+    message = `${provider} rejected your writing model "${activeKey.writing_model}" — it has most likely been retired. Application answers, tailored résumés and interview prep won't generate until you choose another. Job scoring is unaffected.`;
+  } else if (problem === "no_model") {
     message = `Your ${provider} key has no model selected, so AI features can't run. Job Radar doesn't pick one for you — that's a cost decision on your own account.`;
   } else if (problem === "invalid_key") {
     message = `${provider} rejected your API key, so AI features aren't running.`;

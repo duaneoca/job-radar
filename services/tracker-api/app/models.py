@@ -140,6 +140,25 @@ KEY_ERRORS_BLOCKING = (
     KEY_ERROR_UNUSABLE_OUTPUT,
 )
 
+# Verdicts about one MODEL rather than the whole key. A key carries two models —
+# analysis and writing — so these are recorded with last_error_model and only
+# apply to calls using that model. Without the split, a retired writing model
+# would block scoring, and a scoring success would erase a real writing failure.
+# invalid_key and provider_unavailable are about the account or the provider and
+# apply to every model on the key. rate_limited is model-scoped because some
+# providers (Gemini) meter quota per model.
+KEY_ERRORS_MODEL_SCOPED = (
+    KEY_ERROR_INVALID_MODEL,
+    KEY_ERROR_UNUSABLE_OUTPUT,
+    KEY_ERROR_RATE_LIMITED,
+)
+
+# Which of a key's two models a call uses. Analysis output is read only by the
+# user (scoring, research, résumé parsing, the email agent); writing output may
+# reach an employer (application answers, tailored résumés, interview prep).
+MODEL_PURPOSE_ANALYSIS = "analysis"
+MODEL_PURPOSE_WRITING = "writing"
+
 
 # ── Users ────────────────────────────────────────────────────
 
@@ -378,12 +397,20 @@ class UserAPIKey(Base):
     provider      = Column(Enum(LLMProvider), nullable=False)
     encrypted_key   = Column(Text, nullable=False)   # Fernet-encrypted, never plaintext
     preferred_model = Column(String(100), nullable=True)  # LiteLLM model string, e.g. "gpt-4o"
+    # The ANALYSIS model is preferred_model (named before there were two). The
+    # WRITING model is for text an employer may read; NULL means "same as
+    # analysis", so a key behaves exactly as before until the user chooses.
+    writing_model   = Column(String(100), nullable=True)
     # Last PERMANENT provider rejection for this key (see KEY_ERROR_* above).
     # Set by whoever made the call, cleared on the next success or on re-save.
     # NULL means "no known problem" — it is not evidence that the key works.
     last_error_kind = Column(String(32), nullable=True)
     last_error      = Column(Text, nullable=True)
     last_error_at   = Column(DateTime(timezone=True), nullable=True)
+    # The model a KEY_ERRORS_MODEL_SCOPED verdict is about. NULL for key-wide
+    # verdicts, and for rows recorded before two models existed — both of which
+    # apply to every model on the key.
+    last_error_model = Column(String(100), nullable=True)
     # Consecutive unparseable responses. Reset by any success or by any other
     # kind of failure — "consecutive" has to mean consecutive or the threshold
     # is meaningless.

@@ -588,6 +588,18 @@ function ApiKeysTab() {
       <P>The dropdown is fetched live from the provider using your key, so it always shows
         what your account can actually reach. Cheaper, faster models are perfectly good for
         scoring; you can always switch later, and switching takes effect immediately.</P>
+      <P>Each key has two model choices:</P>
+      <ul className="list-disc list-inside space-y-1 ml-2">
+        <Li><strong>Analysis model</strong> — work only you read: job scoring and fit
+          summaries, company research, résumé parsing, and the email agent. Runs often, so a
+          cheap, fast model is usually the right call.</Li>
+        <Li><strong>Writing model</strong> — text an employer may read: application answers,
+          tailored résumés, and interview prep. Runs only when you ask, so it's where a
+          stronger model is worth paying for. Optional: leave it as <em>Same as analysis
+          model</em> and everything uses one model.</Li>
+      </ul>
+      <P>If your writing model is retired, only the writing features stop — scoring carries
+        on, and the notice says which model to replace.</P>
       <P>Job Radar asks for scores in a strict machine-readable format. Some models —
         especially ones that "think out loud" — answer with commentary instead, which
         can't be read as a score. If that happens three times in a row you'll get a

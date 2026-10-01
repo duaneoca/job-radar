@@ -513,26 +513,32 @@ class ChangeDecisionsIn(BaseModel):
 class APIKeyUpsert(BaseModel):
     provider: LLMProvider
     api_key: Optional[str] = None        # plaintext — encrypted before storage (LLM/Tavily)
-    preferred_model: Optional[str] = None  # LiteLLM model string
+    preferred_model: Optional[str] = None  # LiteLLM model string — the ANALYSIS model
+    writing_model: Optional[str] = None    # for employer-facing text; None = same as analysis
     # Adzuna uses a two-part credential instead of a single api_key.
     app_id: Optional[str] = None
     app_key: Optional[str] = None
 
 
 class APIKeyModelUpdate(BaseModel):
-    preferred_model: Optional[str] = None
+    # Only fields actually sent are applied (model_fields_set), so changing one
+    # model can never wipe the other.
+    preferred_model: Optional[str] = None  # analysis model
+    writing_model: Optional[str] = None    # null/"" = same as analysis
 
 
 class APIKeyOut(BaseModel):
     provider: LLMProvider
     key_hint: str                        # last 4 chars only, e.g. "…xYZ9"
-    preferred_model: Optional[str] = None
+    preferred_model: Optional[str] = None  # analysis model
+    writing_model: Optional[str] = None    # None = same as analysis
     updated_at: datetime
     active: bool = False                 # the LLM key currently used (selected, else priority)
     # Last permanent provider rejection, if any — drives the broken-key banner.
     last_error_kind: Optional[str] = None
     last_error: Optional[str] = None
     last_error_at: Optional[datetime] = None
+    last_error_model: Optional[str] = None  # which model a model-scoped verdict is about
 
     class Config:
         from_attributes = True
