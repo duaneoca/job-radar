@@ -82,7 +82,8 @@ class LLMProvider(str, enum.Enum):
     ANTHROPIC = "anthropic"
     OPENAI    = "openai"
     GOOGLE    = "google"
-    GROQ      = "groq"
+    GROQ      = "groq"     # Groq: hosted open models (Llama etc.) — NOT xAI's Grok
+    XAI       = "xai"      # xAI: the Grok models
     TAVILY    = "tavily"   # web search, not LLM — stored here for convenience
     ADZUNA    = "adzuna"   # job-board API (BYOK) — stored as {app_id, app_key} JSON
     JSEARCH   = "jsearch"  # job-board API (BYOK, RapidAPI) — plain key
@@ -95,6 +96,7 @@ LLM_PROVIDERS = [
     LLMProvider.ANTHROPIC,
     LLMProvider.OPENAI,
     LLMProvider.GOOGLE,
+    LLMProvider.XAI,
     LLMProvider.GROQ,
 ]
 
@@ -173,7 +175,7 @@ class User(Base):
     is_admin            = Column(Boolean, default=False)
     must_change_password = Column(Boolean, default=False)
     # Explicitly-chosen active LLM key. NULL = fall back to priority order
-    # (Anthropic → OpenAI → Google → Groq). Set via the API Keys radio button.
+    # (Anthropic → OpenAI → Google → xAI → Groq). Set via the API Keys radio button.
     selected_llm_provider = Column(Enum(LLMProvider), nullable=True)
     created_at          = Column(DateTime(timezone=True), default=utcnow)
     updated_at          = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

@@ -1,7 +1,7 @@
 """
 On-demand AI generation — research summaries and application assistance.
 All calls use the user's own API key (BYOK) via LiteLLM — supports
-Anthropic, OpenAI, Google, and Groq interchangeably.
+Anthropic, OpenAI, Google, xAI and Groq interchangeably.
 """
 
 import json

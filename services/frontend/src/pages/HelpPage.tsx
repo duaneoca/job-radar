@@ -250,7 +250,7 @@ function ApplicationToolsTab() {
   return (
     <div className="max-w-2xl space-y-4">
       <P>Open any job and use the tabs to generate AI-assisted content. All generation
-        uses your own AI API key (Anthropic, OpenAI, Google, or Groq) and draws from your
+        uses your own AI API key (Anthropic, OpenAI, Google, xAI, or Groq) and draws from your
         resume, career stories, and voice guidelines.</P>
 
       <Separator />
@@ -576,7 +576,9 @@ function ApiKeysTab() {
           <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" className="underline">platform.openai.com/api-keys</a></Li>
         <Li><strong>Google</strong> (Gemini) —{" "}
           <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="underline">aistudio.google.com</a></Li>
-        <Li><strong>Groq</strong> —{" "}
+        <Li><strong>xAI</strong> (Grok) —{" "}
+          <a href="https://console.x.ai/" target="_blank" rel="noreferrer" className="underline">console.x.ai</a></Li>
+        <Li><strong>Groq</strong> (open models like Llama — a different company from xAI's Grok) —{" "}
           <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" className="underline">console.groq.com/keys</a></Li>
       </ul>
 

@@ -147,7 +147,10 @@ const AI_PROVIDERS: { value: LLMProvider; label: string; description: string; pl
   { value: "anthropic", label: "Anthropic", description: "Claude models",         placeholder: "sk-ant-…" },
   { value: "openai",    label: "OpenAI",    description: "GPT models",            placeholder: "sk-…" },
   { value: "google",    label: "Google",    description: "Gemini models",         placeholder: "AIza…" },
-  { value: "groq",      label: "Groq",      description: "Fast open-source LLMs", placeholder: "gsk_…" },
+  { value: "xai",       label: "xAI",       description: "Grok models",           placeholder: "xai-…" },
+  // Groq ≠ xAI's Grok: Groq hosts open models (Llama etc.). Said in the row so
+  // nobody adds a Groq key expecting Grok.
+  { value: "groq",      label: "Groq",      description: "Open models like Llama — not Grok", placeholder: "gsk_…" },
 ];
 
 const PREFERRED_PROVIDER_KEY = "jobradar-ai-provider";
@@ -519,7 +522,7 @@ function KeysTab() {
           <p className="text-sm text-muted-foreground mt-0.5">
             The <span className="font-medium">active</span> key is used by every AI feature{agentEnabled
               ? ", including the email agent" : ""}. Click the dot to switch. If you don't pick one, it falls back to
-            Anthropic → OpenAI → Google → Groq. Click a row to add or edit its key.
+            Anthropic → OpenAI → Google → xAI → Groq. Click a row to add or edit its key.
             Each key has an <span className="font-medium">analysis model</span> for work only you read, and
             an optional <span className="font-medium">writing model</span> for text an employer may read —
             a cheap model for the first and a stronger one for the second is a good split.
