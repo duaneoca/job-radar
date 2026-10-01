@@ -90,6 +90,70 @@ def _supports_json_mode(provider: str | None) -> bool:
     return (provider or "").lower() in _NATIVE_JSON_MODE_PROVIDERS
 
 
+# Providers that need an explicit cache_control breakpoint to cache a prompt.
+#
+# A scrape scores a burst of jobs for one user, and everything but the posting —
+# rubric, skills, output format, profile, résumé, criteria — is identical across
+# that burst. Anthropic caches that prefix only when asked; reads then bill at a
+# fraction of the input price. OpenAI and Gemini cache a repeated prefix on their
+# own, so all they need is the ordering, which every provider gets.
+#
+# Anthropic only, because in litellm==1.57.3 only the Anthropic adapter knows the
+# field; the others would forward it in the content block to an API that never
+# asked for it. Same allow-list reasoning as JSON mode: unverified means "don't".
+#
+# The default 5-minute TTL, deliberately: jobs in a burst start seconds apart and
+# every read refreshes it. The 1-hour TTL doubles the write price for nothing here.
+_PROMPT_CACHE_PROVIDERS = frozenset({"anthropic"})
+
+
+def _supports_prompt_cache(provider: str | None) -> bool:
+    """Whether this provider needs (and understands) a cache_control breakpoint."""
+    return (provider or "").lower() in _PROMPT_CACHE_PROVIDERS
+
+
+def build_messages(
+    system_prompt: str, candidate: str, posting: str, provider: str | None,
+) -> list[dict]:
+    """The chat messages for one review: stable candidate context, then the posting.
+
+    Every provider sees the same text in the same order. Only the shape differs:
+    for a caching provider the user turn is two blocks, with the breakpoint on the
+    candidate block so the cached prefix ends exactly where the per-job text begins.
+    """
+    if not _supports_prompt_cache(provider):
+        return [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"{candidate}\n\n{posting}"},
+        ]
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": [
+            {"type": "text", "text": candidate, "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": posting},
+        ]},
+    ]
+
+
+def cache_usage(response) -> tuple[int, int, int]:
+    """(input, cache_read, cache_write) tokens, 0 where the provider is silent.
+
+    litellm normalises cache reads into prompt_tokens_details.cached_tokens for
+    every provider that reports them (OpenAI's automatic cache included); writes
+    are Anthropic-only. A caching bug raises nothing — the request just costs full
+    price — so these numbers are the only way to see whether it works.
+    """
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return 0, 0, 0
+    details = getattr(usage, "prompt_tokens_details", None)
+    return (
+        getattr(usage, "prompt_tokens", 0) or 0,
+        getattr(details, "cached_tokens", 0) or 0,
+        getattr(usage, "cache_creation_input_tokens", 0) or 0,
+    )
+
+
 def extract_json_object(text: str) -> str | None:
     """The last complete, brace-balanced {...} in `text`, or None.
 
@@ -171,25 +235,13 @@ class JobReviewer:
         self.model = model
         self.provider = provider
 
-    def _build_user_message(
-        self,
-        job_title: str,
-        company: str,
-        location: str | None,
-        remote: bool,
-        description: str,
-        salary_min: int | None,
-        salary_max: int | None,
-        criteria: dict,
-        profile: dict,
-    ) -> str:
-        """Format everything Claude needs into a single user message."""
-        salary_line = "Not provided"
-        if salary_min and salary_max:
-            salary_line = f"${salary_min:,} – ${salary_max:,}"
-        elif salary_min:
-            salary_line = f"${salary_min:,}+"
+    def _build_candidate_context(self, criteria: dict, profile: dict) -> str:
+        """Profile, résumé and criteria — identical for every job in a user's burst.
 
+        Kept separate from the posting, and ahead of it, so it can be cached.
+        Nothing per-job (or per-request: no timestamps, no ids) may go in here,
+        or every job writes a fresh cache entry at a premium instead of reading one.
+        """
         resume_section = ""
         if profile.get('resume_text'):
             resume_section = f"\n\n### Full Resume\n{profile['resume_text']}"
@@ -209,9 +261,26 @@ Required skills: {', '.join(criteria.get('required_skills') or [])}
 Preferred skills: {', '.join(criteria.get('preferred_skills') or [])}
 Location preferences: {', '.join(criteria.get('search_locations') or criteria.get('locations') or [])}
 Remote only: {criteria.get('remote_only', False)}
-Minimum salary: ${criteria.get('min_salary') or 0:,}
+Minimum salary: ${criteria.get('min_salary') or 0:,}"""
 
-## Job Posting
+    @staticmethod
+    def _build_job_posting(
+        job_title: str,
+        company: str,
+        location: str | None,
+        remote: bool,
+        description: str,
+        salary_min: int | None,
+        salary_max: int | None,
+    ) -> str:
+        """The per-job part of the user message. Always last."""
+        salary_line = "Not provided"
+        if salary_min and salary_max:
+            salary_line = f"${salary_min:,} – ${salary_max:,}"
+        elif salary_min:
+            salary_line = f"${salary_min:,}+"
+
+        return f"""## Job Posting
 Title: {job_title}
 Company: {company}
 Location: {location or 'Not specified'}
@@ -235,7 +304,8 @@ Salary range: {salary_line}
         salary_max: int | None = None,
     ) -> Optional[ReviewResult]:
         """Score a single job against the candidate's profile and criteria."""
-        user_message = self._build_user_message(
+        candidate = self._build_candidate_context(criteria=criteria, profile=profile)
+        posting = self._build_job_posting(
             job_title=job_title,
             company=company,
             location=location,
@@ -243,8 +313,6 @@ Salary range: {salary_line}
             description=description,
             salary_min=salary_min,
             salary_max=salary_max,
-            criteria=criteria,
-            profile=profile,
         )
 
         # Use the user's custom scoring prompt if set, otherwise fall back to default.
@@ -264,10 +332,7 @@ Salary range: {salary_line}
         try:
             response = litellm.completion(
                 model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message},
-                ],
+                messages=build_messages(system_prompt, candidate, posting, self.provider),
                 api_key=self.api_key,
                 max_tokens=self.MAX_TOKENS,
                 **kwargs,
@@ -302,9 +367,11 @@ Salary range: {salary_line}
         # constant per task regardless of these; a leak driven by one enormous
         # résumé or job description tracks them. Without this the RSS numbers
         # say something grew but never which input caused it.
+        in_tok, cache_read, cache_write = cache_usage(response)
         logger.info(
-            "size job=%s prompt=%dB reply=%dB model=%s",
-            job_id, len(system_prompt) + len(user_message), len(raw_text), self.model,
+            "size job=%s prompt=%dB reply=%dB model=%s in_tok=%d cache_read=%d cache_write=%d",
+            job_id, len(system_prompt) + len(candidate) + len(posting), len(raw_text),
+            self.model, in_tok, cache_read, cache_write,
         )
 
         # Handles markdown fences, a preamble, and models that show their working
