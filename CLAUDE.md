@@ -225,7 +225,9 @@ exception there is our bug, not the provider's.
 `KEY_ERROR_UNUSABLE_OUTPUT` is recorded only after `UNUSABLE_OUTPUT_STREAK` (3)
 *consecutive* unparseable responses — one rambling answer proves nothing, and a
 permanent accusation from a single sample is how banners lose trust. Any success,
-any other failure kind, or changing the key/model resets the count. It joins
+any other failure kind, or changing the key/model resets the count (the worker
+reports a success whenever `unusable_streak > 0`; before 2026-10 it only did so once a
+verdict existed, so nothing reset the count and "three in a row" meant "three ever"). It joins
 `KEY_ERRORS_BLOCKING`: the worker skips scoring outright rather than spending the
 user's quota to relearn what is already on their screen. Every blocking kind is
 cleared by a user action or a success, so it cannot wedge. Reviewer asks for
