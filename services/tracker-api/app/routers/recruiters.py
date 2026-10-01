@@ -97,10 +97,13 @@ def _card_score(card: dict) -> tuple[int, float]:
 # them. Every LinkedIn InMail recruiter writes from inmail-hit-reply@linkedin.com,
 # so grouping suggestions by address merged them all into one. Dice's relay
 # (…@user.dice.com) is per recruiter and replies reach them, so it is NOT here.
-_RELAY_DOMAINS = ("linkedin.com", "indeed.com")
+# Must cover the agent's own RELAY_DOMAINS (job-radar-agent agent/recruiter.py):
+# any relay it files as recruiter_outreach and we don't know would merge again.
+_RELAY_DOMAINS = ("linkedin.com", "indeed.com", "glassdoor.com", "ziprecruiter.com")
 _NOREPLY = re.compile(r"(?:^|[._+-])(?:no-?reply|do-?not-?reply|no_reply)(?:[._+-]|$)")
 # "Jane Smith via LinkedIn" — the relay's decoration on the display name.
-_VIA_SUFFIX = re.compile(r"\s+(?:via|from|on)\s+(?:linkedin|indeed)\b.*$", re.IGNORECASE)
+_VIA_SUFFIX = re.compile(r"\s+(?:via|from|on)\s+(?:linkedin|indeed|glassdoor|ziprecruiter)\b.*$",
+                         re.IGNORECASE)
 
 
 def _is_shared_sender(addr: str) -> bool:

@@ -3,6 +3,8 @@
 from datetime import datetime, timezone
 from unittest.mock import patch
 
+import pytest
+
 from app import models
 
 from .conftest import TEST_USER_ID
@@ -253,6 +255,17 @@ def test_relay_recruiters_are_separate_people(client, db):
         ("Raj Patel", None, 2), ("Jane Smith", None, 1),
     ]
     assert sugg[1]["linkedin_url"] == "https://www.linkedin.com/in/janesmith"
+
+
+@pytest.mark.parametrize("relay", ["inmail-hit-reply@linkedin.com", "reply@indeed.com",
+                                   "messages@glassdoor.com", "r-123@ziprecruiter.com"])
+def test_every_agent_relay_domain_is_shared(client, db, relay):
+    """Mirrors job-radar-agent's RELAY_DOMAINS — the agent may file mail from any
+    of these as recruiter_outreach."""
+    _seed_recruiter_email(db, f"Ann Lee <{relay}>", message_prefix="a")
+    _seed_recruiter_email(db, f"Bo Kim <{relay}>", message_prefix="b")
+    sugg = client.get("/recruiters/suggestions").json()
+    assert sorted((s["name"], s["email"]) for s in sugg) == [("Ann Lee", None), ("Bo Kim", None)]
 
 
 def test_relay_without_a_card_uses_the_display_name(client, db):
