@@ -226,6 +226,18 @@ fall through to prompt-only, which works everywhere. And
 `extract_json_object()` takes the LAST brace-balanced object (models show their
 working, sometimes including an example object, before answering).
 
+**Scoring prompts are cached (Anthropic).** A scrape scores a burst of jobs per
+user and only the posting differs, so the user turn is split: candidate context
+(profile, résumé, criteria) then the posting, with a `cache_control` breakpoint
+on the first block (`build_messages` in `reviewer.py`). Anthropic only
+(`_PROMPT_CACHE_PROVIDERS`) — in litellm 1.57.3 no other adapter knows the field;
+OpenAI/Gemini cache repeated prefixes automatically and get the same ordering as
+one plain string, byte-identical to before. **Never put anything per-job or
+per-request in `_build_candidate_context`** — it turns every read into a premium
+write and nothing errors. The `size job=…` line logs `cache_read`/`cache_write`;
+that is the only way to see whether it works. Haiku 4.5's 4,096-token minimum
+means most of its scoring prompts won't cache — harmless, just no saving.
+
 **Log level follows who can fix it.** A failure the user is shown (dead model,
 rejected key) is logged at `WARNING` — it is not an operator fault and must not
 reach an error digest. `ERROR` is reserved for unexpected exceptions, failed
