@@ -39,6 +39,48 @@ export interface Release {
 export const RELEASES: Release[] = [
   // Newest first. See the module comment before adding one.
   {
+    version: "v1.14.0",
+    date: "2026-10-02",
+    headline: "Choose a stronger AI model for what employers read, and use xAI's Grok.",
+    notes: [
+      {
+        title: "A separate model for writing",
+        detail:
+          "Each AI key now has an analysis model, used for scoring, research and summaries only " +
+          "you see, and an optional writing model for application answers, tailored résumés and " +
+          "interview prep. Keep a cheap model for the high-volume work and spend on quality where " +
+          "an employer will read it. Set it in Settings → API Keys.",
+      },
+      {
+        title: "xAI's Grok is supported",
+        detail:
+          "Add an xAI key in Settings → API Keys to use the Grok models. Groq, which was already " +
+          "listed, is a different company that runs open models like Llama.",
+      },
+      {
+        title: "No more false \"couldn't be read as a score\" warnings",
+        detail:
+          "Job Radar could tell you your model was returning unreadable answers and pause scoring " +
+          "when it was working fine: a few bad answers spread over weeks counted the same as three " +
+          "in a row. If you saw that warning recently, it probably wasn't your model. It now only " +
+          "appears after three bad answers in a row. If scoring was paused by that warning, it has " +
+          "resumed.",
+      },
+      {
+        title: "The Inbox page loads again",
+        detail:
+          "If you use the email agent, the Inbox page could fail to load when an email didn't " +
+          "match any of your jobs. That's fixed.",
+      },
+      {
+        title: "LinkedIn recruiters show up as suggestions",
+        detail:
+          "Recruiters who contact you through LinkedIn InMail now appear as separate suggestions " +
+          "on the Recruiters page. They come without an email address, because LinkedIn hides it.",
+      },
+    ],
+  },
+  {
     version: "v1.13.2",
     date: "2026-08-07",
     headline: "Scoring works again if you use Claude, and long AI answers no longer time out.",
