@@ -547,7 +547,9 @@ def _fresh_structured(profile: models.Profile, user_id: UUID, db: Session):
         if structured.section_order is None:
             # Parsed before section order was recorded: read it from the text
             # (no model call) and keep it, so tailoring starts from the real order.
-            structured.section_order = resume_tailor.detect_section_order(profile.resume_text)
+            structured.section_order = schemas.normalize_section_order(
+                resume_tailor.detect_section_order(profile.resume_text, structured),
+                structured.custom_keys())
             if structured.section_order is not None:
                 profile.resume_structured = structured.model_dump()
                 db.commit()
@@ -592,7 +594,7 @@ def get_tailored_resume(
     # snapshot that has an order and a base that doesn't, and every job tailored
     # before section order existed claims "your base résumé changed".
     if profile and profile.resume_structured and not profile.resume_structured.get("section_order"):
-        order = resume_tailor.detect_section_order(profile.resume_text)
+        order = resume_tailor.detect_section_order(profile.resume_text, profile.resume_structured)
         if order is not None:
             profile.resume_structured = {**profile.resume_structured, "section_order": order}
             db.commit()
@@ -724,19 +726,20 @@ def set_section_order(
     review = _get_review(review_id, current_user, db)
     if not review.resume_tailor:
         raise HTTPException(status_code=404, detail="Not tailored yet")
-    order = schemas.normalize_section_order(payload.order)
-    if (order is None or len(payload.order) != len(schemas.RESUME_SECTIONS)
-            or sorted(payload.order) != sorted(schemas.RESUME_SECTIONS)):
-        raise HTTPException(status_code=400,
-                            detail=f"order must list each of {', '.join(schemas.RESUME_SECTIONS)} once")
-
     state = review.resume_tailor
     profile = _get_profile(current_user.id, db)
     resume_tailor.backfill_section_order(state, profile.resume_text if profile else None)
+
+    keys = [*schemas.RESUME_SECTIONS, *resume_tailor.custom_keys(state["original"])]
+    order = schemas.normalize_section_order(payload.order, keys[len(schemas.RESUME_SECTIONS):])
+    if order is None or sorted(payload.order) != sorted(keys):
+        raise HTTPException(status_code=400,
+                            detail=f"order must list each of {', '.join(keys)} once")
     state["tailored"][resume_tailor.SECTION_ORDER_PATH] = order
     state["changes"] = [c for c in state["changes"] if c["path"] != resume_tailor.SECTION_ORDER_PATH]
     moved = resume_tailor.section_order_change(
         resume_tailor.resolved_section_order(state["original"]), order,
+        labels=resume_tailor.section_labels(state["original"]),
         rationale="You set this order.", decision="accepted")
     if moved:
         state["changes"].append(moved)

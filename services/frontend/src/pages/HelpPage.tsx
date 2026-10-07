@@ -306,6 +306,10 @@ function ApplicationToolsTab() {
         order while keeping your original phrasing, or the reverse. A bullet moved between
         phases of the same job is the one case that still shows as a removal plus an
         addition.</P>
+      <P><strong>Your sections, your headings.</strong> Every section of your résumé is kept —
+        Certifications, Volunteering, Publications, or anything you've named yourself ("Current
+        stuff") — under the heading you gave it, and the AI tailors them like any other section.
+        It can't rename, drop, or invent a section.</P>
       <P><strong>Section order</strong> follows your own résumé — the tailor page and the PDF
         draw your sections in the order you wrote them. The AI never moves whole sections on
         its own, but you can for a particular job: use the arrows on the section headings in

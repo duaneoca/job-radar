@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import { hasSection, sectionOrder, type SectionKey } from "../../lib/sectionOrder";
+import { customSections, hasSection, isCustom, sectionOrder, sectionTitle, type BuiltinKey, type SectionKey } from "../../lib/sectionOrder";
 
 // Classic résumé template — single column, navy accents. Most ATS-safe, multi-page
 // friendly. CSS ported from the browser-validated prototype (@page margins on every
@@ -35,11 +35,11 @@ const CSS = `
 
 // One renderer per section, drawn in the résumé's own order (lib/sectionOrder) —
 // the same order the tailor page shows. Markup is unchanged from the fixed layout.
-const SECTIONS: Record<SectionKey, (data: any) => React.ReactNode> = {
-  summary: (data) => (<><h2 data-block-id="sec-summary">Summary</h2><p>{data.summary}</p></>),
+const SECTIONS: Record<BuiltinKey, (data: any) => React.ReactNode> = {
+  summary: (data) => (<><h2 data-block-id="sec-summary">{sectionTitle(data, "summary")}</h2><p>{data.summary}</p></>),
   skills: (data) => (
     <>
-      <h2 data-block-id="sec-skills">Skills</h2>
+      <h2 data-block-id="sec-skills">{sectionTitle(data, "skills")}</h2>
       {data.skills.map((g: any, i: number) => (
         <div className="skill" key={i}><b>{g.label}:</b> {(g.items ?? []).join(" · ")}</div>
       ))}
@@ -47,7 +47,7 @@ const SECTIONS: Record<SectionKey, (data: any) => React.ReactNode> = {
   ),
   projects: (data) => (
     <>
-      <h2 data-block-id="sec-projects">Projects</h2>
+      <h2 data-block-id="sec-projects">{sectionTitle(data, "projects")}</h2>
       {data.projects.map((pr: any, i: number) => (
         <div className="entry" data-block-id={`proj-${i}`} key={i}>
           {pr.title && <div className="org" style={{ fontSize: "1em" }}>{pr.title}</div>}
@@ -58,7 +58,7 @@ const SECTIONS: Record<SectionKey, (data: any) => React.ReactNode> = {
   ),
   experience: (data) => (
     <>
-      <h2 data-block-id="sec-experience">Experience</h2>
+      <h2 data-block-id="sec-experience">{sectionTitle(data, "experience")}</h2>
       {data.experience.map((e: any, i: number) => (
         <div className="entry" data-block-id={`exp-${i}`} key={i}>
           <div className="entry-head">
@@ -80,7 +80,7 @@ const SECTIONS: Record<SectionKey, (data: any) => React.ReactNode> = {
   ),
   education: (data) => (
     <>
-      <h2 data-block-id="sec-education">Education</h2>
+      <h2 data-block-id="sec-education">{sectionTitle(data, "education")}</h2>
       {data.education.map((ed: any, i: number) => (
         <div className="entry-head" key={i}>
           <span className="org">{ed.degree}</span>
@@ -90,6 +90,25 @@ const SECTIONS: Record<SectionKey, (data: any) => React.ReactNode> = {
     </>
   ),
 };
+
+// A custom section: its own heading, then titled entries with bullets (the
+// projects layout). Block ids keep manual page breaks attached to it.
+function CustomSection({ data, sectionKey }: { data: any; sectionKey: SectionKey }) {
+  const found = customSections(data).find((s) => s.key === sectionKey);
+  if (!found) return null;
+  const slug = sectionKey.slice("custom:".length);
+  return (
+    <>
+      <h2 data-block-id={`sec-custom-${slug}`}>{found.section.title}</h2>
+      {(found.section.entries ?? []).map((en: any, i: number) => (
+        <div className="entry" data-block-id={`custom-${slug}-${i}`} key={i}>
+          {en.title && <div className="org" style={{ fontSize: "1em" }}>{en.title}</div>}
+          {en.bullets?.length > 0 && <ul>{en.bullets.map((b: string, j: number) => <li key={j}>{b}</li>)}</ul>}
+        </div>
+      ))}
+    </>
+  );
+}
 
 function contactLine(c: any): string {
   return [c?.phone, c?.location, c?.email, ...(c?.links ?? [])]
@@ -106,7 +125,9 @@ export function ClassicTemplate({ data }: { data: any }) {
         <div className="contact">{contactLine(c)}</div>
       </header>
 
-      {sectionOrder(data).filter((k) => hasSection(data, k)).map((k) => <Fragment key={k}>{SECTIONS[k](data)}</Fragment>)}
+      {sectionOrder(data).filter((k) => hasSection(data, k)).map((k) => (
+        <Fragment key={k}>{isCustom(k) ? <CustomSection data={data} sectionKey={k} /> : SECTIONS[k](data)}</Fragment>
+      ))}
     </div>
   );
 }

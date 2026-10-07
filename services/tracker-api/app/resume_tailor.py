@@ -53,7 +53,9 @@ DEFAULT_RESUME_PARSE_PROMPT = """You are a precise résumé parser. Convert the 
     "notable": [str]
   }],
   "education": [{"degree": str|null, "school": str|null}],
-  "projects": [{"title": str|null, "bullets": [str]}]
+  "projects": [{"title": str|null, "bullets": [str]}],
+  "custom_sections": [{"title": str, "entries": [{"title": str|null, "bullets": [str]}]}],
+  "section_titles": {"summary": str|null, "skills": str|null, "experience": str|null, "education": str|null, "projects": str|null}
 }
 
 Rules:
@@ -61,9 +63,16 @@ Rules:
 - Keep bullet wording verbatim where possible (you may drop a leading bullet glyph).
 - If a role has sub-periods (e.g. "Building the Platform (2007–2013)"), put them in "phases"; otherwise put bullets directly on the experience and leave "phases" empty.
 - "notable" is for a "Notable customers/clients" style line, split into a list.
+- "projects" is a section of projects or ongoing work, whatever its heading says ("Side projects", "Current stuff").
+- EVERY other section goes in "custom_sections" with its heading as "title" — Certifications, Volunteering, Publications, Awards, Languages, or anything the résumé names itself. Each line or item is an entry: a heading-like line as the entry "title", detail lines as "bullets". NEVER drop a section because it doesn't fit the shape above.
+- "section_titles": each of the five named sections' heading EXACTLY as written in the résumé, or null when it has no heading.
 - Years/dates: copy them as written (e.g. "2007", "2013 – 2026", "present").
 - Output ONLY the JSON object — no prose, no markdown fences."""
 
+
+# Standard heading per typed section, used when the résumé has none of its own.
+SECTION_LABELS = {"summary": "Summary", "skills": "Skills", "experience": "Experience",
+                  "education": "Education", "projects": "Projects"}
 
 # Heading spellings per section, compared after lower-casing and dropping
 # everything but letters and spaces ("WORK EXPERIENCE:" → "work experience").
@@ -80,36 +89,77 @@ _SECTION_HEADINGS = {
     "projects": ("projects", "personal projects", "selected projects", "side projects",
                  "key projects", "open source", "notable projects"),
 }
-_HEADING_TO_SECTION = {h: k for k, hs in _SECTION_HEADINGS.items() for h in hs}
+def _norm_heading(s: str) -> str:
+    return " ".join(re.sub(r"[^a-z0-9 ]", " ", (s or "").lower().replace("&", " and ")).split())
 
 
-def detect_section_order(resume_text: str | None) -> list[str] | None:
-    """The order the résumé's own section headings appear in, or None.
+_HEADING_TO_SECTION = {_norm_heading(h): k for k, hs in _SECTION_HEADINGS.items() for h in hs}
 
-    Deterministic, so the order can be recovered for résumés parsed before it was
-    recorded, without another model call. A heading is a short line that is
-    exactly one of the known spellings. A summary is often an unheaded opening
-    paragraph, so when no summary heading is found it is placed first.
+
+def _as_dict(resume) -> dict:
+    return resume if isinstance(resume, dict) else resume.model_dump()
+
+
+def custom_keys(resume) -> list[str]:
+    """The custom section ids of a résumé (dict or ResumeStructured)."""
+    return [s["id"] for s in (_as_dict(resume).get("custom_sections") or []) if s.get("id")]
+
+
+def detect_section_order(resume_text: str | None, resume=None) -> list[str] | None:
+    """The order the résumé's section headings appear in its text, or None.
+
+    Deterministic, so it needs no model call and can be recovered for résumés
+    parsed before order was recorded. A heading is a short line that matches one
+    of the résumé's OWN headings — its custom section titles and the headings it
+    gave the typed sections — or, failing that, a common spelling of a typed
+    section. A summary is often an unheaded opening paragraph, so when no summary
+    heading is found it is placed first.
     """
+    headings = dict(_HEADING_TO_SECTION)
+    keys: list[str] = []
+    if resume is not None:
+        d = _as_dict(resume)
+        for k, t in (d.get("section_titles") or {}).items():
+            if k in schemas.RESUME_SECTIONS and _norm_heading(t):
+                headings[_norm_heading(t)] = k
+        for s in d.get("custom_sections") or []:
+            if s.get("id") and _norm_heading(s.get("title")):
+                headings[_norm_heading(s["title"])] = s["id"]
+        keys = custom_keys(d)
+
     seen: list[str] = []
     for line in (resume_text or "").splitlines():
         s = line.strip()
-        if not s or len(s) > 40:
+        if not s or len(s) > 60:
             continue
-        key = _HEADING_TO_SECTION.get(" ".join(re.sub(r"[^a-z ]", " ", s.lower().replace("&", " and ")).split()))
+        key = headings.get(_norm_heading(s))
         if key and key not in seen:
             seen.append(key)
     if len(seen) < 2:
         return None                    # one heading says nothing about order
     if "summary" not in seen:
         seen.insert(0, "summary")
-    return schemas.normalize_section_order(seen)
+    return schemas.normalize_section_order(seen, keys)
 
 
 def resolved_section_order(resume) -> list[str]:
     """A résumé's section order (dict or ResumeStructured), defaulted when unknown."""
-    order = resume.get("section_order") if isinstance(resume, dict) else resume.section_order
-    return schemas.normalize_section_order(order) or list(schemas.DEFAULT_SECTION_ORDER)
+    d = _as_dict(resume)
+    keys = custom_keys(d)
+    return (schemas.normalize_section_order(d.get("section_order"), keys)
+            or list(schemas.DEFAULT_SECTION_ORDER) + keys)
+
+
+def section_labels(resume) -> dict:
+    """Display heading for every section key of a résumé: its own heading where
+    it has one, else the standard label."""
+    d = _as_dict(resume)
+    titles = d.get("section_titles") or {}
+    labels = {k: titles.get(k) or SECTION_LABELS[k] for k in schemas.RESUME_SECTIONS}
+    for s in d.get("custom_sections") or []:
+        if s.get("id"):
+            labels[s["id"]] = s.get("title") or "Section"
+    return labels
 
 
 def parse_resume_text(resume_text: str, api_key: str, model: str, *,
@@ -147,8 +197,10 @@ def parse_resume_text(resume_text: str, api_key: str, model: str, *,
         logger.error("Résumé parse failed schema validation: %s", e)
         raise HTTPException(status_code=502, detail="AI returned an unexpected résumé structure. Try again.")
     # Read from the text, not asked of the model: the headings are right there,
-    # and a deterministic answer is one the tests can pin.
-    structured.section_order = detect_section_order(resume_text)
+    # and a deterministic answer is one the tests can pin. The parse supplies the
+    # résumé's own headings, so custom sections are found too.
+    structured.section_order = schemas.normalize_section_order(
+        detect_section_order(resume_text, structured), structured.custom_keys())
     return structured
 
 
@@ -232,10 +284,11 @@ You realign an existing résumé to a specific job posting WITHOUT lying. Your e
 4. LEAVE GAPS ALONE: where the posting asks for something the résumé does not show, and the gap cannot be closed by a true synonym for what the candidate already did, leave the gap. Do NOT fill it, imply it, or hint at exposure the candidate does not have. A missing match stays missing.
 5. SURGICAL, MINIMAL CHANGES: change only the wording that needs to change to align with the posting; any bullet, skill, or line that already reads well passes through UNCHANGED. Prefer the smallest edit. Edit each bullet INDEPENDENTLY in place — NEVER merge two bullets into one or split one into two. Keep the SAME sections, the SAME jobs in the SAME order, and the SAME NUMBER of bullets per job/section — do NOT add or remove bullets, jobs, skills groups, or sections. You MAY reorder bullets WITHIN a single role or section to lead with the most relevant experience; the sections, the jobs, and the skill groups themselves never move. The ONE exception: when a REFINEMENT REQUEST explicitly asks to move whole sections, set "section_order" — the section keys (summary, skills, experience, education, projects) in the order they should appear — and change nothing else for it. Never move sections on your own. (Trimming for length is a later step, not yours.)
 6. Do not change company names, job titles, employers, or dates unless correcting an obvious typo — these are factual anchors.
+7. Section headings are the candidate's own: keep "section_titles" and every custom section's "id" and "title" EXACTLY. Custom sections ("custom_sections") follow every rule above — tailor their wording surgically, keep the same entries and the same number of bullets, and never add or remove one. Their entry titles (a certification, an award, a date) are factual anchors like job titles.
 
 Return ONLY a JSON object:
 {{"tailored": <the full résumé in the SAME schema as the input>, "notes": [{{"before": "<original text>", "after": "<new text>", "type": "vocabulary|emphasis|reorder|factual", "rationale": "<why>", "trigger": "<the VERBATIM sentence or requirement line FROM THE JOB POSTING that inspired this change — quote enough to stand on its own (a full phrase or sentence, not a single word); leave empty only if no specific line in the posting applies>"}}]}}
-- "tailored" must match the input schema exactly (contact, summary, skills[], experience[], education[], projects[], section_order[]).
+- "tailored" must match the input schema exactly (contact, summary, skills[], experience[], education[], projects[], custom_sections[], section_titles, section_order[]).
 - "notes" explains the meaningful changes you made (best-effort; the system also computes its own diff). "trigger" must be copied from the job posting text, never invented."""
 
 # Editable style prompt — the default the user can override on the AI Prompts tab.
@@ -266,6 +319,29 @@ def _tailor_messages(structured, honesty_facts, job_text, style_prompt, extra=No
     return user
 
 
+def _keep_section_identity(source: schemas.ResumeStructured, tailored: schemas.ResumeStructured) -> None:
+    """Enforce, not just ask, that tailoring keeps the résumé's sections intact.
+
+    Headings are the candidate's own, and a section that silently vanished from a
+    tailored PDF is the failure custom sections exist to prevent. So: typed
+    headings come back from the source; custom sections come back in the source's
+    order with its ids and titles, carrying the model's edited entries when it
+    returned the section (matched by id, then title) and the source's otherwise.
+    Never by position: when the model drops one section and invents another,
+    position would hand the invented content the dropped section's place.
+    Sections the model invented are dropped.
+    """
+    tailored.section_titles = dict(source.section_titles)
+    by_id = {s.id: s for s in tailored.custom_sections if s.id}
+    by_title = {_norm_heading(s.title): s for s in tailored.custom_sections}
+    kept = []
+    for src in source.custom_sections:
+        got = by_id.get(src.id) or by_title.get(_norm_heading(src.title))
+        kept.append(schemas.ResumeCustomSection(
+            id=src.id, title=src.title, entries=(got or src).entries))
+    tailored.custom_sections = kept
+
+
 def tailor_resume(structured, honesty_facts, job_text, style_prompt, api_key, model, *,
                   extra=None, skills_text="", db=None, user_id=None):
     """Run the tailor LLM call. Returns (tailored ResumeStructured, model notes list).
@@ -292,11 +368,15 @@ def tailor_resume(structured, honesty_facts, job_text, style_prompt, api_key, mo
         logger.error("Tailored résumé failed schema validation: %s", e)
         raise HTTPException(status_code=502, detail="AI returned an unexpected tailored structure. Try again.")
 
+    _keep_section_identity(structured, tailored)
+
     # Sections move only when the user asks, and only refine carries a request.
     # The first pass gets the input's order back whatever the model returned; on
     # refine, a model that omits the field keeps the current order.
     if extra is None or tailored.section_order is None:
         tailored.section_order = structured.section_order
+    tailored.section_order = schemas.normalize_section_order(tailored.section_order,
+                                                             tailored.custom_keys())
 
     notes = data.get("notes") if isinstance(data.get("notes"), list) else []
     return tailored, notes
@@ -314,6 +394,9 @@ _ENTRY_ARRAYS = {
     "education":  ("education",  lambda e: " ".join(x for x in (e.degree, e.school) if x)),
     "projects":   ("projects",   lambda e: e.title or ""),
 }
+
+# Custom section entries have the project shape; identity is the entry's title.
+_CUSTOM_KEY = lambda e: e.title or ""   # noqa: E731
 
 # Sub-fields rendered as one joined string for display but stored as a list. The
 # change carries the real list in *_value so applying it can never write the
@@ -351,7 +434,7 @@ def _raw_field(array: str, e, sub: str):
 
 def _entry_summary(array: str, e) -> str:
     """One-line description of a whole entry, for added/removed cards."""
-    section, keyfn = _ENTRY_ARRAYS[array]
+    keyfn = _CUSTOM_KEY if array == "custom" else _ENTRY_ARRAYS[array][1]
     _, lists = _entry_fields(array, e)
     bullets = [b for items in lists.values() for b in items]
     head = keyfn(e) or "(untitled)"
@@ -468,12 +551,10 @@ def _norm_text(s) -> str:
 
 
 
-SECTION_LABELS = {"summary": "Summary", "skills": "Skills", "experience": "Experience",
-                  "education": "Education", "projects": "Projects"}
 SECTION_ORDER_PATH = "section_order"
 
 
-def section_order_change(original_order: list[str], new_order: list[str], *,
+def section_order_change(original_order: list[str], new_order: list[str], *, labels: dict | None = None,
                          rationale: str = "", decision: str = "pending") -> dict | None:
     """The one change card for moving whole sections, or None if nothing moved.
 
@@ -483,20 +564,25 @@ def section_order_change(original_order: list[str], new_order: list[str], *,
     """
     if list(original_order) == list(new_order):
         return None
+    labels = labels or {}
+
+    def label(k):
+        return labels.get(k) or SECTION_LABELS.get(k) or k
+
     return {
         "id": _cid(SECTION_ORDER_PATH, ":order"),
         "path": SECTION_ORDER_PATH,
         "section": "sections",
-        "before": "\n".join(f"{n}. {SECTION_LABELS[k]}" for n, k in enumerate(original_order, 1)),
-        "after": "\n".join(f"{n}. {SECTION_LABELS[k]}" for n, k in enumerate(new_order, 1)),
+        "before": "\n".join(f"{n}. {label(k)}" for n, k in enumerate(original_order, 1)),
+        "after": "\n".join(f"{n}. {label(k)}" for n, k in enumerate(new_order, 1)),
         "kind": "reordered",
         "type": "reorder",
         "rationale": rationale or "Sections moved.",
         "trigger": "",
         "decision": decision,
         "list_path": None,
-        "before_items": [SECTION_LABELS[k] for k in original_order],
-        "after_items": [SECTION_LABELS[k] for k in new_order],
+        "before_items": [label(k) for k in original_order],
+        "after_items": [label(k) for k in new_order],
         "order": [list(original_order).index(k) for k in new_order],
         "removed_indices": [],
         "orig_path": None,
@@ -635,10 +721,11 @@ def diff_structured(original: schemas.ResumeStructured, tailored: schemas.Resume
         })
 
     # ── entry arrays ─────────────────────────────────────────
-    for array, (section, keyfn) in _ENTRY_ARRAYS.items():
-        o_ents, t_ents = list(getattr(original, array)), list(getattr(tailored, array))
+    def diff_entries(array, kind, section, keyfn, o_ents, t_ents):
+        """One section of entries. `array` is its path (``projects``, or
+        ``custom_sections/2/entries``); `kind` picks the entry shape."""
         if not o_ents and not t_ents:
-            continue
+            return
         al = _align_list([keyfn(e) for e in o_ents], [keyfn(e) for e in t_ents])
 
         if al.is_reorder:
@@ -646,8 +733,8 @@ def diff_structured(original: schemas.ResumeStructured, tailored: schemas.Resume
                          al.order, al.removed_i, "Entries re-ordered within this section.")
 
         for i, j in al.pairs:
-            so, lo = _entry_fields(array, o_ents[i])
-            st, lt = _entry_fields(array, t_ents[j])
+            so, lo = _entry_fields(kind, o_ents[i])
+            st, lt = _entry_fields(kind, t_ents[j])
             for sub in set(so) | set(st):
                 before, after = so.get(sub), st.get(sub)
                 if (before or "") == (after or ""):
@@ -660,7 +747,10 @@ def diff_structured(original: schemas.ResumeStructured, tailored: schemas.Resume
                     "before": before, "after": after,
                     "kind": "modified" if (sub in so and sub in st)
                             else ("removed" if sub in so else "added"),
-                    "type": _classify(path, note.get("type")),
+                    # A custom entry's title is a certificate, an award, a date —
+                    # a factual anchor like a job title, whatever the model says.
+                    "type": ("factual" if kind == "custom" and sub == "title"
+                             else _classify(path, note.get("type"))),
                     "rationale": note.get("rationale", ""), "trigger": note.get("trigger", ""),
                     "decision": "pending", "list_path": None,
                     "entry_index": i, "entry_new_index": j, "entry_field": sub,
@@ -668,8 +758,8 @@ def diff_structured(original: schemas.ResumeStructured, tailored: schemas.Resume
                 }
                 if sub in _JOINED_FIELDS:
                     # Keep the real list alongside the joined display string.
-                    change["before_value"] = _raw_field(array, o_ents[i], sub)
-                    change["after_value"] = _raw_field(array, t_ents[j], sub)
+                    change["before_value"] = _raw_field(kind, o_ents[i], sub)
+                    change["after_value"] = _raw_field(kind, t_ents[j], sub)
                 add(change)
             for sub in set(lo) | set(lt):
                 diff_list(f"{array}/{i}/{sub}", section, lo.get(sub, []), lt.get(sub, []))
@@ -678,7 +768,7 @@ def diff_structured(original: schemas.ResumeStructured, tailored: schemas.Resume
             add({
                 "id": _cid(array, str(i), ":entry"),
                 "path": f"{array}/{i}", "section": section,
-                "before": _entry_summary(array, o_ents[i]), "after": None,
+                "before": _entry_summary(kind, o_ents[i]), "after": None,
                 "kind": "removed", "type": _classify(array, None),
                 "rationale": "This whole entry was dropped.", "trigger": "",
                 "decision": "pending", "list_path": None,
@@ -689,7 +779,7 @@ def diff_structured(original: schemas.ResumeStructured, tailored: schemas.Resume
             add({
                 "id": _cid(array, "+", str(j), ":entry"),
                 "path": f"{array}/+{j}", "section": section,
-                "before": None, "after": _entry_summary(array, t_ents[j]),
+                "before": None, "after": _entry_summary(kind, t_ents[j]),
                 "kind": "added", "type": _classify(array, None),
                 "rationale": "This whole entry is new.", "trigger": "",
                 "decision": "pending", "list_path": None,
@@ -698,8 +788,21 @@ def diff_structured(original: schemas.ResumeStructured, tailored: schemas.Resume
                 "orig_path": None, "tailored_path": f"{array}/{j}",
             })
 
+    for array, (section, keyfn) in _ENTRY_ARRAYS.items():
+        diff_entries(array, array, section, keyfn,
+                     list(getattr(original, array)), list(getattr(tailored, array)))
+
+    # Custom sections: paths anchored to the ORIGINAL section index, like entries.
+    # tailor_resume keeps them in the original's order with its ids.
+    t_custom = {s.id: s for s in tailored.custom_sections}
+    for i, osec in enumerate(original.custom_sections):
+        tsec = t_custom.get(osec.id)
+        diff_entries(f"custom_sections/{i}/entries", "custom", osec.title, _CUSTOM_KEY,
+                     list(osec.entries), list(tsec.entries) if tsec else [])
+
     # ── section order ────────────────────────────────────────
     moved = section_order_change(resolved_section_order(original), resolved_section_order(tailored),
+                                 labels=section_labels(original),
                                  rationale="Sections moved, as you asked.")
     if moved:
         add(moved)
@@ -739,7 +842,7 @@ def backfill_section_order(state: dict, resume_text: str | None) -> bool:
     original = state.get("original") or {}
     if original.get(SECTION_ORDER_PATH):
         return False
-    order = detect_section_order(resume_text)
+    order = detect_section_order(resume_text, original)
     if order is None:
         return False
     original[SECTION_ORDER_PATH] = order
@@ -863,11 +966,12 @@ def effective_resume(state: dict) -> dict:
         if c["path"] == SECTION_ORDER_PATH and c.get("decision") == "rejected":
             eff[SECTION_ORDER_PATH] = orig.get(SECTION_ORDER_PATH)
 
-    for array in _ENTRY_ARRAYS:
+    def rebuild(array: str, o_entries: list):
+        """One section's entries rebuilt from the original plus its changes,
+        or None when nothing in it changed. `array` is its path."""
         mine = [c for c in changes if c["path"] == array or c["path"].startswith(f"{array}/")]
         if not mine:
-            continue
-        o_entries = _get_path(orig, array) or []
+            return None
         reorder = next((c for c in mine if c["kind"] == "reordered" and c["path"] == array), None)
         removed = {c["entry_index"]: c for c in mine
                    if c.get("entry_whole") and c["kind"] == "removed"}
@@ -920,6 +1024,18 @@ def effective_resume(state: dict) -> dict:
                 c = added[slot]
                 if c.get("decision") != "rejected" and c.get("entry"):
                     out.insert(min(slot, len(out)), copy.deepcopy(c["entry"]))
-        _set_path(eff, array, out)
+        return out
+
+
+    for array in _ENTRY_ARRAYS:
+        built_out = rebuild(array, _get_path(orig, array) or [])
+        if built_out is not None:
+            _set_path(eff, array, built_out)
+    # Custom sections, by ORIGINAL index — tailoring keeps them in that order.
+    for i, osec in enumerate(orig.get("custom_sections") or []):
+        path = f"custom_sections/{i}/entries"
+        built_out = rebuild(path, osec.get("entries") or [])
+        if built_out is not None:
+            _set_path(eff, path, built_out)
 
     return eff

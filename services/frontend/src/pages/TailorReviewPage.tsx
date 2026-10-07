@@ -9,7 +9,7 @@ import { jobsApi } from "../lib/api";
 import { cn } from "../lib/utils";
 import { toast } from "../hooks/useToast";
 import { effectiveResume } from "../lib/resumeEffective";
-import { SECTION_LABELS, hasSection, moveSection, sectionOrder, type SectionKey } from "../lib/sectionOrder";
+import { customSections, hasSection, isCustom, moveSection, sectionOrder, sectionTitle, type BuiltinKey, type SectionKey } from "../lib/sectionOrder";
 import type { JobReview, TailorState, TailorChange, TailorDecision } from "../lib/types";
 
 // ─── Rendered résumé (plain structured text — template/PDF is Phase 3) ──────────
@@ -50,7 +50,26 @@ function Section({ title, path, children, move, sectionKey, first, last }: {
 function ResumeView({ data, order, move }: { data: any; order: SectionKey[]; move?: MoveFn }) {
   if (!data) return null;
   const shown = order.filter((k) => hasSection(data, k));
-  const render: Record<SectionKey, () => React.ReactNode> = {
+  // A custom section is titled entries with bullets — the projects shape.
+  const renderCustom = (key: SectionKey) => {
+    const found = customSections(data).find((s) => s.key === key);
+    if (!found) return null;
+    const base = `custom_sections/${found.index}/entries`;
+    return (found.section.entries ?? []).map((en: any, i: number) => (
+      <div key={i} data-path={`${base}/${i}`}>
+        {en.title && <div className="font-medium" data-path={`${base}/${i}/title`}>{en.title}</div>}
+        {en.bullets?.length > 0 && <ul className="list-disc ml-4" data-path={`${base}/${i}/bullets`}>{en.bullets.map((b: string, j: number) => <li key={j} data-path={`${base}/${i}/bullets/${j}`}>{b}</li>)}</ul>}
+      </div>
+    ));
+  };
+  // Where a section's change cards point: its key for typed ones, its entries path for custom.
+  const sectionPath = (k: SectionKey) => {
+    if (k === "summary") return undefined;
+    if (!isCustom(k)) return k;
+    const found = customSections(data).find((s) => s.key === k);
+    return found ? `custom_sections/${found.index}/entries` : undefined;
+  };
+  const render: Record<BuiltinKey, () => React.ReactNode> = {
     summary: () => <p data-path="summary">{data.summary}</p>,
     skills: () => data.skills.map((g: any, i: number) => (
       <p key={i} data-path={`skills/${i}`}><b data-path={`skills/${i}/label`}>{g.label}:</b> <span data-path={`skills/${i}/items`}>{(g.items ?? []).join(" · ")}</span></p>
@@ -87,9 +106,9 @@ function ResumeView({ data, order, move }: { data: any; order: SectionKey[]; mov
   return (
     <div className="space-y-3 text-xs leading-relaxed">
       {shown.map((k, n) => (
-        <Section key={k} title={SECTION_LABELS[k]} path={k === "summary" ? undefined : k}
+        <Section key={k} title={sectionTitle(data, k)} path={sectionPath(k)}
                  move={move} sectionKey={k} first={n === 0} last={n === shown.length - 1}>
-          {render[k]()}
+          {isCustom(k) ? renderCustom(k) : render[k]()}
         </Section>
       ))}
     </div>
