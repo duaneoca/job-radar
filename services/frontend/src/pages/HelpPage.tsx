@@ -184,6 +184,11 @@ function JobPipelineTab() {
       <P>The Jobs list defaults to showing New jobs sorted by AI score descending — highest
         matches first. Use the filters to switch status, sort by date, or search by title
         or company.</P>
+      <P>To search, type in the box and press <strong>Enter</strong> (or click the magnifying
+        glass) — typing alone doesn't search. While results load the glass becomes a spinner and
+        the list dims; once they're in, a line above the table says what you searched for and
+        how many jobs matched. Your last search is remembered for next time — use × or
+        "Clear search" to drop it.</P>
     </div>
   );
 }

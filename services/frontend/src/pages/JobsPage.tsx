@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Search, SlidersHorizontal, ExternalLink, RefreshCw, ChevronLeft, ChevronRight,
-  MapPin, Building2, DollarSign, Star, Check, UserCheck, Loader2, Plus, Trash2,
+  MapPin, Building2, DollarSign, Star, Check, UserCheck, Loader2, Plus, Trash2, X, AlertTriangle,
 } from "lucide-react";
 import { ColumnFilter } from "../components/ColumnFilter";
 import { ConnectionsTable } from "../components/ConnectionsTable";
@@ -23,7 +23,7 @@ import {
 } from "../components/ui/dialog";
 import { jobsApi } from "../lib/api";
 import {
-  formatAge, formatDate, formatSalary, formatSource, scoreColor,
+  cn, formatAge, formatDate, formatSalary, formatSource, scoreColor,
   STATUS_OPTIONS, SOURCE_OPTIONS,
 } from "../lib/utils";
 import { toast } from "../hooks/useToast";
@@ -120,6 +120,11 @@ function JobsTab() {
   const [pageSize, setPageSize] = useState(25);
   const [filters, setFilters] = useState<Filters>(loadFilters);
   const [showFilters, setShowFilters] = useState(false);
+  // What's typed in the box, as opposed to filters.search — the search that has
+  // actually been run. Typing alone searches nothing; Enter or the search button
+  // applies it (see runSearch). It used to search on every keystroke, with the
+  // old results left on screen, so it was never clear whether a search had run.
+  const [searchDraft, setSearchDraft] = useState(() => filters.search);
 
   // Persist filters across refreshes.
   useEffect(() => {
@@ -134,6 +139,7 @@ function JobsTab() {
     const linked = searchParams.get("search");
     if (!linked) return;
     setFilters((f) => ({ ...f, search: linked }));
+    setSearchDraft(linked);
     setPage(1);
     const next = new URLSearchParams(searchParams);
     next.delete("search");
@@ -161,7 +167,7 @@ function JobsTab() {
   if (filters.min_score) params.min_score = Number(filters.min_score);
   if (filters.search) params.search = filters.search;
 
-  const { data, isLoading, isFetching } = useQuery<JobListResponse>({
+  const { data, isLoading, isFetching, isPlaceholderData, isError, refetch } = useQuery<JobListResponse>({
     queryKey: ["jobs", params],
     // indexes:null → arrays serialize as `status=a&status=b` (FastAPI list[...] shape).
     queryFn: () => jobsApi.get("/jobs", { params, paramsSerializer: { indexes: null } }).then((r) => r.data),
@@ -229,8 +235,22 @@ function JobsTab() {
 
   function resetFilters() {
     setFilters(DEFAULT_FILTERS);
+    setSearchDraft("");
     setPage(1);
   }
+
+  /** Run a search for `term` (Enter, the search button, or ×). Pressing search
+   *  always means "fetch now": job lists cached in the last 30s are marked stale
+   *  so a re-run — or a term searched a moment ago — never shows an old answer.
+   *  When the term is unchanged the visible list is refetched in place;
+   *  otherwise the new term's query fetches as it mounts. */
+  function runSearch(term: string) {
+    const next = term.trim();
+    setSearchDraft(next);
+    qc.invalidateQueries({ queryKey: ["jobs"], refetchType: next === filters.search ? "active" : "none" });
+    updateFilter({ search: next });
+  }
+  const searchPending = searchDraft.trim() !== filters.search;
 
   const activeFilterCount =
     filters.status.length + filters.source.length + filters.contact.length +
@@ -261,15 +281,51 @@ function JobsTab() {
 
       {/* Search + filter bar — Status/Source/Contact filters now live in the column headers */}
       <div className="flex flex-wrap gap-2 items-center">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+        <form
+          role="search"
+          className="relative flex-1 min-w-[200px]"
+          onSubmit={(e) => { e.preventDefault(); runSearch(searchDraft); }}
+        >
+          {/* The search button. Turns into a spinner while results load. */}
+          <button
+            type="submit"
+            title="Search (Enter)"
+            aria-label="Search"
+            className={cn(
+              "absolute left-1 top-1 h-7 w-7 inline-flex items-center justify-center rounded-md transition-colors",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              searchPending
+                ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground",
+            )}
+          >
+            {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+          </button>
           <Input
-            placeholder="Search title, company, source…"
-            className="pl-8"
-            value={filters.search}
-            onChange={(e) => updateFilter({ search: e.target.value })}
+            placeholder="Search title, company, source… then press Enter"
+            className="pl-10 pr-20"
+            value={searchDraft}
+            onChange={(e) => setSearchDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Escape" && searchPending) setSearchDraft(filters.search); }}
           />
-        </div>
+          <div className="absolute right-1.5 top-1.5 flex items-center gap-1">
+            {/* Typed but not yet run — say how to run it. */}
+            {searchPending && (
+              <kbd className="hidden sm:inline rounded border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">Enter</kbd>
+            )}
+            {(searchDraft || filters.search) && (
+              <button
+                type="button"
+                title="Clear search"
+                aria-label="Clear search"
+                onClick={() => (filters.search ? runSearch("") : setSearchDraft(""))}
+                className="h-6 w-6 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </form>
 
         <Button
           variant={showFilters ? "secondary" : "outline"}
@@ -314,8 +370,44 @@ function JobsTab() {
         </div>
       )}
 
-      {/* Table */}
-      <div className="rounded-lg border overflow-x-auto">
+      {/* What the table is showing, when a search is applied — including one
+          restored from a previous visit, which otherwise looks like missing jobs. */}
+      {filters.search && (
+        <div className="flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground -mt-1">
+          {isPlaceholderData ? (
+            <span className="inline-flex items-center gap-1.5">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Searching for <span className="font-medium text-foreground">“{filters.search}”</span>…
+            </span>
+          ) : (
+            <span>
+              Results for <span className="font-medium text-foreground">“{filters.search}”</span>
+              {!isError && <> · {totalJobs} job{totalJobs === 1 ? "" : "s"}</>}
+            </span>
+          )}
+          <button type="button" className="underline hover:text-foreground" onClick={() => runSearch("")}>
+            Clear search
+          </button>
+        </div>
+      )}
+
+      {isError && (
+        <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm">
+          <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
+          <span className="flex-1">
+            {filters.search ? "Search failed" : "Couldn't load your jobs"} — what's below may be out of date.
+          </span>
+          <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isFetching}>
+            {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : "Try again"}
+          </Button>
+        </div>
+      )}
+
+      {/* Table — dimmed while it still shows the previous results, so the old list
+          clearly reads as "about to change" rather than as the answer. */}
+      <div className={cn("rounded-lg border overflow-x-auto transition-opacity",
+                         isPlaceholderData && "opacity-50 pointer-events-none")}
+           aria-busy={isFetching}>
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/50">
@@ -345,6 +437,13 @@ function JobsTab() {
                 <td colSpan={9} className="text-center py-12 text-muted-foreground">
                   <Loader2 className="h-5 w-5 animate-spin inline mr-2" />
                   Loading…
+                </td>
+              </tr>
+            ) : isError && jobs.length === 0 ? (
+              // Not "No jobs found" — nothing was found because nothing came back.
+              <tr>
+                <td colSpan={9} className="text-center py-12 text-muted-foreground">
+                  Couldn't load jobs. Use <span className="font-medium">Try again</span> above.
                 </td>
               </tr>
             ) : jobs.length === 0 ? (
