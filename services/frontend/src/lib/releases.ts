@@ -39,6 +39,44 @@ export interface Release {
 export const RELEASES: Release[] = [
   // Newest first. See the module comment before adding one.
   {
+    version: "v1.15.0",
+    date: "2026-10-07",
+    headline: "Tailored résumés keep every section, in your order, and search is clearer.",
+    notes: [
+      {
+        title: "Tailored résumés keep every section",
+        detail:
+          "Sections like Certifications, Volunteering or Publications, or any section you'd named " +
+          "yourself, were being left out of tailored résumés and their PDFs, and your headings " +
+          "were swapped for standard ones. Every section now comes through under the heading you " +
+          "gave it. The first time you tailor after this update, Job Radar re-reads your résumé to " +
+          "pick up anything it missed, so jobs you tailored before will say your base résumé " +
+          "changed. Re-tailor them to bring the missing sections in.",
+      },
+      {
+        title: "The PDF matches the screen",
+        detail:
+          "The tailor page and the PDF could show your sections in different orders, and " +
+          "neither always matched your résumé. Both now follow the order you wrote them in.",
+      },
+      {
+        title: "Reorder sections for one job",
+        detail:
+          "Use the arrows on the section headings in the Tailored column, or ask in the refine " +
+          "box (\"put Experience before Projects\"). It shows up as one change you can accept or " +
+          "reject, and the PDF follows.",
+      },
+      {
+        title: "Search runs when you ask it to",
+        detail:
+          "On the Jobs tab, type and press Enter or click the magnifying glass. You'll see a " +
+          "spinner while it runs and a line saying what you searched for and how many jobs " +
+          "matched. A failed search used to leave old results on screen with no warning; it now " +
+          "tells you and offers to try again.",
+      },
+    ],
+  },
+  {
     version: "v1.14.0",
     date: "2026-10-02",
     headline: "Choose a stronger AI model for what employers read, and use xAI's Grok.",
