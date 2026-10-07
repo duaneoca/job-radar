@@ -1,3 +1,6 @@
+import { Fragment } from "react";
+import { hasSection, sectionOrder, type SectionKey } from "../../lib/sectionOrder";
+
 // Modern résumé template — navy sidebar (contact + skills) + main column. One-page
 // design (a full-bleed sidebar can't span printed pages). CSS ported from the
 // browser-validated prototype; vertical padding scales with --scale so autofit
@@ -43,6 +46,58 @@ const CSS = `
 @media print{ @page{ size:letter; margin:0; } }
 `;
 
+type MainKey = Exclude<SectionKey, "skills">;
+
+// Main-column sections, drawn in the résumé's own order (lib/sectionOrder) — the
+// same order the tailor page shows. Markup is unchanged from the fixed layout.
+const MAIN: Record<MainKey, (data: any) => React.ReactNode> = {
+  summary: (data) => (<section><h2>Summary</h2><p>{data.summary}</p></section>),
+  projects: (data) => (
+    <section>
+      <h2>Projects</h2>
+      {data.projects.map((pr: any, i: number) => (
+        <div className="entry" key={i}>
+          {pr.title && <div className="org" style={{ fontSize: "1em" }}>{pr.title}</div>}
+          {pr.bullets?.length > 0 && <ul>{pr.bullets.map((b: string, j: number) => <li key={j}>{b}</li>)}</ul>}
+        </div>
+      ))}
+    </section>
+  ),
+  experience: (data) => (
+    <section>
+      <h2>Experience</h2>
+      {data.experience.map((e: any, i: number) => (
+        <div className="entry" key={i}>
+          <div className="entry-head">
+            <span className="org">{e.company}</span>
+            {(e.start || e.end) && <span className="dates">{e.start}{e.start && e.end ? " – " : ""}{e.end}</span>}
+          </div>
+          {e.titles?.length > 0 && <div className="titles">{e.titles.join(" → ")}</div>}
+          {e.bullets?.length > 0 && <ul>{e.bullets.map((b: string, j: number) => <li key={j}>{b}</li>)}</ul>}
+          {e.phases?.map((p: any, k: number) => (
+            <div key={k}>
+              {(p.label || p.start) && <div className="phase">{p.label}{p.start ? ` (${p.start}${p.end ? ` – ${p.end}` : ""})` : ""}</div>}
+              {p.bullets?.length > 0 && <ul>{p.bullets.map((b: string, j: number) => <li key={j}>{b}</li>)}</ul>}
+            </div>
+          ))}
+          {e.notable?.length > 0 && <p className="note"><b>Notable:</b> {e.notable.join(", ")}</p>}
+        </div>
+      ))}
+    </section>
+  ),
+  education: (data) => (
+    <section>
+      <h2>Education</h2>
+      {data.education.map((ed: any, i: number) => (
+        <div className="entry-head" key={i}>
+          <span className="org">{ed.degree}</span>
+          {ed.school && <span className="dates">{ed.school}</span>}
+        </div>
+      ))}
+    </section>
+  ),
+};
+
 export function ModernTemplate({ data }: { data: any }) {
   const c = data?.contact ?? {};
   return (
@@ -66,54 +121,9 @@ export function ModernTemplate({ data }: { data: any }) {
       </aside>
 
       <main className="main">
-        {data?.summary && (<section><h2>Summary</h2><p>{data.summary}</p></section>)}
-
-        {data?.projects?.length > 0 && (
-          <section>
-            <h2>Projects</h2>
-            {data.projects.map((pr: any, i: number) => (
-              <div className="entry" key={i}>
-                {pr.title && <div className="org" style={{ fontSize: "1em" }}>{pr.title}</div>}
-                {pr.bullets?.length > 0 && <ul>{pr.bullets.map((b: string, j: number) => <li key={j}>{b}</li>)}</ul>}
-              </div>
-            ))}
-          </section>
-        )}
-
-        {data?.experience?.length > 0 && (
-          <section>
-            <h2>Experience</h2>
-            {data.experience.map((e: any, i: number) => (
-              <div className="entry" key={i}>
-                <div className="entry-head">
-                  <span className="org">{e.company}</span>
-                  {(e.start || e.end) && <span className="dates">{e.start}{e.start && e.end ? " – " : ""}{e.end}</span>}
-                </div>
-                {e.titles?.length > 0 && <div className="titles">{e.titles.join(" → ")}</div>}
-                {e.bullets?.length > 0 && <ul>{e.bullets.map((b: string, j: number) => <li key={j}>{b}</li>)}</ul>}
-                {e.phases?.map((p: any, k: number) => (
-                  <div key={k}>
-                    {(p.label || p.start) && <div className="phase">{p.label}{p.start ? ` (${p.start}${p.end ? ` – ${p.end}` : ""})` : ""}</div>}
-                    {p.bullets?.length > 0 && <ul>{p.bullets.map((b: string, j: number) => <li key={j}>{b}</li>)}</ul>}
-                  </div>
-                ))}
-                {e.notable?.length > 0 && <p className="note"><b>Notable:</b> {e.notable.join(", ")}</p>}
-              </div>
-            ))}
-          </section>
-        )}
-
-        {data?.education?.length > 0 && (
-          <section>
-            <h2>Education</h2>
-            {data.education.map((ed: any, i: number) => (
-              <div className="entry-head" key={i}>
-                <span className="org">{ed.degree}</span>
-                {ed.school && <span className="dates">{ed.school}</span>}
-              </div>
-            ))}
-          </section>
-        )}
+        {/* Skills live in the sidebar; the main column follows the résumé's order. */}
+        {sectionOrder(data).filter((k) => k !== "skills" && hasSection(data, k))
+          .map((k) => <Fragment key={k}>{MAIN[k as MainKey](data)}</Fragment>)}
       </main>
     </div>
   );

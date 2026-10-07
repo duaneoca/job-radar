@@ -543,7 +543,15 @@ def _fresh_structured(profile: models.Profile, user_id: UUID, db: Session):
     """Return the profile's structured résumé, (re)parsing if missing or stale.
     The honesty core later checks against facts derived from this."""
     if profile.resume_structured and not profile.resume_structured_stale:
-        return schemas.ResumeStructured.model_validate(profile.resume_structured)
+        structured = schemas.ResumeStructured.model_validate(profile.resume_structured)
+        if structured.section_order is None:
+            # Parsed before section order was recorded: read it from the text
+            # (no model call) and keep it, so tailoring starts from the real order.
+            structured.section_order = resume_tailor.detect_section_order(profile.resume_text)
+            if structured.section_order is not None:
+                profile.resume_structured = structured.model_dump()
+                db.commit()
+        return structured
     api_key, model = get_llm_provider(user_id, db)
     structured = resume_tailor.parse_resume_text(profile.resume_text, api_key, model,
                                                  db=db, user_id=user_id)
@@ -576,6 +584,18 @@ def get_tailored_resume(
         raise HTTPException(status_code=404, detail="Not tailored yet")
     # Flag staleness vs the current base résumé (snapshot may be behind).
     profile = _get_profile(current_user.id, db)
+    if resume_tailor.backfill_section_order(review.resume_tailor,
+                                            profile.resume_text if profile else None):
+        flag_modified(review, "resume_tailor")
+        db.commit()
+    # The base résumé needs the same backfill, or the comparison below sees a
+    # snapshot that has an order and a base that doesn't, and every job tailored
+    # before section order existed claims "your base résumé changed".
+    if profile and profile.resume_structured and not profile.resume_structured.get("section_order"):
+        order = resume_tailor.detect_section_order(profile.resume_text)
+        if order is not None:
+            profile.resume_structured = {**profile.resume_structured, "section_order": order}
+            db.commit()
     state = dict(review.resume_tailor)
     base = (profile.resume_structured if profile else None)
     state["base_changed"] = bool(base) and base != state.get("original")
@@ -629,6 +649,8 @@ def refine_tailored_resume(
     if not review.resume_tailor:
         raise HTTPException(status_code=404, detail="Tailor the résumé first, then refine.")
     prev = review.resume_tailor
+    profile = _get_profile(current_user.id, db)
+    resume_tailor.backfill_section_order(prev, profile.resume_text if profile else None)
 
     original = schemas.ResumeStructured.model_validate(prev["original"])
     current = schemas.ResumeStructured.model_validate(prev["tailored"])
@@ -644,13 +666,23 @@ def refine_tailored_resume(
                 if c.get("decision") == "rejected" and c.get("before")
                 and c.get("kind") != "reordered"]
     reorder_rejected = [c["path"] for c in prev["changes"]
-                        if c.get("decision") == "rejected" and c.get("kind") == "reordered"]
+                        if c.get("decision") == "rejected" and c.get("kind") == "reordered"
+                        and c["path"] != resume_tailor.SECTION_ORDER_PATH]
+    sections_rejected = any(c["path"] == resume_tailor.SECTION_ORDER_PATH
+                            and c.get("decision") == "rejected" for c in prev["changes"])
     extra = payload.instruction.strip()
     if rejected:
         extra += "\n\nKeep these phrasings EXACTLY as written (the user rejected changing them): " + " | ".join(rejected)
     if reorder_rejected:
         extra += ("\n\nDo NOT reorder the bullets in these sections; keep them in the order given: "
                   + " | ".join(reorder_rejected))
+    if sections_rejected:
+        # The draft still carries the move the user turned down; name the order
+        # to keep rather than let the model read the rejected one as settled.
+        keep = resume_tailor.resolved_section_order(prev["original"])
+        current.section_order = keep
+        extra += ("\n\nThe user rejected moving the sections. Unless this request asks to move them, "
+                  "keep \"section_order\" as: " + ", ".join(keep))
 
     tailored, notes = resume_tailor.tailor_resume(
         current, honesty, _job_block(review.job), style, api_key, model, extra=extra,
@@ -659,11 +691,58 @@ def refine_tailored_resume(
 
     # Carry prior decisions forward by change id.
     prior = {c["id"]: c.get("decision", "pending") for c in prev["changes"]}
+    prior_sections = next((c.get("after_items") for c in prev["changes"]
+                           if c["path"] == resume_tailor.SECTION_ORDER_PATH), None)
     for c in state["changes"]:
+        # One fixed id covers every possible section order, so a decision only
+        # carries if the order itself is unchanged — a rejection must not
+        # silently swallow a move the user has just asked for.
+        if c["path"] == resume_tailor.SECTION_ORDER_PATH and c.get("after_items") != prior_sections:
+            continue
         if prior.get(c["id"]) in ("accepted", "rejected"):
             c["decision"] = prior[c["id"]]
 
     review.resume_tailor = state
+    db.commit()
+    return _with_effective(state)
+
+
+@router.put("/{review_id}/tailor-resume/section-order")
+def set_section_order(
+    review_id: UUID,
+    payload: schemas.SectionOrderIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Set this job's section order directly (the arrows on the tailor page).
+
+    Stored on the tailored résumé and expressed as the same single "section
+    order" change an AI refine produces, so the tailor page, the PDF and
+    accept/reject all read one value. The user chose it, so it is accepted;
+    moving the sections back to the original order removes the change.
+    """
+    review = _get_review(review_id, current_user, db)
+    if not review.resume_tailor:
+        raise HTTPException(status_code=404, detail="Not tailored yet")
+    order = schemas.normalize_section_order(payload.order)
+    if (order is None or len(payload.order) != len(schemas.RESUME_SECTIONS)
+            or sorted(payload.order) != sorted(schemas.RESUME_SECTIONS)):
+        raise HTTPException(status_code=400,
+                            detail=f"order must list each of {', '.join(schemas.RESUME_SECTIONS)} once")
+
+    state = review.resume_tailor
+    profile = _get_profile(current_user.id, db)
+    resume_tailor.backfill_section_order(state, profile.resume_text if profile else None)
+    state["tailored"][resume_tailor.SECTION_ORDER_PATH] = order
+    state["changes"] = [c for c in state["changes"] if c["path"] != resume_tailor.SECTION_ORDER_PATH]
+    moved = resume_tailor.section_order_change(
+        resume_tailor.resolved_section_order(state["original"]), order,
+        rationale="You set this order.", decision="accepted")
+    if moved:
+        state["changes"].append(moved)
+        state["changes"].sort(key=lambda c: resume_tailor._path_sort_key(c["path"]))
+    state["reorder_count"] = sum(1 for c in state["changes"] if c["kind"] == "reordered")
+    flag_modified(review, "resume_tailor")
     db.commit()
     return _with_effective(state)
 

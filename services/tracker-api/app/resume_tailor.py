@@ -65,6 +65,53 @@ Rules:
 - Output ONLY the JSON object — no prose, no markdown fences."""
 
 
+# Heading spellings per section, compared after lower-casing and dropping
+# everything but letters and spaces ("WORK EXPERIENCE:" → "work experience").
+_SECTION_HEADINGS = {
+    "summary": ("summary", "professional summary", "career summary", "executive summary",
+                "profile", "professional profile", "about", "about me", "objective", "overview"),
+    "skills": ("skills", "technical skills", "core skills", "key skills", "skills and tools",
+               "core competencies", "competencies", "technologies", "tech stack", "expertise",
+               "areas of expertise"),
+    "experience": ("experience", "work experience", "professional experience", "employment",
+                   "employment history", "work history", "career history", "relevant experience"),
+    "education": ("education", "education and training", "education and certifications",
+                  "academic background", "qualifications"),
+    "projects": ("projects", "personal projects", "selected projects", "side projects",
+                 "key projects", "open source", "notable projects"),
+}
+_HEADING_TO_SECTION = {h: k for k, hs in _SECTION_HEADINGS.items() for h in hs}
+
+
+def detect_section_order(resume_text: str | None) -> list[str] | None:
+    """The order the résumé's own section headings appear in, or None.
+
+    Deterministic, so the order can be recovered for résumés parsed before it was
+    recorded, without another model call. A heading is a short line that is
+    exactly one of the known spellings. A summary is often an unheaded opening
+    paragraph, so when no summary heading is found it is placed first.
+    """
+    seen: list[str] = []
+    for line in (resume_text or "").splitlines():
+        s = line.strip()
+        if not s or len(s) > 40:
+            continue
+        key = _HEADING_TO_SECTION.get(" ".join(re.sub(r"[^a-z ]", " ", s.lower().replace("&", " and ")).split()))
+        if key and key not in seen:
+            seen.append(key)
+    if len(seen) < 2:
+        return None                    # one heading says nothing about order
+    if "summary" not in seen:
+        seen.insert(0, "summary")
+    return schemas.normalize_section_order(seen)
+
+
+def resolved_section_order(resume) -> list[str]:
+    """A résumé's section order (dict or ResumeStructured), defaulted when unknown."""
+    order = resume.get("section_order") if isinstance(resume, dict) else resume.section_order
+    return schemas.normalize_section_order(order) or list(schemas.DEFAULT_SECTION_ORDER)
+
+
 def parse_resume_text(resume_text: str, api_key: str, model: str, *,
                       db=None, user_id=None) -> schemas.ResumeStructured:
     """Parse résumé text → validated ResumeStructured. Raises HTTPException on
@@ -95,10 +142,14 @@ def parse_resume_text(resume_text: str, api_key: str, model: str, *,
         raise HTTPException(status_code=502, detail="AI returned malformed JSON parsing your résumé. Try again.")
 
     try:
-        return schemas.ResumeStructured.model_validate(data)
+        structured = schemas.ResumeStructured.model_validate(data)
     except Exception as e:  # pydantic ValidationError
         logger.error("Résumé parse failed schema validation: %s", e)
         raise HTTPException(status_code=502, detail="AI returned an unexpected résumé structure. Try again.")
+    # Read from the text, not asked of the model: the headings are right there,
+    # and a deterministic answer is one the tests can pin.
+    structured.section_order = detect_section_order(resume_text)
+    return structured
 
 
 # ── Honesty facts ─────────────────────────────────────────────
@@ -179,12 +230,12 @@ You realign an existing résumé to a specific job posting WITHOUT lying. Your e
 2. MEET-OR-EXCEED, NEVER INFLATE: you may phrase a qualification to meet or exceed a requirement ONLY when the candidate's true value already clears it. The candidate's true total experience is {total_years} years (earliest {earliest}, latest {latest}). If the posting asks for 8 years, "8+ years" is allowed; if it asks for 30, you must NOT claim 30 — keep the truth.
 3. NEVER invent, inflate, or fabricate skills, technologies, employers, job titles, dates, durations, certifications, or accomplishments not present in the source résumé. In particular, you MUST NOT introduce any technology, platform, tool, framework, or product name that does not already appear in the source — even if the posting requires it. The named technologies and platforms in your output must be a SUBSET of those in the source résumé.
 4. LEAVE GAPS ALONE: where the posting asks for something the résumé does not show, and the gap cannot be closed by a true synonym for what the candidate already did, leave the gap. Do NOT fill it, imply it, or hint at exposure the candidate does not have. A missing match stays missing.
-5. SURGICAL, MINIMAL CHANGES: change only the wording that needs to change to align with the posting; any bullet, skill, or line that already reads well passes through UNCHANGED. Prefer the smallest edit. Edit each bullet INDEPENDENTLY in place — NEVER merge two bullets into one or split one into two. Keep the SAME sections, the SAME jobs in the SAME order, and the SAME NUMBER of bullets per job/section — do NOT add or remove bullets, jobs, skills groups, or sections. You MAY reorder bullets WITHIN a single role or section to lead with the most relevant experience; the sections, the jobs, and the skill groups themselves never move. (Trimming for length is a later step, not yours.)
+5. SURGICAL, MINIMAL CHANGES: change only the wording that needs to change to align with the posting; any bullet, skill, or line that already reads well passes through UNCHANGED. Prefer the smallest edit. Edit each bullet INDEPENDENTLY in place — NEVER merge two bullets into one or split one into two. Keep the SAME sections, the SAME jobs in the SAME order, and the SAME NUMBER of bullets per job/section — do NOT add or remove bullets, jobs, skills groups, or sections. You MAY reorder bullets WITHIN a single role or section to lead with the most relevant experience; the sections, the jobs, and the skill groups themselves never move. The ONE exception: when a REFINEMENT REQUEST explicitly asks to move whole sections, set "section_order" — the section keys (summary, skills, experience, education, projects) in the order they should appear — and change nothing else for it. Never move sections on your own. (Trimming for length is a later step, not yours.)
 6. Do not change company names, job titles, employers, or dates unless correcting an obvious typo — these are factual anchors.
 
 Return ONLY a JSON object:
 {{"tailored": <the full résumé in the SAME schema as the input>, "notes": [{{"before": "<original text>", "after": "<new text>", "type": "vocabulary|emphasis|reorder|factual", "rationale": "<why>", "trigger": "<the VERBATIM sentence or requirement line FROM THE JOB POSTING that inspired this change — quote enough to stand on its own (a full phrase or sentence, not a single word); leave empty only if no specific line in the posting applies>"}}]}}
-- "tailored" must match the input schema exactly (contact, summary, skills[], experience[], education[], projects[]).
+- "tailored" must match the input schema exactly (contact, summary, skills[], experience[], education[], projects[], section_order[]).
 - "notes" explains the meaningful changes you made (best-effort; the system also computes its own diff). "trigger" must be copied from the job posting text, never invented."""
 
 # Editable style prompt — the default the user can override on the AI Prompts tab.
@@ -240,6 +291,12 @@ def tailor_resume(structured, honesty_facts, job_text, style_prompt, api_key, mo
     except Exception as e:
         logger.error("Tailored résumé failed schema validation: %s", e)
         raise HTTPException(status_code=502, detail="AI returned an unexpected tailored structure. Try again.")
+
+    # Sections move only when the user asks, and only refine carries a request.
+    # The first pass gets the input's order back whatever the model returned; on
+    # refine, a model that omits the field keeps the current order.
+    if extra is None or tailored.section_order is None:
+        tailored.section_order = structured.section_order
 
     notes = data.get("notes") if isinstance(data.get("notes"), list) else []
     return tailored, notes
@@ -409,6 +466,43 @@ def _norm_text(s) -> str:
     """Whitespace-collapsed, case-folded text for fuzzy note↔change matching."""
     return " ".join(str(s or "").split()).casefold()
 
+
+
+SECTION_LABELS = {"summary": "Summary", "skills": "Skills", "experience": "Experience",
+                  "education": "Education", "projects": "Projects"}
+SECTION_ORDER_PATH = "section_order"
+
+
+def section_order_change(original_order: list[str], new_order: list[str], *,
+                         rationale: str = "", decision: str = "pending") -> dict | None:
+    """The one change card for moving whole sections, or None if nothing moved.
+
+    Shaped like every other "reordered" card so the review UI, decisions and
+    refine's carry-forward need nothing new. Its id is fixed: there is only ever
+    one section order per résumé.
+    """
+    if list(original_order) == list(new_order):
+        return None
+    return {
+        "id": _cid(SECTION_ORDER_PATH, ":order"),
+        "path": SECTION_ORDER_PATH,
+        "section": "sections",
+        "before": "\n".join(f"{n}. {SECTION_LABELS[k]}" for n, k in enumerate(original_order, 1)),
+        "after": "\n".join(f"{n}. {SECTION_LABELS[k]}" for n, k in enumerate(new_order, 1)),
+        "kind": "reordered",
+        "type": "reorder",
+        "rationale": rationale or "Sections moved.",
+        "trigger": "",
+        "decision": decision,
+        "list_path": None,
+        "before_items": [SECTION_LABELS[k] for k in original_order],
+        "after_items": [SECTION_LABELS[k] for k in new_order],
+        "order": [list(original_order).index(k) for k in new_order],
+        "removed_indices": [],
+        "orig_path": None,
+        "tailored_path": None,
+        "section_order": list(new_order),
+    }
 
 
 def diff_structured(original: schemas.ResumeStructured, tailored: schemas.ResumeStructured,
@@ -604,6 +698,12 @@ def diff_structured(original: schemas.ResumeStructured, tailored: schemas.Resume
                 "orig_path": None, "tailored_path": f"{array}/{j}",
             })
 
+    # ── section order ────────────────────────────────────────
+    moved = section_order_change(resolved_section_order(original), resolved_section_order(tailored),
+                                 rationale="Sections moved, as you asked.")
+    if moved:
+        add(moved)
+
     changes.sort(key=lambda c: _path_sort_key(c["path"]))
     logger.info("Tailor diff: %d changes (%d re-ordered), %d/%d model notes matched",
                 len(changes), sum(1 for c in changes if c["kind"] == "reordered"),
@@ -625,6 +725,28 @@ def build_tailor_state(original, tailored, notes, model, honesty_facts) -> dict:
         "flagged_count": sum(1 for c in changes if c["type"] == "factual"),
         "reorder_count": sum(1 for c in changes if c["kind"] == "reordered"),
     }
+
+
+def backfill_section_order(state: dict, resume_text: str | None) -> bool:
+    """Give a stored tailor state the section order it was saved without.
+
+    States from before section order existed have none, so every renderer fell
+    back to its own hardcoded order — which is how the tailor page and the PDF
+    came to disagree. The original's order is read from the résumé text; the
+    tailored copy starts the same (nothing in it has asked for a move). Returns
+    True when the state was changed and needs saving.
+    """
+    original = state.get("original") or {}
+    if original.get(SECTION_ORDER_PATH):
+        return False
+    order = detect_section_order(resume_text)
+    if order is None:
+        return False
+    original[SECTION_ORDER_PATH] = order
+    tailored = state.get("tailored")
+    if isinstance(tailored, dict) and not tailored.get(SECTION_ORDER_PATH):
+        tailored[SECTION_ORDER_PATH] = list(order)
+    return True
 
 
 # ── Effective résumé (what actually gets printed) ─────────────
@@ -735,6 +857,11 @@ def effective_resume(state: dict) -> dict:
     for c in changes:
         if "/" not in c["path"] and c["kind"] != "reordered" and c.get("decision") == "rejected":
             _set_path(eff, c["path"], _get_path(orig, c["path"]))
+
+    # Section order: rejecting the move puts the sections back where they were.
+    for c in changes:
+        if c["path"] == SECTION_ORDER_PATH and c.get("decision") == "rejected":
+            eff[SECTION_ORDER_PATH] = orig.get(SECTION_ORDER_PATH)
 
     for array in _ENTRY_ARRAYS:
         mine = [c for c in changes if c["path"] == array or c["path"].startswith(f"{array}/")]

@@ -1,79 +1,97 @@
 import { useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Wand2, Loader2, Sparkles, AlertTriangle, Check, X, RefreshCw, Printer, Crosshair, Briefcase } from "lucide-react";
+import { ArrowLeft, Wand2, Loader2, Sparkles, AlertTriangle, Check, X, RefreshCw, Printer, Crosshair, Briefcase, ChevronUp, ChevronDown } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Textarea } from "../components/ui/textarea";
 import { jobsApi } from "../lib/api";
 import { cn } from "../lib/utils";
 import { toast } from "../hooks/useToast";
+import { effectiveResume } from "../lib/resumeEffective";
+import { SECTION_LABELS, hasSection, moveSection, sectionOrder, type SectionKey } from "../lib/sectionOrder";
 import type { JobReview, TailorState, TailorChange, TailorDecision } from "../lib/types";
 
 // ─── Rendered résumé (plain structured text — template/PDF is Phase 3) ──────────
 
-function Section({ title, path, children }: { title: string; path?: string; children: React.ReactNode }) {
+type MoveFn = (key: SectionKey, dir: -1 | 1) => void;
+
+function Section({ title, path, children, move, sectionKey, first, last }: {
+  title: string; path?: string; children: React.ReactNode;
+  move?: MoveFn; sectionKey?: SectionKey; first?: boolean; last?: boolean;
+}) {
   return (
     <div data-path={path}>
-      <div className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground border-b mb-1 pb-0.5">{title}</div>
+      <div className="flex items-center text-[10px] uppercase tracking-wide font-semibold text-muted-foreground border-b mb-1 pb-0.5">
+        <span className="flex-1">{title}</span>
+        {move && sectionKey && (
+          <span className="inline-flex gap-0.5 normal-case">
+            <button type="button" title={`Move ${title} up`} aria-label={`Move ${title} up`} disabled={first}
+                    onClick={() => move(sectionKey, -1)}
+                    className="rounded p-0.5 hover:bg-accent hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent">
+              <ChevronUp className="h-3 w-3" />
+            </button>
+            <button type="button" title={`Move ${title} down`} aria-label={`Move ${title} down`} disabled={last}
+                    onClick={() => move(sectionKey, 1)}
+                    className="rounded p-0.5 hover:bg-accent hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent">
+              <ChevronDown className="h-3 w-3" />
+            </button>
+          </span>
+        )}
+      </div>
       <div className="space-y-1">{children}</div>
     </div>
   );
 }
 
 // data-path values mirror the backend diff paths so a change can locate its element.
-function ResumeView({ data }: { data: any }) {
+// Sections are drawn in `order` — the same order the PDF uses (lib/sectionOrder).
+// `move` puts up/down arrows on each section heading.
+function ResumeView({ data, order, move }: { data: any; order: SectionKey[]; move?: MoveFn }) {
   if (!data) return null;
+  const shown = order.filter((k) => hasSection(data, k));
+  const render: Record<SectionKey, () => React.ReactNode> = {
+    summary: () => <p data-path="summary">{data.summary}</p>,
+    skills: () => data.skills.map((g: any, i: number) => (
+      <p key={i} data-path={`skills/${i}`}><b data-path={`skills/${i}/label`}>{g.label}:</b> <span data-path={`skills/${i}/items`}>{(g.items ?? []).join(" · ")}</span></p>
+    )),
+    experience: () => data.experience.map((e: any, i: number) => (
+      <div key={i} className="mb-2" data-path={`experience/${i}`}>
+        <div className="font-medium">
+          <span data-path={`experience/${i}/company`}>{e.company}</span>{" "}
+          {(e.start || e.end) && (
+            <span className="text-muted-foreground font-normal">· <span data-path={`experience/${i}/start`}>{e.start}</span>–<span data-path={`experience/${i}/end`}>{e.end}</span></span>
+          )}
+        </div>
+        {e.titles?.length > 0 && <div className="italic text-muted-foreground" data-path={`experience/${i}/titles`}>{e.titles.join(" → ")}</div>}
+        {e.bullets?.length > 0 && <ul className="list-disc ml-4" data-path={`experience/${i}/bullets`}>{e.bullets.map((b: string, j: number) => <li key={j} data-path={`experience/${i}/bullets/${j}`}>{b}</li>)}</ul>}
+        {e.phases?.map((p: any, k: number) => (
+          <div key={k} className="mt-1">
+            {p.label && <div className="font-medium">{p.label}</div>}
+            <ul className="list-disc ml-4" data-path={`experience/${i}/phases/${k}/bullets`}>{(p.bullets ?? []).map((b: string, j: number) => <li key={j} data-path={`experience/${i}/phases/${k}/bullets/${j}`}>{b}</li>)}</ul>
+          </div>
+        ))}
+        {e.notable?.length > 0 && <p className="text-muted-foreground mt-0.5" data-path={`experience/${i}/notable`}>Notable: {e.notable.map((n: string, j: number) => <span key={j} data-path={`experience/${i}/notable/${j}`}>{n}{j < e.notable.length - 1 ? ", " : ""}</span>)}</p>}
+      </div>
+    )),
+    education: () => data.education.map((ed: any, i: number) => (
+      <p key={i} data-path={`education/${i}`}><span data-path={`education/${i}/degree`}>{ed.degree}</span>{ed.school && <> · <span data-path={`education/${i}/school`}>{ed.school}</span></>}</p>
+    )),
+    projects: () => data.projects.map((pr: any, i: number) => (
+      <div key={i} data-path={`projects/${i}`}>
+        {pr.title && <div className="font-medium" data-path={`projects/${i}/title`}>{pr.title}</div>}
+        <ul className="list-disc ml-4" data-path={`projects/${i}/bullets`}>{(pr.bullets ?? []).map((b: string, j: number) => <li key={j} data-path={`projects/${i}/bullets/${j}`}>{b}</li>)}</ul>
+      </div>
+    )),
+  };
   return (
     <div className="space-y-3 text-xs leading-relaxed">
-      {data.summary && <Section title="Summary"><p data-path="summary">{data.summary}</p></Section>}
-      {data.skills?.length > 0 && (
-        <Section title="Skills" path="skills">
-          {data.skills.map((g: any, i: number) => (
-            <p key={i} data-path={`skills/${i}`}><b data-path={`skills/${i}/label`}>{g.label}:</b> <span data-path={`skills/${i}/items`}>{(g.items ?? []).join(" · ")}</span></p>
-          ))}
+      {shown.map((k, n) => (
+        <Section key={k} title={SECTION_LABELS[k]} path={k === "summary" ? undefined : k}
+                 move={move} sectionKey={k} first={n === 0} last={n === shown.length - 1}>
+          {render[k]()}
         </Section>
-      )}
-      {data.experience?.length > 0 && (
-        <Section title="Experience" path="experience">
-          {data.experience.map((e: any, i: number) => (
-            <div key={i} className="mb-2" data-path={`experience/${i}`}>
-              <div className="font-medium">
-                <span data-path={`experience/${i}/company`}>{e.company}</span>{" "}
-                {(e.start || e.end) && (
-                  <span className="text-muted-foreground font-normal">· <span data-path={`experience/${i}/start`}>{e.start}</span>–<span data-path={`experience/${i}/end`}>{e.end}</span></span>
-                )}
-              </div>
-              {e.titles?.length > 0 && <div className="italic text-muted-foreground" data-path={`experience/${i}/titles`}>{e.titles.join(" → ")}</div>}
-              {e.bullets?.length > 0 && <ul className="list-disc ml-4" data-path={`experience/${i}/bullets`}>{e.bullets.map((b: string, j: number) => <li key={j} data-path={`experience/${i}/bullets/${j}`}>{b}</li>)}</ul>}
-              {e.phases?.map((p: any, k: number) => (
-                <div key={k} className="mt-1">
-                  {p.label && <div className="font-medium">{p.label}</div>}
-                  <ul className="list-disc ml-4" data-path={`experience/${i}/phases/${k}/bullets`}>{(p.bullets ?? []).map((b: string, j: number) => <li key={j} data-path={`experience/${i}/phases/${k}/bullets/${j}`}>{b}</li>)}</ul>
-                </div>
-              ))}
-              {e.notable?.length > 0 && <p className="text-muted-foreground mt-0.5" data-path={`experience/${i}/notable`}>Notable: {e.notable.map((n: string, j: number) => <span key={j} data-path={`experience/${i}/notable/${j}`}>{n}{j < e.notable.length - 1 ? ", " : ""}</span>)}</p>}
-            </div>
-          ))}
-        </Section>
-      )}
-      {data.education?.length > 0 && (
-        <Section title="Education" path="education">
-          {data.education.map((ed: any, i: number) => (
-            <p key={i} data-path={`education/${i}`}><span data-path={`education/${i}/degree`}>{ed.degree}</span>{ed.school && <> · <span data-path={`education/${i}/school`}>{ed.school}</span></>}</p>
-          ))}
-        </Section>
-      )}
-      {data.projects?.length > 0 && (
-        <Section title="Projects" path="projects">
-          {data.projects.map((pr: any, i: number) => (
-            <div key={i} data-path={`projects/${i}`}>
-              {pr.title && <div className="font-medium" data-path={`projects/${i}/title`}>{pr.title}</div>}
-              <ul className="list-disc ml-4" data-path={`projects/${i}/bullets`}>{(pr.bullets ?? []).map((b: string, j: number) => <li key={j} data-path={`projects/${i}/bullets/${j}`}>{b}</li>)}</ul>
-            </div>
-          ))}
-        </Section>
-      )}
+      ))}
     </div>
   );
 }
@@ -143,14 +161,17 @@ function ChangeCard({ c, onDecide, onLocate, busy }: {
         {c.kind === "added" && <Badge variant="outline" className="text-[10px] border-emerald-400/40 text-emerald-700 dark:text-emerald-400">added</Badge>}
         {c.kind === "reordered" && <Badge variant="outline" className="text-[10px] border-blue-400/40 text-blue-700 dark:text-blue-400">changed order</Badge>}
         {flagged && <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-700 dark:text-amber-400"><AlertTriangle className="h-3 w-3" />review carefully</span>}
-        <button
-          type="button"
-          title="Show where this is in the résumé"
-          onClick={() => onLocate(c, cardRef.current?.getBoundingClientRect().top ?? 0)}
-          className="ml-auto inline-flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground"
-        >
-          <Crosshair className="h-3 w-3" /> locate
-        </button>
+        {/* A section move has no one place to point at — the whole résumé is it. */}
+        {c.path !== "section_order" ? (
+          <button
+            type="button"
+            title="Show where this is in the résumé"
+            onClick={() => onLocate(c, cardRef.current?.getBoundingClientRect().top ?? 0)}
+            className="ml-auto inline-flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground"
+          >
+            <Crosshair className="h-3 w-3" /> locate
+          </button>
+        ) : <span className="ml-auto" />}
         {c.decision !== "pending" && (
           <Badge className={cn("text-[10px]", c.decision === "accepted" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" : "bg-rose-500/15 text-rose-700 dark:text-rose-400")}>{c.decision}</Badge>
         )}
@@ -226,6 +247,15 @@ export function TailorReviewPage() {
       jobsApi.patch(`/jobs/${id}/tailor-resume/decisions`, { decisions: { [vars.id]: vars.decision } }).then((r) => r.data),
     onSuccess: (data) => qc.setQueryData(["tailor", id], data),
     onError: () => toast({ title: "Couldn't save decision", variant: "destructive" }),
+  });
+
+  // The arrows on the Tailored pane. Stored server-side as the same single
+  // "section order" change a refine produces, already accepted.
+  const orderMut = useMutation({
+    mutationFn: (order: SectionKey[]) =>
+      jobsApi.put(`/jobs/${id}/tailor-resume/section-order`, { order }).then((r) => r.data),
+    onSuccess: (data) => qc.setQueryData(["tailor", id], data),
+    onError: (e: any) => toast({ title: "Couldn't move that section", description: e?.response?.data?.detail, variant: "destructive" }),
   });
 
   const busy = tailorMut.isPending || refineMut.isPending;
@@ -331,7 +361,7 @@ export function TailorReviewPage() {
             {/* Original */}
             <div className="rounded-lg border bg-card flex flex-col min-h-0">
               <div className="shrink-0 text-xs font-semibold text-muted-foreground px-3 py-2 border-b">Original</div>
-              <div ref={origRef} className="flex-1 overflow-y-auto p-3"><ResumeView data={state.original} /></div>
+              <div ref={origRef} className="flex-1 overflow-y-auto p-3"><ResumeView data={state.original} order={sectionOrder(state.original)} /></div>
             </div>
 
             {/* Changes */}
@@ -353,8 +383,24 @@ export function TailorReviewPage() {
 
             {/* Tailored */}
             <div className="rounded-lg border bg-card flex flex-col min-h-0">
-              <div className="shrink-0 text-xs font-semibold text-muted-foreground px-3 py-2 border-b">Tailored</div>
-              <div ref={tailRef} className="flex-1 overflow-y-auto p-3"><ResumeView data={state.tailored} /></div>
+              <div className="shrink-0 flex items-center text-xs font-semibold text-muted-foreground px-3 py-2 border-b">
+                <span className="flex-1">Tailored</span>
+                <span className="font-normal text-[11px]">arrows move a section · the PDF follows</span>
+              </div>
+              {/* Section order is the APPROVED one (what the PDF prints), so rejecting
+                  a move puts the sections back here too; the content stays the draft. */}
+              <div ref={tailRef} className="flex-1 overflow-y-auto p-3">
+                <ResumeView
+                  data={state.tailored}
+                  order={sectionOrder(effectiveResume(state))}
+                  move={(k, dir) => {
+                    if (orderMut.isPending || busy) return;   // one move at a time
+                    const current = sectionOrder(effectiveResume(state));
+                    const next = moveSection(current, k, dir, (s) => hasSection(state.tailored, s));
+                    if (next !== current) orderMut.mutate(next);
+                  }}
+                />
+              </div>
             </div>
           </div>
 
@@ -364,7 +410,7 @@ export function TailorReviewPage() {
             <Textarea
               rows={1}
               className="text-sm min-h-0 resize-none"
-              placeholder="Tell the AI what to adjust (keeps rejected wording, stays honest) — e.g. emphasize cloud architecture"
+              placeholder="Tell the AI what to adjust (keeps rejected wording, stays honest) — e.g. emphasize cloud architecture, or put Experience before Projects"
               value={instruction}
               onChange={(e) => setInstruction(e.target.value)}
             />

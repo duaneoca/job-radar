@@ -306,6 +306,12 @@ function ApplicationToolsTab() {
         order while keeping your original phrasing, or the reverse. A bullet moved between
         phases of the same job is the one case that still shows as a removal plus an
         addition.</P>
+      <P><strong>Section order</strong> follows your own résumé — the tailor page and the PDF
+        draw your sections in the order you wrote them. The AI never moves whole sections on
+        its own, but you can for a particular job: use the arrows on the section headings in
+        the Tailored column, or ask in the refine box ("put Experience before Projects").
+        Either way it becomes one <em>changed order</em> change for the sections, and the PDF
+        always matches what's on screen. Reject it to put your sections back.</P>
       <P>When you're happy, export a clean, templated <strong>PDF</strong> — pick a template,
         adjust font/density/margins, and print or download. Your tailored version is saved
         with the job, so you can come back to it later.</P>
