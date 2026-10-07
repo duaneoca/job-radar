@@ -150,6 +150,13 @@ a time (H6). The shared `AGENT_INTERNAL_TOKEN` must match in `tracker-api-secret
   for work that had succeeded. 95s is deliberately just under Cloudflare's 100s
   cap, which nothing in our config can raise; anything genuinely slower than that
   has to become a background job rather than a longer request.
+- **Résumé section order has ONE source.** `ResumeStructured.section_order` (read from the
+  résumé's own headings by `detect_section_order` — deterministic, no model call; old rows are
+  backfilled from `resume_text` on read) drawn via `src/lib/sectionOrder.ts` by the tailor page
+  AND both PDF templates. Never hardcode an order in a renderer — three renderers once each did,
+  so the screen and the PDF disagreed and neither matched the résumé. Per job, a move is ONE
+  `section_order` "reordered" change (refine on request, or the arrows →
+  `PUT /jobs/{id}/tailor-resume/section-order`); the first tailor pass can never move sections.
 - Bookmarklet built inline in `src/pages/SettingsPage.tsx` — `buildBookmarklet()` function returns a `javascript:` URL. All JS inside is minified (newlines stripped at runtime). Escape backslashes twice in template literals (`\\s` → `\s` in output).
 
 ### ai-reviewer (Celery worker)

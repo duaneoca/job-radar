@@ -429,6 +429,32 @@ class ResumeProject(BaseModel):
     bullets: List[str] = []
 
 
+# The top-level sections a résumé is drawn in, by key. The header (contact) is
+# always first and is not one of them.
+RESUME_SECTIONS = ("summary", "skills", "experience", "education", "projects")
+# Used when a résumé's own order is unknown. It is the order the Classic PDF
+# always used before section order was recorded, so nobody's PDF moves.
+DEFAULT_SECTION_ORDER = ("summary", "skills", "projects", "experience", "education")
+
+
+def normalize_section_order(order) -> Optional[List[str]]:
+    """A complete, valid section order, or None when there is nothing usable.
+
+    Unknown keys and repeats are dropped; sections missing from the list are
+    appended in DEFAULT_SECTION_ORDER. Lenient on purpose — it arrives from model
+    output and from old rows, and a bad order must cost the order, not the résumé.
+    """
+    if not isinstance(order, list):
+        return None
+    out: List[str] = []
+    for k in order:
+        if isinstance(k, str) and k in RESUME_SECTIONS and k not in out:
+            out.append(k)
+    if not out:
+        return None
+    return out + [k for k in DEFAULT_SECTION_ORDER if k not in out]
+
+
 class ResumeStructured(BaseModel):
     """The canonical structured résumé — output of the ingest parse and the unit
     of tailoring/diffing. Lenient: a parse that omits a section still validates."""
@@ -438,6 +464,20 @@ class ResumeStructured(BaseModel):
     experience: List[ResumeExperience] = []
     education: List[ResumeEducation] = []
     projects: List[ResumeProject] = []
+    # The order the sections are drawn in, by RESUME_SECTIONS key. None = unknown
+    # (rows parsed before this existed); readers fall back to DEFAULT_SECTION_ORDER.
+    # Every renderer — the tailor page, both PDF templates — follows it.
+    section_order: Optional[List[str]] = None
+
+    @field_validator("section_order", mode="before")
+    @classmethod
+    def _normalize_section_order(cls, v):
+        return normalize_section_order(v)
+
+
+class SectionOrderIn(BaseModel):
+    """PUT /jobs/{id}/tailor-resume/section-order — a full permutation of RESUME_SECTIONS."""
+    order: List[str]
 
 
 class ResumeIngestOut(BaseModel):

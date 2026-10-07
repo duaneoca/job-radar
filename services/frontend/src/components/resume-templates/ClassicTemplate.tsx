@@ -1,3 +1,6 @@
+import { Fragment } from "react";
+import { hasSection, sectionOrder, type SectionKey } from "../../lib/sectionOrder";
+
 // Classic résumé template — single column, navy accents. Most ATS-safe, multi-page
 // friendly. CSS ported from the browser-validated prototype (@page margins on every
 // page, keep-together rules, em-based spacing driven by --scale for autofit).
@@ -30,6 +33,64 @@ const CSS = `
 @media print{ .rt-classic{ width:auto; } @page{ size:letter; margin:.5in; } }
 `;
 
+// One renderer per section, drawn in the résumé's own order (lib/sectionOrder) —
+// the same order the tailor page shows. Markup is unchanged from the fixed layout.
+const SECTIONS: Record<SectionKey, (data: any) => React.ReactNode> = {
+  summary: (data) => (<><h2 data-block-id="sec-summary">Summary</h2><p>{data.summary}</p></>),
+  skills: (data) => (
+    <>
+      <h2 data-block-id="sec-skills">Skills</h2>
+      {data.skills.map((g: any, i: number) => (
+        <div className="skill" key={i}><b>{g.label}:</b> {(g.items ?? []).join(" · ")}</div>
+      ))}
+    </>
+  ),
+  projects: (data) => (
+    <>
+      <h2 data-block-id="sec-projects">Projects</h2>
+      {data.projects.map((pr: any, i: number) => (
+        <div className="entry" data-block-id={`proj-${i}`} key={i}>
+          {pr.title && <div className="org" style={{ fontSize: "1em" }}>{pr.title}</div>}
+          {pr.bullets?.length > 0 && <ul>{pr.bullets.map((b: string, j: number) => <li key={j}>{b}</li>)}</ul>}
+        </div>
+      ))}
+    </>
+  ),
+  experience: (data) => (
+    <>
+      <h2 data-block-id="sec-experience">Experience</h2>
+      {data.experience.map((e: any, i: number) => (
+        <div className="entry" data-block-id={`exp-${i}`} key={i}>
+          <div className="entry-head">
+            <span className="org">{e.company}</span>
+            {(e.start || e.end) && <span className="dates">{e.start}{e.start && e.end ? " – " : ""}{e.end}</span>}
+          </div>
+          {e.titles?.length > 0 && <div className="titles">{e.titles.join(" → ")}</div>}
+          {e.bullets?.length > 0 && <ul>{e.bullets.map((b: string, j: number) => <li key={j}>{b}</li>)}</ul>}
+          {e.phases?.map((p: any, k: number) => (
+            <div key={k}>
+              {(p.label || p.start) && <div className="phase">{p.label}{p.start ? ` (${p.start}${p.end ? ` – ${p.end}` : ""})` : ""}</div>}
+              {p.bullets?.length > 0 && <ul>{p.bullets.map((b: string, j: number) => <li key={j}>{b}</li>)}</ul>}
+            </div>
+          ))}
+          {e.notable?.length > 0 && <p className="note"><b>Notable:</b> {e.notable.join(", ")}</p>}
+        </div>
+      ))}
+    </>
+  ),
+  education: (data) => (
+    <>
+      <h2 data-block-id="sec-education">Education</h2>
+      {data.education.map((ed: any, i: number) => (
+        <div className="entry-head" key={i}>
+          <span className="org">{ed.degree}</span>
+          {ed.school && <span className="dates">{ed.school}</span>}
+        </div>
+      ))}
+    </>
+  ),
+};
+
 function contactLine(c: any): string {
   return [c?.phone, c?.location, c?.email, ...(c?.links ?? [])]
     .filter(Boolean).join(" · ");
@@ -45,63 +106,7 @@ export function ClassicTemplate({ data }: { data: any }) {
         <div className="contact">{contactLine(c)}</div>
       </header>
 
-      {data?.summary && (<><h2 data-block-id="sec-summary">Summary</h2><p>{data.summary}</p></>)}
-
-      {data?.skills?.length > 0 && (
-        <>
-          <h2 data-block-id="sec-skills">Skills</h2>
-          {data.skills.map((g: any, i: number) => (
-            <div className="skill" key={i}><b>{g.label}:</b> {(g.items ?? []).join(" · ")}</div>
-          ))}
-        </>
-      )}
-
-      {data?.projects?.length > 0 && (
-        <>
-          <h2 data-block-id="sec-projects">Projects</h2>
-          {data.projects.map((pr: any, i: number) => (
-            <div className="entry" data-block-id={`proj-${i}`} key={i}>
-              {pr.title && <div className="org" style={{ fontSize: "1em" }}>{pr.title}</div>}
-              {pr.bullets?.length > 0 && <ul>{pr.bullets.map((b: string, j: number) => <li key={j}>{b}</li>)}</ul>}
-            </div>
-          ))}
-        </>
-      )}
-
-      {data?.experience?.length > 0 && (
-        <>
-          <h2 data-block-id="sec-experience">Experience</h2>
-          {data.experience.map((e: any, i: number) => (
-            <div className="entry" data-block-id={`exp-${i}`} key={i}>
-              <div className="entry-head">
-                <span className="org">{e.company}</span>
-                {(e.start || e.end) && <span className="dates">{e.start}{e.start && e.end ? " – " : ""}{e.end}</span>}
-              </div>
-              {e.titles?.length > 0 && <div className="titles">{e.titles.join(" → ")}</div>}
-              {e.bullets?.length > 0 && <ul>{e.bullets.map((b: string, j: number) => <li key={j}>{b}</li>)}</ul>}
-              {e.phases?.map((p: any, k: number) => (
-                <div key={k}>
-                  {(p.label || p.start) && <div className="phase">{p.label}{p.start ? ` (${p.start}${p.end ? ` – ${p.end}` : ""})` : ""}</div>}
-                  {p.bullets?.length > 0 && <ul>{p.bullets.map((b: string, j: number) => <li key={j}>{b}</li>)}</ul>}
-                </div>
-              ))}
-              {e.notable?.length > 0 && <p className="note"><b>Notable:</b> {e.notable.join(", ")}</p>}
-            </div>
-          ))}
-        </>
-      )}
-
-      {data?.education?.length > 0 && (
-        <>
-          <h2 data-block-id="sec-education">Education</h2>
-          {data.education.map((ed: any, i: number) => (
-            <div className="entry-head" key={i}>
-              <span className="org">{ed.degree}</span>
-              {ed.school && <span className="dates">{ed.school}</span>}
-            </div>
-          ))}
-        </>
-      )}
+      {sectionOrder(data).filter((k) => hasSection(data, k)).map((k) => <Fragment key={k}>{SECTIONS[k](data)}</Fragment>)}
     </div>
   );
 }
