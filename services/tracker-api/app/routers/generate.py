@@ -588,6 +588,14 @@ def get_tailored_resume(
                                             profile.resume_text if profile else None):
         flag_modified(review, "resume_tailor")
         db.commit()
+    # The base résumé needs the same backfill, or the comparison below sees a
+    # snapshot that has an order and a base that doesn't, and every job tailored
+    # before section order existed claims "your base résumé changed".
+    if profile and profile.resume_structured and not profile.resume_structured.get("section_order"):
+        order = resume_tailor.detect_section_order(profile.resume_text)
+        if order is not None:
+            profile.resume_structured = {**profile.resume_structured, "section_order": order}
+            db.commit()
     state = dict(review.resume_tailor)
     base = (profile.resume_structured if profile else None)
     state["base_changed"] = bool(base) and base != state.get("original")

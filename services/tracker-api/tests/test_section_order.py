@@ -199,9 +199,16 @@ def test_get_backfills_a_state_saved_without_an_order(client, db, monkeypatch):
     review.resume_tailor = old
     db.commit()
 
+    # The base résumé predates section order too; filling in only the snapshot
+    # made every old tailored job claim the base résumé had changed.
+    profile = db.query(models.Profile).filter_by(user_id=TEST_USER_ID).one()
+    profile.resume_structured = {k: v for k, v in profile.resume_structured.items() if k != "section_order"}
+    db.commit()
+
     st = client.get(f"/jobs/{rid}/tailor-resume").json()
     assert st["original"]["section_order"] == AS_WRITTEN
     assert st["tailored"]["section_order"] == AS_WRITTEN
+    assert st["base_changed"] is False
     db.refresh(review)
     assert review.resume_tailor["original"]["section_order"] == AS_WRITTEN   # persisted
 
