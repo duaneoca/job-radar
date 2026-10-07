@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import { hasSection, sectionOrder, type SectionKey } from "../../lib/sectionOrder";
+import { customSections, hasSection, isCustom, sectionOrder, sectionTitle, type BuiltinKey } from "../../lib/sectionOrder";
 
 // Modern résumé template — navy sidebar (contact + skills) + main column. One-page
 // design (a full-bleed sidebar can't span printed pages). CSS ported from the
@@ -46,15 +46,15 @@ const CSS = `
 @media print{ @page{ size:letter; margin:0; } }
 `;
 
-type MainKey = Exclude<SectionKey, "skills">;
+type MainKey = Exclude<BuiltinKey, "skills">;
 
 // Main-column sections, drawn in the résumé's own order (lib/sectionOrder) — the
 // same order the tailor page shows. Markup is unchanged from the fixed layout.
 const MAIN: Record<MainKey, (data: any) => React.ReactNode> = {
-  summary: (data) => (<section><h2>Summary</h2><p>{data.summary}</p></section>),
+  summary: (data) => (<section><h2>{sectionTitle(data, "summary")}</h2><p>{data.summary}</p></section>),
   projects: (data) => (
     <section>
-      <h2>Projects</h2>
+      <h2>{sectionTitle(data, "projects")}</h2>
       {data.projects.map((pr: any, i: number) => (
         <div className="entry" key={i}>
           {pr.title && <div className="org" style={{ fontSize: "1em" }}>{pr.title}</div>}
@@ -65,7 +65,7 @@ const MAIN: Record<MainKey, (data: any) => React.ReactNode> = {
   ),
   experience: (data) => (
     <section>
-      <h2>Experience</h2>
+      <h2>{sectionTitle(data, "experience")}</h2>
       {data.experience.map((e: any, i: number) => (
         <div className="entry" key={i}>
           <div className="entry-head">
@@ -87,7 +87,7 @@ const MAIN: Record<MainKey, (data: any) => React.ReactNode> = {
   ),
   education: (data) => (
     <section>
-      <h2>Education</h2>
+      <h2>{sectionTitle(data, "education")}</h2>
       {data.education.map((ed: any, i: number) => (
         <div className="entry-head" key={i}>
           <span className="org">{ed.degree}</span>
@@ -112,7 +112,7 @@ export function ModernTemplate({ data }: { data: any }) {
         ))}
         {data?.skills?.length > 0 && (
           <>
-            <h3>Skills</h3>
+            <h3>{sectionTitle(data, "skills")}</h3>
             {data.skills.map((g: any, i: number) => (
               <div className="skill" key={i}><b>{g.label}</b><span>{(g.items ?? []).join(" · ")}</span></div>
             ))}
@@ -122,8 +122,22 @@ export function ModernTemplate({ data }: { data: any }) {
 
       <main className="main">
         {/* Skills live in the sidebar; the main column follows the résumé's order. */}
-        {sectionOrder(data).filter((k) => k !== "skills" && hasSection(data, k))
-          .map((k) => <Fragment key={k}>{MAIN[k as MainKey](data)}</Fragment>)}
+        {sectionOrder(data).filter((k) => k !== "skills" && hasSection(data, k)).map((k) => {
+          if (!isCustom(k)) return <Fragment key={k}>{MAIN[k as MainKey](data)}</Fragment>;
+          // A custom section: its own heading, then titled entries with bullets.
+          const found = customSections(data).find((s) => s.key === k);
+          return found ? (
+            <section key={k}>
+              <h2>{found.section.title}</h2>
+              {(found.section.entries ?? []).map((en: any, i: number) => (
+                <div className="entry" key={i}>
+                  {en.title && <div className="org" style={{ fontSize: "1em" }}>{en.title}</div>}
+                  {en.bullets?.length > 0 && <ul>{en.bullets.map((b: string, j: number) => <li key={j}>{b}</li>)}</ul>}
+                </div>
+              ))}
+            </section>
+          ) : null;
+        })}
       </main>
     </div>
   );

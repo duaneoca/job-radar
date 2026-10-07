@@ -8,7 +8,7 @@ from uuid import UUID
 
 import re
 
-from pydantic import BaseModel, EmailStr, Field, ValidationError, field_validator
+from pydantic import BaseModel, EmailStr, Field, ValidationError, field_validator, model_validator
 
 from app.models import (
     AgentEnvironment, AgentRunStatus,
@@ -429,30 +429,55 @@ class ResumeProject(BaseModel):
     bullets: List[str] = []
 
 
-# The top-level sections a résumé is drawn in, by key. The header (contact) is
-# always first and is not one of them.
+class ResumeCustomSection(BaseModel):
+    """Any section that isn't one of the five typed ones — Certifications,
+    Volunteering, Publications, "Current stuff" — under its own heading.
+
+    Entries reuse the project shape (a title line plus bullets): it fits nearly
+    everything, and it is what the diff, the review page and both templates
+    already know how to draw. Untyped on purpose: nothing here feeds the honesty
+    facts, which need to know which section is the employment history."""
+    id: Optional[str] = None          # "custom:<slug>", assigned server-side
+    title: str
+    entries: List[ResumeProject] = []
+
+
+# The five TYPED top-level sections, by key. Behaviour hangs off the type, not
+# the heading: honesty facts read experience/education, factual flags key on
+# their fields, and each has its own layout. The header (contact) is always first
+# and is not one of them. Custom sections join the order as "custom:<slug>".
 RESUME_SECTIONS = ("summary", "skills", "experience", "education", "projects")
+CUSTOM_PREFIX = "custom:"
+_TITLE_MAX = 80
 # Used when a résumé's own order is unknown. It is the order the Classic PDF
 # always used before section order was recorded, so nobody's PDF moves.
 DEFAULT_SECTION_ORDER = ("summary", "skills", "projects", "experience", "education")
 
 
-def normalize_section_order(order) -> Optional[List[str]]:
+def normalize_section_order(order, custom_keys=()) -> Optional[List[str]]:
     """A complete, valid section order, or None when there is nothing usable.
 
-    Unknown keys and repeats are dropped; sections missing from the list are
-    appended in DEFAULT_SECTION_ORDER. Lenient on purpose — it arrives from model
-    output and from old rows, and a bad order must cost the order, not the résumé.
+    Valid keys are the five typed sections plus this résumé's `custom_keys`.
+    Unknown keys and repeats are dropped; typed sections missing from the list
+    are appended in DEFAULT_SECTION_ORDER, then missing custom ones. Lenient on
+    purpose — it arrives from model output and from old rows, and a bad order
+    must cost the order, not the résumé.
     """
     if not isinstance(order, list):
         return None
+    valid = set(RESUME_SECTIONS) | set(custom_keys)
     out: List[str] = []
     for k in order:
-        if isinstance(k, str) and k in RESUME_SECTIONS and k not in out:
+        if isinstance(k, str) and k in valid and k not in out:
             out.append(k)
     if not out:
         return None
-    return out + [k for k in DEFAULT_SECTION_ORDER if k not in out]
+    return (out + [k for k in DEFAULT_SECTION_ORDER if k not in out]
+            + [k for k in custom_keys if k not in out])
+
+
+def _slug(title: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", (title or "").lower()).strip("-")[:40] or "section"
 
 
 class ResumeStructured(BaseModel):
@@ -464,19 +489,57 @@ class ResumeStructured(BaseModel):
     experience: List[ResumeExperience] = []
     education: List[ResumeEducation] = []
     projects: List[ResumeProject] = []
-    # The order the sections are drawn in, by RESUME_SECTIONS key. None = unknown
-    # (rows parsed before this existed); readers fall back to DEFAULT_SECTION_ORDER.
-    # Every renderer — the tailor page, both PDF templates — follows it.
+    # Sections that aren't one of the five typed ones, under their own headings.
+    custom_sections: List[ResumeCustomSection] = []
+    # The heading each typed section actually has in the résumé ("Current Stuff"
+    # for projects). Absent → the standard label. Display only.
+    section_titles: dict = {}
+    # The order the sections are drawn in: RESUME_SECTIONS keys plus custom ids.
+    # None = unknown (rows parsed before this existed); readers fall back to
+    # DEFAULT_SECTION_ORDER. Every renderer — the tailor page, both PDF
+    # templates — follows it.
     section_order: Optional[List[str]] = None
+
+    @field_validator("section_titles", mode="before")
+    @classmethod
+    def _clean_titles(cls, v):
+        if not isinstance(v, dict):
+            return {}
+        return {k: t.strip()[:_TITLE_MAX] for k, t in v.items()
+                if k in RESUME_SECTIONS and isinstance(t, str) and t.strip()}
 
     @field_validator("section_order", mode="before")
     @classmethod
-    def _normalize_section_order(cls, v):
-        return normalize_section_order(v)
+    def _order_is_a_list(cls, v):
+        # Shape only; full normalization needs the custom ids (below). A bad
+        # order must cost the order, never the résumé.
+        return [k for k in v if isinstance(k, str)] if isinstance(v, list) else None
+
+    @model_validator(mode="after")
+    def _ids_and_order(self):
+        # Ids are ours, never the model's: stable slugs of the heading, unique.
+        # One a section already carries is kept, so identity survives a tailor.
+        seen: set = set()
+        for s in self.custom_sections:
+            s.title = s.title.strip()[:_TITLE_MAX] or "Section"
+            cid = s.id if (s.id or "").startswith(CUSTOM_PREFIX) and s.id not in seen else None
+            if cid is None:
+                base, n = CUSTOM_PREFIX + _slug(s.title), 2
+                cid = base
+                while cid in seen:
+                    cid, n = f"{base}-{n}", n + 1
+            s.id = cid
+            seen.add(cid)
+        self.section_order = normalize_section_order(self.section_order, self.custom_keys())
+        return self
+
+    def custom_keys(self) -> List[str]:
+        return [s.id for s in self.custom_sections]
 
 
 class SectionOrderIn(BaseModel):
-    """PUT /jobs/{id}/tailor-resume/section-order — a full permutation of RESUME_SECTIONS."""
+    """PUT /jobs/{id}/tailor-resume/section-order — a full permutation of the
+    résumé's sections: RESUME_SECTIONS plus its custom section ids."""
     order: List[str]
 
 

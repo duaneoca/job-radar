@@ -150,6 +150,13 @@ a time (H6). The shared `AGENT_INTERNAL_TOKEN` must match in `tracker-api-secret
   for work that had succeeded. 95s is deliberately just under Cloudflare's 100s
   cap, which nothing in our config can raise; anything genuinely slower than that
   has to become a background job rather than a longer request.
+- **Résumé sections: typed where behaviour depends on it, free-form otherwise.** Five typed
+  sections (summary/skills/experience/education/projects) carry behaviour — honesty facts read
+  experience/education, factual flags key on their fields, each has its own layout. Everything
+  else is a `custom_sections` entry (`custom:<slug>` id, own title, project-shaped entries), and
+  `section_titles` holds the résumé's own headings. The parser must never drop a section;
+  `_keep_section_identity` enforces that tailoring keeps headings, ids and every custom section
+  (matched by id, then title — never by position). Migration 0029 re-parses pre-custom résumés.
 - **Résumé section order has ONE source.** `ResumeStructured.section_order` (read from the
   résumé's own headings by `detect_section_order` — deterministic, no model call; old rows are
   backfilled from `resume_text` on read) drawn via `src/lib/sectionOrder.ts` by the tailor page
