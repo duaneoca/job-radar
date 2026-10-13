@@ -8,13 +8,14 @@ Two kinds of copy, both from before ingest learned to recognise them:
     posting most days, so every scrape added it again;
   * aggregator re-listings — same company, title and city (`jobs.match_key`).
 
-For each group ONE review is kept and only untouched aggregator copies are
-deleted. "Touched" means anything a person did: a status past new/reviewed/
+In each group every copy someone worked on is kept, and only untouched
+aggregator copies are deleted. "Touched" means anything a person did: a status past new/reviewed/
 expired (dismissed included — that is a verdict), notes, contact notes, a
 recruiter, research, application answers, interview prep or a tailored résumé.
   * nobody touched any → keep the most recently scraped (freshest data);
-  * one was touched → keep that one;
-  * two or more were touched → leave the whole group alone and list it.
+  * one or more were touched → keep all of those, delete the untouched rest;
+    a group left with two or more worked copies is listed for the user to
+    consolidate (choosing between two people's work isn't ours to do).
 Company-board and manual jobs are never deleted, only kept. A Job row left with
 no reviews from anyone is removed too. Deleting a review cascades its timeline.
 """
@@ -58,20 +59,18 @@ class Row:
 class Plan:
     delete: list = field(default_factory=list)                 # Row
     kept: dict = field(default_factory=dict)                   # review_id → Row kept for a group
-    skipped: list = field(default_factory=list)                # (kind, label, [Row]) left alone
+    skipped: list = field(default_factory=list)                # (kind, label, [Row]) still >1 worked copy
     by_kind: dict = field(default_factory=lambda: defaultdict(int))
 
 
-def _choose(group: list) -> Row | None:
-    """The row to keep, or None to leave the group alone."""
+def _keepers(group: list) -> list:
+    """The rows to keep: every worked copy, else the single best one."""
     touched = [r for r in group if r.touched]
-    if len(touched) > 1:
-        return None
     if touched:
-        return touched[0]
+        return touched
     # Prefer a company-board or manual job (the better link), then the freshest.
-    return max(group, key=lambda r: (r.source not in AGGREGATOR_SOURCES,
-                                     r.scraped or datetime.min))
+    return [max(group, key=lambda r: (r.source not in AGGREGATOR_SOURCES,
+                                      r.scraped or datetime.min))]
 
 
 def plan(rows: list) -> Plan:
@@ -84,17 +83,19 @@ def plan(rows: list) -> Plan:
             members = [r for r in members if r.review_id not in gone]
             if len(members) < 2:
                 continue
-            keep = _choose(members)
-            if keep is None:
-                # The same copies often share a link AND a key; report them once.
-                ids = frozenset(r.review_id for r in members)
+            keep = _keepers(members)
+            if len(keep) > 1:
+                # Still more than one worked copy — say so, once (the same copies
+                # often share a link AND a key).
+                ids = frozenset(r.review_id for r in keep)
                 if ids not in reported:
                     reported.add(ids)
-                    p.skipped.append((kind, label, members))
-                continue
-            p.kept[keep.review_id] = keep
+                    p.skipped.append((kind, label, keep))
+            keep_ids = {r.review_id for r in keep}
+            for r in keep:
+                p.kept[r.review_id] = r
             for r in members:
-                if r is not keep and r.deletable:
+                if r.review_id not in keep_ids and r.deletable:
                     p.delete.append(r)
                     p.by_kind[kind] += 1
                     gone.add(r.review_id)
@@ -137,7 +138,8 @@ def run(db, email: str, apply: bool) -> Plan:
     p = plan(rows)
     print(f"{len(rows)} reviews for {email}; {len(p.delete)} untouched copies to remove "
           f"({', '.join(f'{k}: {n}' for k, n in p.by_kind.items()) or 'none'}).")
-    print(f"{len(p.skipped)} group(s) left alone because more than one copy has your work on it.")
+    print(f"{len(p.skipped)} group(s) still have more than one copy with your work on it "
+          f"(all kept — consolidate them yourself if you want):")
     for kind, label, members in p.skipped[:20]:
         print(f"  [{kind}] {members[0].company} — {members[0].title}: "
               + ", ".join(f"{m.status}" for m in members))

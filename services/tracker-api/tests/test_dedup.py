@@ -111,9 +111,14 @@ def test_a_dismissal_is_a_verdict_and_is_kept():
     assert [r.review_id for r in p.delete] == ["r2"]
 
 
-def test_two_worked_copies_leave_the_group_alone():
-    p = plan([_row(1, status="applied"), _row(2, notes="x"), _row(3)])
-    assert p.delete == [] and len(p.skipped) == 1
+def test_two_worked_copies_are_both_kept_and_the_rest_go():
+    """Production, ServiceNow: Applied and Referral-requested copies of one posting
+    plus untouched Reviewed copies. Choosing between two worked copies isn't ours;
+    deleting the untouched ones is safe either way."""
+    p = plan([_row(1, status="applied"), _row(2, status="referral_requested"),
+              _row(3, days=2), _row(4, days=3)])
+    assert sorted(r.review_id for r in p.delete) == ["r3", "r4"]
+    assert len(p.skipped) == 1                                   # listed once, to consolidate
 
 
 def test_board_and_manual_jobs_are_never_deleted():
