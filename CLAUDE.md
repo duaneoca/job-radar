@@ -402,6 +402,12 @@ only by the production release workflow.
 - Lists **all** pods in the namespace — no `labelSelector`. `project=jobradar` is
   on the Deployment objects but **not** their pod templates, so selecting on it
   matches zero pods.
+- **Also reports what logs can't show** (`find_incidents`): failed Jobs — CronJob runs
+  that die with a plain Python traceback match neither LOG_LINE nor FALLBACK_LINE
+  (3 email-agent runs failed in one hour unseen) — and OOM-killed / crashed
+  containers, which log nothing at all (prod tracker-api's OOM was invisible). Each
+  failed run names what it died of (`last_exception` of its newest pod). Needs
+  `batch/jobs: list` in the Role; if refused, the footer says so rather than going quiet.
 - **Nothing found → nothing sent.** Failure to read the cluster sends a `FAILED`
   email and exits 1; one unreadable container is named in the footer, never dropped.
 - **Repeat mail while an error persists is intentional** — fix the bug or fix what

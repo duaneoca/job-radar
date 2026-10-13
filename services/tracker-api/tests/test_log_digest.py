@@ -198,6 +198,7 @@ def wired(monkeypatch):
     monkeypatch.setattr(log_digest, "_namespace", lambda: "jobradar-production")
     monkeypatch.setattr(log_digest, "_kube_client", lambda: _FakeClient({}))
     monkeypatch.setattr(log_digest.settings, "admin_notify_email", "ops@example.com")
+    monkeypatch.setattr(log_digest, "find_incidents", lambda c, ns: OrderedDict())
     return sent
 
 
@@ -361,3 +362,125 @@ def test_celery_own_format_is_caught():
         service="ai-reviewer",
     )
     assert len(entries) == 1
+
+
+# ── failed runs and killed containers ─────────────────────────
+# Invisible to the log scan: a CronJob run dying with a plain Python traceback,
+# and a container the kernel OOM-kills (which logs nothing at all).
+
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
+NOW = datetime(2026, 10, 13, 0, 5, tzinfo=timezone.utc)
+
+
+def _ago(minutes):
+    return (NOW - timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+AGENT_TRACEBACK = """2026-10-13T00:00:30Z Traceback (most recent call last):
+2026-10-13T00:00:30Z   File "/app/run.py", line 9, in <module>
+2026-10-13T00:00:30Z httpcore.ConnectError: [Errno 111] Connection refused
+2026-10-13T00:00:30Z
+2026-10-13T00:00:30Z The above exception was the direct cause of the following exception:
+2026-10-13T00:00:31Z httpx.ConnectError: [Errno 111] Connection refused
+"""
+
+
+class _Resp:
+    def __init__(self, payload, status=200):
+        self.payload, self.status_code = payload, status
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
+    def json(self):
+        return self.payload
+
+
+class _Kube:
+    def __init__(self, pods, jobs, jobs_status=200):
+        self.pods, self.jobs, self.jobs_status = pods, jobs, jobs_status
+
+    def get(self, path, params=None):
+        if path.endswith("/pods"):
+            return _Resp({"items": self.pods})
+        if path.endswith("/jobs"):
+            return _Resp({"items": self.jobs}, self.jobs_status)
+        raise AssertionError(path)
+
+
+def _job(name, minutes_ago, reason="BackoffLimitExceeded", cron="jobradar-email-agent"):
+    return {"metadata": {"name": name, "ownerReferences": [{"kind": "CronJob", "name": cron}]},
+            "status": {"conditions": [{"type": "Failed", "status": "True", "reason": reason,
+                                       "message": "Job has reached the specified backoff limit",
+                                       "lastTransitionTime": _ago(minutes_ago)}]}}
+
+
+def _job_pod(job):
+    return {"metadata": {"name": f"{job}-abc", "labels": {"job-name": job},
+                         "creationTimestamp": _ago(6)},
+            "spec": {"containers": [{"name": "agent"}]}, "status": {}}
+
+
+def _oom_pod(minutes_ago, slot="lastState"):
+    return {"metadata": {"name": "jobradar-tracker-api-x", "labels": {"app": "tracker-api"}},
+            "spec": {"containers": [{"name": "tracker-api"}]},
+            "status": {"containerStatuses": [{"name": "tracker-api", slot: {"terminated": {
+                "reason": "OOMKilled", "exitCode": 137, "finishedAt": _ago(minutes_ago)}}}]}}
+
+
+def test_last_exception_names_what_the_run_died_of():
+    assert log_digest.last_exception(AGENT_TRACEBACK) == "httpx.ConnectError: [Errno 111] Connection refused"
+    assert log_digest.last_exception("just some output\n") is None
+
+
+def test_failed_cronjob_runs_are_found_and_grouped(monkeypatch):
+    jobs = [_job("agent-1", 5), _job("agent-2", 50), _job("agent-old", 120)]
+    pods = [_job_pod("agent-1"), _job_pod("agent-2")]
+    monkeypatch.setattr(log_digest, "read_log", lambda c, ns, p, ct: AGENT_TRACEBACK)
+    inc = log_digest.find_incidents(_Kube(pods, jobs), "ns", now=NOW)
+    (i,) = inc.values()                                   # two runs, one shape; the old one ignored
+    assert (i.kind, i.source, i.reason, i.count) == ("failed run", "jobradar-email-agent",
+                                                      "BackoffLimitExceeded", 2)
+    assert "Connection refused" in i.detail
+
+
+def test_a_failed_run_without_a_readable_log_still_reports():
+    inc = log_digest.find_incidents(_Kube([], [_job("backup-1", 10, cron="jobradar-db-backup")]),
+                                    "ns", now=NOW)
+    (i,) = inc.values()
+    assert i.source == "jobradar-db-backup" and "backoff limit" in i.detail
+
+
+@pytest.mark.parametrize("slot", ["lastState", "state"])
+def test_oom_kills_are_reported(slot):
+    (i,) = log_digest.find_incidents(_Kube([_oom_pod(20, slot)], []), "ns", now=NOW).values()
+    assert (i.kind, i.source, i.reason) == ("killed", "tracker-api", "OOMKilled")
+
+
+def test_old_kills_are_not_reported():
+    assert not log_digest.find_incidents(_Kube([_oom_pod(70 + 60)], []), "ns", now=NOW)
+
+
+def test_failed_runs_alone_are_mailed(monkeypatch, wired):
+    inc = OrderedDict()
+    log_digest._add(inc, "failed run", "jobradar-email-agent", "BackoffLimitExceeded",
+                    "httpx.ConnectError: [Errno 111] Connection refused")
+    monkeypatch.setattr(log_digest, "find_incidents", lambda c, ns: inc)
+    monkeypatch.setattr(log_digest, "list_containers", lambda c, ns: [("pod-1", "api", "tracker-api")])
+    monkeypatch.setattr(log_digest, "read_log", lambda c, ns, p, ct: line(level="INFO", message="ok"))
+    assert log_digest.main() == 0
+    _, subject, body = wired[0]
+    assert "1 failed run" in subject
+    assert "jobradar-email-agent" in body and "Connection refused" in body
+
+
+def test_a_refused_jobs_check_is_named_not_silent(monkeypatch, wired):
+    """Most likely the batch/jobs permission is missing; the log scan still runs."""
+    monkeypatch.setattr(log_digest, "find_incidents",
+                        lambda c, ns: log_digest.find_incidents(_Kube([], [], jobs_status=403), ns))
+    monkeypatch.setattr(log_digest, "list_containers", lambda c, ns: [("pod-1", "api", "tracker-api")])
+    monkeypatch.setattr(log_digest, "read_log", lambda c, ns, p, ct: line(level="INFO", message="ok"))
+    assert log_digest.main() == 0
+    assert "failed-run check" in wired[0][2]

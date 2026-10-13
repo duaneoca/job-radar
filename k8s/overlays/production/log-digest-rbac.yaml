@@ -7,7 +7,7 @@
 # Role, NOT ClusterRole: this grants nothing outside jobradar-production. In
 # particular it cannot read jobradar-staging.
 #
-# `pods: list` and `pods/log: get` and nothing else. Note that `get secrets` is
+# `pods: list`, `pods/log: get` and `batch/jobs: list`, and nothing else. Note that `get secrets` is
 # deliberately absent — the job reads its own SES config from envFrom, which the
 # kubelet injects, not from the API.
 apiVersion: v1
@@ -34,6 +34,11 @@ rules:
   - apiGroups: [""]
     resources: ["pods/log"]
     verbs: ["get"]
+  # Failed CronJob runs. A run that dies with a plain Python traceback matches
+  # no log pattern, so the Job's Failed condition is the only record of it.
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
