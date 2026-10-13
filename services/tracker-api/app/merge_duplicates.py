@@ -16,7 +16,10 @@ recruiter, research, application answers, interview prep or a tailored résumé.
   * one or more were touched → keep all of those, delete the untouched rest;
     a group left with two or more worked copies is listed for the user to
     consolidate (choosing between two people's work isn't ours to do).
-Company-board and manual jobs are never deleted, only kept. A Job row left with
+A kept aggregator copy takes the newest link (and posting date) from the
+freshest same-source copy in its group: aggregators re-post under new ids and
+the old ids' links die, so the copy you worked on is often the one with the
+dead link. Company-board and manual jobs are never deleted, only kept. A Job row left with
 no reviews from anyone is removed too. Deleting a review cascades its timeline.
 """
 
@@ -61,6 +64,7 @@ class Plan:
     kept: dict = field(default_factory=dict)                   # review_id → Row kept for a group
     skipped: list = field(default_factory=list)                # (kind, label, [Row]) still >1 worked copy
     by_kind: dict = field(default_factory=lambda: defaultdict(int))
+    refresh: dict = field(default_factory=dict)                # kept job_id → freshest Row to copy from
 
 
 def _keepers(group: list) -> list:
@@ -94,6 +98,14 @@ def plan(rows: list) -> Plan:
             keep_ids = {r.review_id for r in keep}
             for r in keep:
                 p.kept[r.review_id] = r
+                if r.source in AGGREGATOR_SOURCES:
+                    fresher = [m for m in members if m.source == r.source and m.scraped
+                               and (r.scraped is None or m.scraped > r.scraped)]
+                    if fresher:
+                        best = max(fresher, key=lambda m: m.scraped)
+                        prev = p.refresh.get(r.job_id)
+                        if prev is None or best.scraped > prev.scraped:
+                            p.refresh[r.job_id] = best
             for r in members:
                 if r.review_id not in keep_ids and r.deletable:
                     p.delete.append(r)
@@ -138,6 +150,7 @@ def run(db, email: str, apply: bool) -> Plan:
     p = plan(rows)
     print(f"{len(rows)} reviews for {email}; {len(p.delete)} untouched copies to remove "
           f"({', '.join(f'{k}: {n}' for k, n in p.by_kind.items()) or 'none'}).")
+    print(f"{len(p.refresh)} kept copies take a newer link from a later listing.")
     print(f"{len(p.skipped)} group(s) still have more than one copy with your work on it "
           f"(all kept — consolidate them yourself if you want):")
     for kind, label, members in p.skipped[:20]:
@@ -146,6 +159,17 @@ def run(db, email: str, apply: bool) -> Plan:
     if not apply:
         print("Preview only — nothing changed. Re-run with --apply to delete.")
         return p
+
+    # Newest links onto the kept copies first — their source rows may be deleted.
+    for keep_job_id, src in p.refresh.items():
+        src_job = db.get(models.Job, src.job_id)
+        keep_job = db.get(models.Job, keep_job_id)
+        if src_job is None or keep_job is None:
+            continue
+        keep_job.url = src_job.url
+        keep_job.date_posted = src_job.date_posted or keep_job.date_posted
+        keep_job.date_scraped = src_job.date_scraped or keep_job.date_scraped
+    db.flush()
 
     ids = [r.review_id for r in p.delete]
     jobs = {r.job_id for r in p.delete}

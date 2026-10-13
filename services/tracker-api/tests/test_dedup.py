@@ -132,3 +132,100 @@ def test_link_copies_then_key_copies():
     p = plan(rows)
     assert sorted(r.review_id for r in p.delete) == ["r1", "r2"]
     assert p.by_kind == {"same link (JSearch)": 1, "same company+title+city": 1}
+
+
+# ── a re-listing refreshes the job the user already has (#160) ──────────────
+# Aggregators re-post under a new id every few days and the old id's link dies
+# (one ServiceNow role had four Adzuna ids in a month), so the entry the user
+# keeps must take the new link — and a system-expired copy comes back.
+
+from datetime import timezone  # noqa: E402
+
+
+def _recent(days=1):
+    return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+
+def _job(db):
+    return db.query(models.Job).one()
+
+
+def _review(db):
+    return db.query(models.UserJobReview).filter_by(user_id=TEST_USER_ID).one()
+
+
+def test_same_source_relisting_takes_the_new_link(client, db):
+    _post(client, date_posted=_recent(10))
+    _post(client, external_id="a2", url="https://x/new-ad", date_posted=_recent(1))
+    job = _job(db)
+    assert job.url == "https://x/new-ad"
+    assert job.date_posted.date() == (datetime.now(timezone.utc) - timedelta(days=1)).date()
+
+
+def test_another_sources_copy_leaves_the_link_alone(client, db):
+    """A careers page or company board beats an aggregator redirect."""
+    _post(client, source="greenhouse", external_id="g1", url="https://boards/acme/1")
+    _post(client, source="adzuna", external_id="a2", url="https://adzuna/redirect")
+    assert _job(db).url == "https://boards/acme/1"
+
+
+def _expire(db, status=models.JobStatus.EXPIRED, scored=True):
+    r = _review(db)
+    r.status = status
+    r.ai_score = 7.0 if scored else None
+    db.commit()
+
+
+def test_a_relisted_expired_job_comes_back(client, db):
+    _post(client, date_posted=_recent(30))
+    _expire(db)
+    _post(client, external_id="a2", url="https://x/new-ad", date_posted=_recent(1))
+    r = _review(db)
+    assert r.status == models.JobStatus.REVIEWED
+    assert any("Listed again" in e.description for e in r.timeline)
+
+
+def test_an_unscored_expired_job_comes_back_as_new(client, db):
+    _post(client)
+    _expire(db, scored=False)
+    _post(client, external_id="a2", url="https://x/2", date_posted=_recent(1))
+    assert _review(db).status == models.JobStatus.NEW
+
+
+def test_a_dismissed_job_stays_dismissed(client, db):
+    _post(client)
+    _expire(db, status=models.JobStatus.DISMISSED)
+    _post(client, external_id="a2", url="https://x/2", date_posted=_recent(1))
+    assert _review(db).status == models.JobStatus.DISMISSED
+
+
+def test_a_stale_relisting_does_not_revive(client, db):
+    """The posting-age rule would only expire it again tonight."""
+    _post(client)
+    _expire(db)
+    _post(client, external_id="a2", url="https://x/2", date_posted=_recent(40))
+    assert _review(db).status == models.JobStatus.EXPIRED
+
+
+def test_the_same_listing_again_also_revives(client, db):
+    """JSearch's stable id, or an Adzuna id still being served."""
+    _post(client)
+    _expire(db)
+    r, celery = _post(client, date_posted=_recent(1))                  # same external id
+    assert r.status_code == 200
+    assert _review(db).status == models.JobStatus.REVIEWED
+    celery.send_task.assert_not_called()
+
+
+def test_merge_gives_the_kept_copy_the_newest_link():
+    rows = [_row(1, status="applied", source="adzuna", url="old", days=0),
+            _row(2, source="adzuna", url="new", days=9),
+            _row(3, source="adzuna", url="mid", days=4)]
+    p = plan(rows)
+    assert p.refresh["j1"].review_id == "r2"
+
+
+def test_merge_only_takes_links_from_the_same_source():
+    rows = [_row(1, status="applied", source="jsearch", url="careers", days=0),
+            _row(2, source="adzuna", url="redirect", days=9)]
+    assert plan(rows).refresh == {}
