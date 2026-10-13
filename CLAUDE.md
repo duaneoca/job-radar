@@ -471,6 +471,14 @@ get`. It cannot read secrets and cannot see `jobradar-staging`.
   is unstable (it re-issued ids daily; 372 of 539 JSearch jobs were copies), so its
   `external_id` is `stable_id(url)` — a hash of host+path+identifying query params.
   `python -m app.merge_duplicates --email X [--apply]` merged the pre-existing copies.
+  **A re-listing refreshes the entry the user has** (`_seen_again`): aggregators re-post
+  under a new id every few days and the old id's link dies — keeping the first copy's link
+  is how users kept clicking dead ads. Same source → new url, dates, text, salary; any
+  source → `date_scraped` (last seen). A review the SYSTEM expired comes back with a
+  timeline note if the new listing is itself recent (else posting age re-expires it);
+  DISMISSED never comes back. The merge script gives kept copies the newest same-source link.
+  Adzuna liveness can't be probed: its pages 403 non-browsers identically for live and dead
+  ads, and even a narrow API search misses ads it served the same morning.
 - Never treat absence from an aggregator search as evidence: Adzuna is queried
   `sort_by=date` capped at 100/keyword, so live-but-older postings fall out by
   design. `models.BOARD_SOURCES` is the single source of truth for which sources

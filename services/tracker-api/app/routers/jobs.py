@@ -10,7 +10,7 @@ POST /jobs/enqueue-review  Admin trigger to re-queue all new jobs for a user
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID
 
@@ -75,11 +75,60 @@ def apply_status_change(
     review.status = new_status
 
 
-def _has_review(job_id: UUID, user_id: UUID, db: Session) -> bool:
-    return db.query(models.UserJobReview.id).filter(
+def _user_review(job_id: UUID, user_id: UUID, db: Session) -> "models.UserJobReview | None":
+    return db.query(models.UserJobReview).filter(
         models.UserJobReview.user_id == user_id,
         models.UserJobReview.job_id == job_id,
-    ).first() is not None
+    ).first()
+
+
+def _listing_is_recent(payload: schemas.JobCreate) -> bool:
+    """Whether a listing is young enough that the posting-age rule
+    (posting_max_age_days) wouldn't expire it again tonight."""
+    posted = payload.date_posted
+    if posted is None:
+        return True
+    if posted.tzinfo is None:
+        posted = posted.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - posted <= timedelta(days=settings.posting_max_age_days)
+
+
+def _seen_again(job: models.Job, review: "models.UserJobReview | None",
+                payload: schemas.JobCreate, db: Session) -> None:
+    """A job the user already has was listed again. Make the one entry current.
+
+    Aggregators re-post an opening under a new id every few days and the old
+    id's link dies (production: one ServiceNow role had four Adzuna ids in a
+    month) — so keeping the first copy's link is how users kept clicking dead
+    ads. When the SAME source re-lists it, the job takes the new link, dates,
+    text and salary. A copy from another source leaves the link alone: an
+    employer's careers page or company board beats an aggregator redirect.
+    Either way `date_scraped` records that it was just seen.
+
+    A review the SYSTEM expired comes back, with a timeline note — the role is
+    being advertised again. Only when the new listing is itself recent, or the
+    posting-age rule would expire it again tonight. Dismissed stays dismissed:
+    that was the user's call.
+    """
+    source = getattr(payload.source, "value", payload.source)
+    job.date_scraped = datetime.now(timezone.utc)
+    if job.source == source:
+        job.url = payload.url
+        if payload.date_posted is not None:
+            job.date_posted = payload.date_posted
+        if payload.description:
+            job.description = payload.description
+        if payload.salary_min is not None:
+            job.salary_min = payload.salary_min
+        if payload.salary_max is not None:
+            job.salary_max = payload.salary_max
+    if (review is not None and review.status == models.JobStatus.EXPIRED
+            and _listing_is_recent(payload)):
+        review.status = (models.JobStatus.REVIEWED if review.ai_score is not None
+                         else models.JobStatus.NEW)
+        _add_timeline(db, review.id, "status_change",
+                      f"Listed again on {source} — back in your list")
+    db.commit()
 
 
 def _ensure_review_for_user(job_id: UUID, user_id: UUID, db: Session) -> bool:
@@ -145,22 +194,31 @@ def create_job(
             .first()
         )
 
+    # The same listing again (same external id) for a user who already has it:
+    # nothing new to create, but it was just seen — refresh it (_seen_again).
+    if existing is not None:
+        mine = _user_review(existing.id, user_id, db)
+        if mine is not None:
+            _seen_again(existing, mine, payload, db)
+            response.status_code = status.HTTP_200_OK
+            return existing
+
     # A re-listing of a job this user already has (same company, title, city):
-    # record nothing new — no Job row, no review, no AI scoring at their expense.
-    # Aggregators only; see app/dedup.py. A listing already attributed to the
-    # user (by external id) is left alone — _ensure_review_for_user no-ops.
+    # no new Job row, review or AI scoring at their expense — the existing entry
+    # takes the fresh listing instead (_seen_again). Aggregators only; see
+    # app/dedup.py. The freshest twin wins if the user somehow has several.
     if key and payload.source in dedup.AGGREGATOR_SOURCES:
-        already = existing is not None and _has_review(existing.id, user_id, db)
-        if not already:
-            twin = (
-                db.query(models.Job)
-                .join(models.UserJobReview, models.UserJobReview.job_id == models.Job.id)
-                .filter(models.UserJobReview.user_id == user_id, models.Job.match_key == key)
-                .first()
-            )
-            if twin is not None:
-                response.status_code = status.HTTP_200_OK
-                return twin
+        twin = (
+            db.query(models.Job)
+            .join(models.UserJobReview, models.UserJobReview.job_id == models.Job.id)
+            .filter(models.UserJobReview.user_id == user_id, models.Job.match_key == key)
+            .order_by(models.Job.date_scraped.desc())
+            .first()
+        )
+        if twin is not None:
+            _seen_again(twin, _user_review(twin.id, user_id, db), payload, db)
+            response.status_code = status.HTTP_200_OK
+            return twin
 
     if existing:
         response.status_code = status.HTTP_200_OK
