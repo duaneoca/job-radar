@@ -12,7 +12,10 @@
  * shouldn't have to pretend to be news, and a forgotten entry shouldn't produce
  * an empty or wrong announcement.
  *
- * Adding a release: newest FIRST, `date` is the day it ships to production.
+ * Adding a release: newest FIRST. The top entry is the NEXT release for as long
+ * as its version has no git tag: each user-facing PR adds its note there in the
+ * same diff (see "Release notes" in CLAUDE.md), so releasing is just tagging.
+ * `date` is when the entry was started — close enough to the ship day.
  * Write for someone who uses the app, not someone who works on it, and say when
  * something was broken — a release note that only lists new features while
  * quietly repairing a month of silent failures isn't honest.
@@ -38,6 +41,28 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   // Newest first. See the module comment before adding one.
+  {
+    version: "v1.16.0",
+    date: "2026-10-13",
+    headline: "Possible duplicates in your Inbox are now easy to deal with.",
+    notes: [
+      {
+        title: "See what a possible duplicate matches",
+        detail:
+          "An Inbox posting marked as a possible duplicate now shows which of your jobs it looks " +
+          "like, with a link to it, so you can check in one click. If it's the same job, choose " +
+          "\"Same job — skip\". Any posting can be skipped, and Undo brings it back.",
+      },
+      {
+        title: "The bookmarklet knows when you already have a job",
+        detail:
+          "Importing a job you already have (same company, title and city) now takes you to it " +
+          "instead of adding a copy that gets scored again. If the link you imported is better, " +
+          "your job now uses it. If it really is a separate opening, choose \"Add as a separate " +
+          "job anyway\".",
+      },
+    ],
+  },
   {
     version: "v1.15.1",
     date: "2026-10-13",
