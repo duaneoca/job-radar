@@ -49,8 +49,8 @@ export const RELEASES: Release[] = [
           "The same job could appear in your list again and again: one job search service gave " +
           "a posting a new ID almost every day, and Adzuna re-posts openings under new IDs. Each " +
           "copy was added as a new job and scored by AI on your key. A re-listed job now updates " +
-          "the one you already have, and existing duplicates have been merged. Any copy you'd " +
-          "worked on (applied, notes, a tailored résumé) was kept.",
+          "the one you already have instead of adding another copy. Duplicates already in your " +
+          "list will age out on their own.",
       },
       {
         title: "Fewer dead links",
