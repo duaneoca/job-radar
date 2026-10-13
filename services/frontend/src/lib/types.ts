@@ -90,6 +90,8 @@ export interface InboxPosting {
   action_required: boolean;
   possible_duplicate: boolean;
   matched_review_id: string | null;
+  // The job a possible duplicate matched — from the user's own reviews only.
+  matched_job?: { review_id: string; title: string; company: string; status: string } | null;
   import_status: ImportStatus;
   imported_review_id: string | null;
   created_at: string;

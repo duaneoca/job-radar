@@ -526,10 +526,52 @@ def post_ai_review(
     return schemas.UserJobReviewOut.from_review(review)
 
 
+def _manual_twin(payload: schemas.JobCreate, user_id: UUID, db: Session):
+    """The user's review of the same role (company, title, city), freshest first."""
+    key = dedup.match_key(payload.company, payload.title, payload.location)
+    if not key:
+        return None
+    return (
+        db.query(models.UserJobReview)
+        .join(models.Job, models.Job.id == models.UserJobReview.job_id)
+        .filter(models.UserJobReview.user_id == user_id, models.Job.match_key == key)
+        .order_by(models.Job.date_scraped.desc())
+        .first()
+    )
+
+
+def _adopt_imported_link(review: models.UserJobReview, payload: schemas.JobCreate,
+                         db: Session) -> models.UserJobReview:
+    """The link the user imported replaces an AGGREGATOR copy's: they chose it.
+
+    On a new Job row of their own, never by editing the old one — Job rows are
+    shared, and another user's entry must not change under them. The old row is
+    left to the nightly orphan cleanup if nobody else has it. A company-board
+    copy keeps its link: that is already the best one.
+    """
+    job = review.job
+    if job.source not in dedup.AGGREGATOR_SOURCES or job.url == payload.url:
+        return review
+    mine = models.Job(**payload.model_dump(),
+                      match_key=dedup.match_key(payload.company, payload.title, payload.location))
+    db.add(mine)
+    db.flush()
+    review.job_id = mine.id
+    _add_timeline(db, review.id, "note", "Link updated to the one you imported")
+    db.commit()
+    return (
+        db.query(models.UserJobReview)
+        .options(joinedload(models.UserJobReview.job), joinedload(models.UserJobReview.timeline))
+        .filter(models.UserJobReview.id == review.id)
+        .first()
+    )
+
+
 @router.post("/manual", response_model=schemas.UserJobReviewOut, status_code=status.HTTP_201_CREATED)
 def create_manual_job(
     payload: schemas.JobCreate,
     response: Response,
+    separate: bool = Query(False, description="Add even if the user has this role already"),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
@@ -569,8 +611,19 @@ def create_manual_job(
         )
         if existing_review:
             response.status_code = status.HTTP_200_OK
-            return schemas.UserJobReviewOut.from_review(existing_review)
+            out = schemas.UserJobReviewOut.from_review(existing_review)
+            out.already_had = "same_link"
+            return out
         job_uuid = existing_job.id
+    elif not separate and (twin := _manual_twin(payload, current_user.id, db)) is not None:
+        # Same company, title and city as a job the user already has — from
+        # another listing (an inbox link vs. the Adzuna copy). Don't add a second
+        # copy or score it again; return theirs and let the page offer "add as
+        # a separate job" for genuinely separate openings.
+        response.status_code = status.HTTP_200_OK
+        out = schemas.UserJobReviewOut.from_review(_adopt_imported_link(twin, payload, db))
+        out.already_had = "same_role"
+        return out
     else:
         # Create the job — with a match key, so later aggregator copies of it are
         # recognised (a manual import itself is never skipped as a copy).
