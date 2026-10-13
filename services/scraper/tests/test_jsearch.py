@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 from app import main
 from app.scrapers.jsearch import (
-    JSearchScraper, RunThrottle, _RUN_GRACE, _build_query, _extract_items, _to_raw_job,
+    JSearchScraper, RunThrottle, _RUN_GRACE, _build_query, _extract_items, _to_raw_job, stable_id,
 )
 
 ITEM = {
@@ -37,7 +37,7 @@ class FakeThrottle:
 
 def test_mapping():
     raw = _to_raw_job(ITEM)
-    assert raw.external_id == "abc123=="
+    assert raw.external_id == stable_id(ITEM["job_apply_link"])
     assert raw.source == "jsearch"
     assert raw.company == "Anthropic"
     assert raw.location == "San Francisco, CA"
@@ -126,7 +126,7 @@ def test_scrape_maps_response():
         jobs = asyncio.run(scraper.scrape(
             ["FDE"], "Austin, TX", {"api_key": "k", "user_id": "u1"}))
     assert len(jobs) == 1
-    assert jobs[0].external_id == "abc123=="
+    assert jobs[0].external_id == stable_id(ITEM["job_apply_link"])
     headers = fake_client.get.call_args.kwargs["headers"]
     assert headers["X-RapidAPI-Key"] == "k"
 
@@ -144,3 +144,34 @@ def test_locations_capped_for_jsearch():
     locs = ["A", "B", "C", "D", "E"]
     assert main._locations_for(scraper, locs) == ["A", "B", "C"]
     assert main._locations_for(main.SCRAPERS[0], locs) == locs  # adzuna uncapped
+
+
+# ── stable ids (production, 2026-10: 372 of 539 JSearch jobs were exact-link
+# copies — JSearch re-issues job_id for the same posting on different days) ──
+
+def test_same_link_new_job_id_is_the_same_job():
+    a = _to_raw_job({**ITEM, "job_id": "day-one=="})
+    b = _to_raw_job({**ITEM, "job_id": "day-two=="})
+    assert a.external_id == b.external_id
+
+
+def test_tracking_parameters_do_not_split_a_posting():
+    base = "https://careers.servicenow.com/jobs/744000144639119/forward-deployed"
+    assert stable_id(base) == stable_id(base + "/?utm_source=jsearch&src=google&trk=x")
+    assert stable_id(base) == stable_id(base.replace("https://", "https://www."))
+
+
+def test_identifying_parameters_keep_postings_apart():
+    """Indeed's links differ only by jk= — dropping it would merge every Indeed job."""
+    a = stable_id("https://www.indeed.com/viewjob?jk=4043eff68d6c552c")
+    b = stable_id("https://www.indeed.com/viewjob?jk=1111aaaa2222bbbb")
+    assert a != b
+
+
+def test_no_link_falls_back_to_jsearch_id():
+    item = {k: v for k, v in ITEM.items() if k != "job_apply_link"}
+    assert _to_raw_job(item).external_id == "abc123=="
+
+
+def test_id_fits_the_column_however_long_the_link():
+    assert len(stable_id("https://example.com/" + "x" * 3000)) <= 255

@@ -68,9 +68,11 @@ def test_multi_value_status_filter(client, db):
 
 
 def test_multi_value_source_filter(client, db):
-    _scrape(client, url="https://x/1", external_id="1", source="manual")
-    _scrape(client, url="https://x/2", external_id="2", source="adzuna")
-    _scrape(client, url="https://x/3", external_id="3", source="remotive")
+    # Distinct titles: identical company+title from an aggregator would now be
+    # recognised as a re-listing of the first (app/dedup.py) and not added.
+    _scrape(client, url="https://x/1", external_id="1", source="manual", title="Eng 1")
+    _scrape(client, url="https://x/2", external_id="2", source="adzuna", title="Eng 2")
+    _scrape(client, url="https://x/3", external_id="3", source="remotive", title="Eng 3")
     body = client.get("/jobs", params={"source": ["manual", "adzuna"]}).json()
     assert body["total"] == 2
 

@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import exists, func
 from sqlalchemy.orm import Session, joinedload
 
-from app import models, schemas
+from app import dedup, models, schemas
 from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user, require_internal_token
@@ -75,6 +75,13 @@ def apply_status_change(
     review.status = new_status
 
 
+def _has_review(job_id: UUID, user_id: UUID, db: Session) -> bool:
+    return db.query(models.UserJobReview.id).filter(
+        models.UserJobReview.user_id == user_id,
+        models.UserJobReview.job_id == job_id,
+    ).first() is not None
+
+
 def _ensure_review_for_user(job_id: UUID, user_id: UUID, db: Session) -> bool:
     """Create a NEW review for one user (per-user scrape attribution) and enqueue
     its AI review. Idempotent — does nothing if the user already has a review for
@@ -126,6 +133,7 @@ def create_job(
     Returns 201 for a newly created Job, 200 if the Job already existed (the
     user still gets their own review either way).
     """
+    key = dedup.match_key(payload.company, payload.title, payload.location)
     existing = None
     if payload.external_id:
         existing = (
@@ -137,11 +145,28 @@ def create_job(
             .first()
         )
 
+    # A re-listing of a job this user already has (same company, title, city):
+    # record nothing new — no Job row, no review, no AI scoring at their expense.
+    # Aggregators only; see app/dedup.py. A listing already attributed to the
+    # user (by external id) is left alone — _ensure_review_for_user no-ops.
+    if key and payload.source in dedup.AGGREGATOR_SOURCES:
+        already = existing is not None and _has_review(existing.id, user_id, db)
+        if not already:
+            twin = (
+                db.query(models.Job)
+                .join(models.UserJobReview, models.UserJobReview.job_id == models.Job.id)
+                .filter(models.UserJobReview.user_id == user_id, models.Job.match_key == key)
+                .first()
+            )
+            if twin is not None:
+                response.status_code = status.HTTP_200_OK
+                return twin
+
     if existing:
         response.status_code = status.HTTP_200_OK
         job = existing
     else:
-        job = models.Job(**payload.model_dump())
+        job = models.Job(**payload.model_dump(), match_key=key)
         db.add(job)
         db.flush()
         db.commit()
@@ -489,8 +514,10 @@ def create_manual_job(
             return schemas.UserJobReviewOut.from_review(existing_review)
         job_uuid = existing_job.id
     else:
-        # Create the job
-        job = models.Job(**payload.model_dump())
+        # Create the job — with a match key, so later aggregator copies of it are
+        # recognised (a manual import itself is never skipped as a copy).
+        job = models.Job(**payload.model_dump(),
+                         match_key=dedup.match_key(payload.company, payload.title, payload.location))
         db.add(job)
         db.flush()
         job_uuid = job.id
