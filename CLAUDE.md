@@ -4,7 +4,7 @@ AI-assisted job hunting tool. Scrapes job boards, scores postings against the us
 
 **Production:** https://job-radar.net  
 **Staging:** https://staging.job-radar.net (auto-deploys on every push to `main`)  
-**Current version:** v1.12.2
+**Current version:** the latest `v*` tag (`git describe --tags --abbrev=0`) — not recorded here, where it went stale
 
 ---
 
@@ -43,9 +43,23 @@ changelog and a different audience. Never send PR titles to users; "fix(ai-
 reviewer): stop the OOM loop" tells them only that something they relied on was
 broken in ways they hadn't noticed.
 
-Order: work merges → draft the notes → agree the wording with the user → merge
-that as its own small PR → tag. Adding no entry means no announcement, which is
-the intended behaviour for a quiet hotfix and a safe failure if it's forgotten.
+**Notes are written as the work lands, in the same PR — never as a separate
+release PR.** The top entry of `RELEASES` is the *next* release for as long as its
+`version` has no git tag (`git tag -l vX.Y.Z` is empty):
+- **Every user-facing PR updates that top entry in the same diff.** If the top
+  entry is already tagged (released), start a new one above it: `version` = the
+  next semver for what's on `main` (a feature makes it minor; fixes alone, patch),
+  `date` = today. If a feature lands on a draft numbered as a patch, bump it to
+  the minor. Edit the `headline` so it still covers everything listed.
+- **The user agrees the wording in that PR's review** — the note is part of the
+  change, and gets the same scrutiny.
+- **Releasing is then just: confirm the version with the user → check staging →
+  tag that exact version on `main`.** If the release date differs much from the
+  entry's `date`, mention it rather than adding a commit.
+- Operator-only changes (digest, CI, infra) and internal refactors add nothing.
+  Adding no entry means no announcement — the intended behaviour for a quiet
+  hotfix, and a safe failure if it's forgotten.
+
 Say when something was broken, not only what is new.
 
 **Versioning (semver — always confirm with user before tagging):**
