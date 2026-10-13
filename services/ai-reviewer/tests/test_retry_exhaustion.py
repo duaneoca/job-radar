@@ -7,6 +7,8 @@ task. If it escapes, Celery logs it at ERROR and one user's quota lands in the
 operator's hourly digest, which is exactly backwards.
 """
 
+import types
+
 import httpx
 import pytest
 
@@ -53,8 +55,9 @@ def wired(monkeypatch):
             posted.append(kw["json"])
         return _Resp({})
 
-    monkeypatch.setattr(httpx, "get", fake_get)
-    monkeypatch.setattr(httpx, "post", fake_post)
+    # The worker makes its calls through one shared client (worker._http).
+    fake = types.SimpleNamespace(get=fake_get, post=fake_post)
+    monkeypatch.setattr(worker, "_http", lambda: fake)
     return posted
 
 

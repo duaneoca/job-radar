@@ -8,6 +8,7 @@ Task signature: review_job(job_id: str, user_id: str)
 """
 
 import logging
+import os
 
 import httpx
 from celery import Celery
@@ -85,6 +86,30 @@ def _drop_frames(exc: BaseException | None) -> None:
 
 
 
+# One HTTP client per worker process.
+#
+# This was the second leak. `_http().get()` builds a whole Client — connection
+# pool, transport, TLS context — and throws it away after one request, and the
+# native memory behind that fragments rather than returning to the OS: measured
+# in the production image, +31Mi per 8,000 calls with one-off clients versus no
+# growth with one reused client. tracemalloc can't see it (it isn't Python
+# objects), which is why memlog's attribution named nothing while RSS climbed.
+# Every review makes four or five of these calls, so the worker grew ~18KB per
+# task even on jobs it skips — ~25KB/task measured in production.
+#
+# Created lazily and keyed on the PID: a client made in the parent before Celery
+# forks would hand the child the parent's open sockets.
+_HTTP: httpx.Client | None = None
+_HTTP_PID: int | None = None
+
+
+def _http() -> httpx.Client:
+    global _HTTP, _HTTP_PID
+    if _HTTP is None or _HTTP_PID != os.getpid():
+        _HTTP, _HTTP_PID = httpx.Client(timeout=10), os.getpid()
+    return _HTTP
+
+
 def _internal_headers(user_id: str | None = None) -> dict:
     """Auth headers for internal tracker-api calls: X-Internal-Token when
     configured (tracker-api enforces it in a later phase), plus X-Internal-User-Id
@@ -104,7 +129,7 @@ def _report_key_status(base: str, user_id: str, kind: str | None, detail: str = 
     review task itself.
     """
     try:
-        httpx.post(
+        _http().post(
             f"{base}/keys/internal/{user_id}/llm/status",
             json={"kind": kind, "detail": detail[:1000]},
             headers=_internal_headers(),
@@ -125,7 +150,7 @@ def review_job(self, job_id: str, user_id: str):
 
     # 1. Fetch the job (internal endpoint — no auth required)
     try:
-        resp = httpx.get(f"{base}/jobs/internal/{job_id}", timeout=10,
+        resp = _http().get(f"{base}/jobs/internal/{job_id}", timeout=10,
                          headers=_internal_headers())
         if resp.status_code == 404:
             logger.warning("Job %s not found — skipping", job_id)
@@ -139,7 +164,7 @@ def review_job(self, job_id: str, user_id: str):
 
     # 2. Fetch user's active criteria
     try:
-        resp = httpx.get(f"{base}/criteria/active", timeout=10,
+        resp = _http().get(f"{base}/criteria/active", timeout=10,
                          headers=_internal_headers(user_id))
         if resp.status_code == 404:
             logger.warning("No active criteria for user %s — skipping", user_id)
@@ -153,7 +178,7 @@ def review_job(self, job_id: str, user_id: str):
 
     # 3. Fetch user's active profile (optional — degrade gracefully)
     try:
-        resp = httpx.get(f"{base}/profile/active", timeout=10,
+        resp = _http().get(f"{base}/profile/active", timeout=10,
                          headers=_internal_headers(user_id))
         profile = resp.json() if resp.status_code == 200 else {}
     except Exception as exc:
@@ -162,7 +187,7 @@ def review_job(self, job_id: str, user_id: str):
 
     # 4. Fetch user's best available LLM key
     try:
-        resp = httpx.get(f"{base}/keys/internal/{user_id}/llm", timeout=10,
+        resp = _http().get(f"{base}/keys/internal/{user_id}/llm", timeout=10,
                          headers=_internal_headers())
         if resp.status_code == 404:
             logger.warning("No AI key configured for user %s — skipping review", user_id)
@@ -296,7 +321,7 @@ def review_job(self, job_id: str, user_id: str):
         "recommended": result.recommended,
     }
     try:
-        resp = httpx.post(
+        resp = _http().post(
             f"{base}/jobs/{job_id}/ai-review",
             json=payload,
             params={"user_id": user_id},

@@ -164,6 +164,16 @@ a time (H6). The shared `AGENT_INTERNAL_TOKEN` must match in `tracker-api-secret
   so the screen and the PDF disagreed and neither matched the résumé. Per job, a move is ONE
   `section_order` "reordered" change (refine on request, or the arrows →
   `PUT /jobs/{id}/tailor-resume/section-order`); the first tailor pass can never move sections.
+- **`GET /jobs` returns the slim list shape** (`from_review(..., summary=True)`: no
+  `description`, no `timeline`). No list page reads them; the detail page fetches the
+  full review. A 100-row page with them was ~660KB plus several MB of temporaries, and
+  under concurrency that high-water — kept by fragmented thread arenas — was what
+  ratcheted tracker-api toward its 512Mi limit: 8 parallel clients, 20k mixed
+  requests, +204Mi → +18Mi (peak 519 → 271Mi). Don't add heavy fields back to lists.
+- **tracker-api logs per-route memory** (`app/memlog.py`, pure-ASGI middleware): every
+  `MEMORY_REPORT_EVERY` (500) requests one INFO line — `mem rss=… since_start=… top:
+  ROUTE +XMi/Nreq max…`. Overlapping requests blur single deltas; the route that keeps
+  topping the list is the one. `MEMORY_PROFILE=1` adds tracemalloc sites.
 - Bookmarklet built inline in `src/pages/SettingsPage.tsx` — `buildBookmarklet()` function returns a `javascript:` URL. All JS inside is minified (newlines stripped at runtime). Escape backslashes twice in template literals (`\\s` → `\s` in output).
 
 ### ai-reviewer (Celery worker)
@@ -295,6 +305,16 @@ bounded (200 entries, ttl 600; held 3) and litellm's publicised leaks (#8993
 stream=True, #10126 Router) don't match our usage. We remain pinned to
 `litellm==1.57.3`; an upgrade is unrelated to this bug and `llm_errors.py`
 classifies on exception types, so it needs its own measured PR.
+
+**The second leak was one-off HTTP clients (fixed 2026-10).** `httpx.get()` builds
+and discards a whole Client per call, and its native memory fragments rather than
+returning to the OS: +31Mi per 8,000 calls vs flat for one reused client, measured
+in the production image. tracemalloc can't see it — it isn't Python objects — so
+memlog's attribution named nothing while RSS climbed ~18KB/task, *even on skipped
+jobs*. The worker now uses one client per process (`_http()`, PID-keyed so a
+fork never inherits sockets); `test_http_client_reuse.py` forbids `httpx.get/post`
+in main.py. Harness result: 3,000 skipped jobs +70Mi → +0Mi, 2,000 scored ~flat.
+**When RSS grows but tracemalloc shows nothing, suspect native allocations.**
 
 `memlog.py` remains for the next hunt: per-task RSS deltas are always on (one
 `mem task=…` line per review, free), tracemalloc attribution is opt-in via

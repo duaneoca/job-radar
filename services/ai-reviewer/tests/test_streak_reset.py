@@ -9,7 +9,8 @@ got blamed and had scoring stopped (seen on staging, 2026-10-01: streak 4, with
 production scoring 328 of 328 cleanly that day).
 """
 
-import httpx
+import types
+
 import pytest
 
 from app import main as worker
@@ -59,8 +60,9 @@ def _wire(monkeypatch, llm_payload):
                                 location_rank=7, education_rank=7, salary_rank=7,
                                 summary="s", pros=[], cons=[], recommended=True)
 
-    monkeypatch.setattr(httpx, "get", fake_get)
-    monkeypatch.setattr(httpx, "post", fake_post)
+    # The worker makes its calls through one shared client (worker._http).
+    fake = types.SimpleNamespace(get=fake_get, post=fake_post)
+    monkeypatch.setattr(worker, "_http", lambda: fake)
     monkeypatch.setattr(worker, "JobReviewer", _Reviewer)
     worker.review_job.push_request(retries=0, called_directly=False, id="t")
     try:
