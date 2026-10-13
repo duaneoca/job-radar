@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import SessionLocal
 from app.logging_config import configure_logging
+from app.memlog import MemoryMiddleware
 from app.models import User
 from app.routers import (
     admin, agent, auth, connections, criteria, generate, jobs, keys, profile, recruiters,
@@ -60,6 +61,9 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+# Per-route memory accounting (app/memlog.py) — finds what grows the process.
+app.add_middleware(MemoryMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

@@ -207,7 +207,12 @@ class UserJobReviewOut(BaseModel):
         from_attributes = True
 
     @classmethod
-    def from_review(cls, review) -> "UserJobReviewOut":
+    def from_review(cls, review, *, summary: bool = False) -> "UserJobReviewOut":
+        """`summary=True` is the list-view shape: no job description and no
+        timeline. Neither list page reads them (the detail page fetches the full
+        review), and a 100-row page with them was ~660KB plus several MB of
+        temporaries per request — under concurrency that high-water is what
+        ratcheted tracker-api's memory toward its limit."""
         """Build from a UserJobReview ORM object (with .job loaded)."""
         job = review.job
         return cls(
@@ -223,7 +228,7 @@ class UserJobReviewOut(BaseModel):
             salary_min=job.salary_min,
             salary_max=job.salary_max,
             salary_currency=job.salary_currency,
-            description=job.description,
+            description=None if summary else job.description,
             date_posted=job.date_posted,
             date_scraped=job.date_scraped,
             external_id=job.external_id,
@@ -250,7 +255,7 @@ class UserJobReviewOut(BaseModel):
             recruiter_name=(review.recruiter.name if review.recruiter else None),
             created_at=review.created_at,
             updated_at=review.updated_at,
-            timeline=review.timeline,
+            timeline=[] if summary else review.timeline,
         )
 
 

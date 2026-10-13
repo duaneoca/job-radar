@@ -265,7 +265,7 @@ def list_jobs(
         .join(models.Job)
         .options(
             joinedload(models.UserJobReview.job),
-            joinedload(models.UserJobReview.timeline),
+            # No timeline: the list shape omits it (see UserJobReviewOut.from_review).
             joinedload(models.UserJobReview.recruiter),
         )
         .filter(models.UserJobReview.user_id == current_user.id)
@@ -326,7 +326,7 @@ def list_jobs(
 
     items = []
     for r in reviews:
-        out = schemas.UserJobReviewOut.from_review(r)
+        out = schemas.UserJobReviewOut.from_review(r, summary=True)
         company_norm = (r.job.company or "").strip().lower()
         out.has_contact = bool(company_norm) and company_norm in conn_companies
         items.append(out)

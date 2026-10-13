@@ -182,3 +182,21 @@ def test_update_review_status_referral_requested(client):
     # And it is filterable like any other status.
     items = client.get("/jobs?status=referral_requested").json()["items"]
     assert [i["id"] for i in items] == [review_id]
+
+
+def test_list_omits_description_and_timeline_detail_keeps_them(client, db):
+    """The list shape is slim on purpose: a 100-row page with descriptions and
+    timelines was ~660KB plus several MB of temporaries per request, and under
+    concurrency that high-water ratcheted tracker-api's memory toward its limit.
+    Neither list page reads them; the detail page fetches the full review."""
+    from unittest.mock import patch
+    from .conftest import TEST_USER_ID
+    with patch("app.routers.jobs._celery"):
+        client.post(f"/jobs?user_id={TEST_USER_ID}", json={
+            "title": "Eng", "company": "Acme", "url": "https://x/slim", "source": "manual",
+            "description": "Long posting text. " * 50})
+    (item,) = client.get("/jobs").json()["items"]
+    assert item["description"] is None and item["timeline"] == []
+    detail = client.get(f"/jobs/{item['id']}").json()
+    assert detail["description"].startswith("Long posting text.")
+    assert detail["timeline"]

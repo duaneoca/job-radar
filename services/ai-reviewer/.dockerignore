@@ -1,0 +1,13 @@
+# Keep local-only files out of images. The Dockerfile does `COPY . .`, so without
+# this a locally built image carries the developer's .env (SECRET_KEY, admin
+# password, …). CI builds from a clean checkout and was never affected.
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+test.db
