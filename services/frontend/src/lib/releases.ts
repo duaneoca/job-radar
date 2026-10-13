@@ -39,6 +39,36 @@ export interface Release {
 export const RELEASES: Release[] = [
   // Newest first. See the module comment before adding one.
   {
+    version: "v1.15.1",
+    date: "2026-10-13",
+    headline: "Fewer duplicate jobs, fewer dead links, and a steadier service.",
+    notes: [
+      {
+        title: "Duplicate jobs are cleared up",
+        detail:
+          "The same job could appear in your list again and again: one job search service gave " +
+          "a posting a new ID almost every day, and Adzuna re-posts openings under new IDs. Each " +
+          "copy was added as a new job and scored by AI on your key. A re-listed job now updates " +
+          "the one you already have instead of adding another copy. Duplicates already in your " +
+          "list will age out on their own.",
+      },
+      {
+        title: "Fewer dead links",
+        detail:
+          "Job boards often re-post an opening under a new link and retire the old one, which is " +
+          "why some jobs you opened said they were no longer available. When a job is listed " +
+          "again, Job Radar now switches to the newest link. A job that had expired but is being " +
+          "advertised again comes back to your list. Jobs you dismissed stay dismissed.",
+      },
+      {
+        title: "More reliable",
+        detail:
+          "Job Radar's servers were slowly running out of memory, which caused brief outages and " +
+          "could interrupt job scoring. We found the two causes and fixed them.",
+      },
+    ],
+  },
+  {
     version: "v1.15.0",
     date: "2026-10-07",
     headline: "Tailored résumés keep every section, in your order, and search is clearer.",
