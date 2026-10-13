@@ -16,9 +16,11 @@ budgeted:
 429 or quota exhaustion is logged and skipped — never crashes the scrape.
 """
 
+import hashlib
 import logging
 import time
 from typing import List, Optional
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 import httpx
 import redis
@@ -184,6 +186,36 @@ def _build_query(keywords: List[str], location: str) -> tuple[str, dict]:
     return query, params
 
 
+# Query parameters that track the visit rather than identify the posting.
+_TRACKING_PARAMS = {"src", "source", "ref", "refid", "trk", "trackingid", "se", "gclid",
+                    "fbclid", "from", "sponsored", "campaign", "cid", "utm"}
+
+
+def stable_id(url: str) -> Optional[str]:
+    """An id for a posting that survives JSearch re-issuing its own.
+
+    JSearch's `job_id` is not stable: the same posting comes back on different
+    days under a new one (production, 2026-10: 372 of 539 JSearch jobs were
+    exact-link copies, each scored again at the user's expense). The apply link
+    does stay the same, so the id is built from it — host and path, plus any
+    query parameter that identifies the job (Indeed's `jk=`), never tracking
+    ones — hashed, because links can exceed the 255-character column.
+    """
+    if not url:
+        return None
+    try:
+        u = urlsplit(url.strip())
+    except ValueError:
+        return None
+    host = (u.hostname or "").lower().removeprefix("www.")
+    if not host:
+        return None
+    query = sorted((k, v) for k, v in parse_qsl(u.query, keep_blank_values=False)
+                   if k.lower() not in _TRACKING_PARAMS and not k.lower().startswith("utm_"))
+    canon = host + u.path.rstrip("/") + ("?" + urlencode(query) if query else "")
+    return "url:" + hashlib.sha1(canon.encode()).hexdigest()[:32]
+
+
 def _to_raw_job(item: dict) -> Optional[RawJob]:
     ext_id = item.get("job_id")
     if not ext_id:
@@ -208,7 +240,8 @@ def _to_raw_job(item: dict) -> Optional[RawJob]:
     )
 
     return RawJob(
-        external_id=str(ext_id),
+        # The link's stable id when there is a link; JSearch's own only as a fallback.
+        external_id=stable_id(url) or str(ext_id),
         source="jsearch",
         title=item.get("job_title") or "Unknown Title",
         company=item.get("employer_name") or "Unknown Company",

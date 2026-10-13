@@ -217,6 +217,9 @@ class Job(Base):
     salary_currency = Column(String(10), default="USD")
     description     = Column(Text, nullable=True)
     url             = Column(String(2048), nullable=False)
+    # company|title|city, normalised (app/dedup.py) — how a re-listed job is
+    # recognised as one the user already has.
+    match_key       = Column(String(255), nullable=True, index=True)
 
     date_posted     = Column(DateTime(timezone=True), nullable=True)
     date_scraped    = Column(DateTime(timezone=True), default=utcnow)

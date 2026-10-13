@@ -442,6 +442,15 @@ get`. It cannot read secrets and cannot see `jobradar-staging`.
   anything that isn't a real browser, and the block page is identical for live
   and dead ads. Posting age is the proxy there. (A browser *does* see
   "Unfortunately, this job is no longer available" — but only a browser.)
+- **Re-listings are not new jobs.** `jobs.match_key` = company|title|city with all but
+  `[a-z0-9]` stripped (`app/dedup.py`; migration 0030 is its SQL twin — keep them equal).
+  `POST /jobs` skips an AGGREGATOR listing (adzuna/jsearch/the_muse/remotive) whose key the
+  user already has: no Job row, no review, no AI scoring. Company boards and manual imports
+  are never skipped (two identical titles on a board are usually two reqs) but are keyed,
+  so aggregator copies of them are caught. Same city only on purpose. JSearch's own `job_id`
+  is unstable (it re-issued ids daily; 372 of 539 JSearch jobs were copies), so its
+  `external_id` is `stable_id(url)` — a hash of host+path+identifying query params.
+  `python -m app.merge_duplicates --email X [--apply]` merged the pre-existing copies.
 - Never treat absence from an aggregator search as evidence: Adzuna is queried
   `sort_by=date` capped at 100/keyword, so live-but-older postings fall out by
   design. `models.BOARD_SOURCES` is the single source of truth for which sources
