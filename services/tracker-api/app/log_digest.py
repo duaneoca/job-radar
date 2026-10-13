@@ -218,16 +218,147 @@ def read_log(client: httpx.Client, namespace: str, pod: str, container: str) -> 
     return resp.text
 
 
+# ── Failed runs and killed containers ─────────────────────────────────────────
+# Two kinds of failure the log scan can't see. A CronJob run that dies with a
+# plain Python traceback matches neither LOG_LINE nor FALLBACK_LINE — three
+# email-agent runs failed in one hour on 2026-10-12 and no digest said so. And a
+# container the kernel OOM-kills logs nothing at all, so the log scan reads it as
+# a quiet hour; tracker-api was OOM-killed in production that way. Both are in
+# the API's object status, not in any log.
+
+# Termination reasons worth mail. "Completed" is a normal exit; "Error" is a
+# crash, and catches a SIGKILL that the cgroup accounting didn't label OOM.
+KILL_REASONS = ("OOMKilled", "Error")
+
+# The final line of a Python traceback: `httpx.ConnectError: [Errno 111] …`.
+EXCEPTION_LINE = re.compile(r"^(?:[A-Za-z_][\w]*\.)*[A-Za-z_]\w*(?:Error|Exception|Exit|Interrupt)\b.*$")
+# `timestamps=true` prefixes every log line with an RFC3339 stamp.
+_K8S_STAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\S+Z ")
+
+
+class Incident:
+    """A failed run or a killed container, grouped like Entry: same source, same
+    reason, same shape of detail → one line with a count."""
+
+    def __init__(self, kind: str, source: str, reason: str, detail: str):
+        self.kind = kind
+        self.source = source
+        self.reason = reason
+        self.detail = detail
+        self.count = 0
+
+
+def _parse_time(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _recent(value: str | None, now: datetime) -> bool:
+    t = _parse_time(value)
+    return t is not None and 0 <= (now - t).total_seconds() <= WINDOW_SECONDS
+
+
+def last_exception(log_text: str) -> str | None:
+    """The last exception line in a log — what a failed run actually died of."""
+    for raw in reversed(log_text.splitlines()):
+        line = _K8S_STAMP.sub("", raw).strip()
+        if EXCEPTION_LINE.match(line):
+            return line[:300]
+    return None
+
+
+def _add(incidents: "OrderedDict[tuple, Incident]", kind, source, reason, detail) -> None:
+    key = (kind, source, reason, normalise(detail))
+    inc = incidents.get(key)
+    if inc is None:
+        inc = incidents[key] = Incident(kind, source, reason, detail)
+    inc.count += 1
+
+
+def find_incidents(client: httpx.Client, namespace: str,
+                   now: datetime | None = None) -> "OrderedDict[tuple, Incident]":
+    """Failed Jobs and killed containers in the window, grouped.
+
+    Raises on an unreadable API (the caller names that in the footer). Reading
+    Jobs needs `batch/jobs: list` — see log-digest-rbac.yaml.
+    """
+    now = now or datetime.now(timezone.utc)
+    incidents: "OrderedDict[tuple, Incident]" = OrderedDict()
+
+    resp = client.get(f"/api/v1/namespaces/{namespace}/pods")
+    resp.raise_for_status()
+    pods = resp.json().get("items", [])
+
+    # Killed containers: the evidence lives in lastState (after a restart) or
+    # state (a pod that will not be restarted, e.g. a Job's).
+    for pod in pods:
+        meta = pod.get("metadata", {})
+        service = meta.get("labels", {}).get("app", meta.get("name", "?"))
+        for cs in pod.get("status", {}).get("containerStatuses", []) or []:
+            for slot in ("lastState", "state"):
+                term = (cs.get(slot) or {}).get("terminated") or {}
+                if term.get("reason") == "OOMKilled" and _recent(term.get("finishedAt"), now):
+                    _add(incidents, "killed", service, "OOMKilled",
+                         f"container {cs.get('name')} ran out of memory (exit {term.get('exitCode')})")
+                elif (slot == "lastState" and term.get("reason") in KILL_REASONS
+                      and _recent(term.get("finishedAt"), now)):
+                    _add(incidents, "killed", service, term.get("reason", "?"),
+                         f"container {cs.get('name')} restarted after exit {term.get('exitCode')}")
+
+    # Failed Jobs — CronJob runs and one-offs alike.
+    resp = client.get(f"/apis/batch/v1/namespaces/{namespace}/jobs")
+    resp.raise_for_status()
+    pods_by_job: dict[str, list[dict]] = {}
+    for pod in pods:
+        job = pod.get("metadata", {}).get("labels", {}).get("job-name")
+        if job:
+            pods_by_job.setdefault(job, []).append(pod)
+    for job in resp.json().get("items", []):
+        meta = job.get("metadata", {})
+        failed = next((c for c in job.get("status", {}).get("conditions", []) or []
+                       if c.get("type") == "Failed" and c.get("status") == "True"), None)
+        if failed is None or not _recent(failed.get("lastTransitionTime"), now):
+            continue
+        owner = next((o.get("name") for o in meta.get("ownerReferences", []) or []
+                      if o.get("kind") == "CronJob"), None)
+        source = owner or meta.get("name", "?")
+        detail = failed.get("message") or "run failed"
+        # What it died of, from its newest pod's log.
+        pods_of_job = sorted(pods_by_job.get(meta.get("name", ""), []),
+                             key=lambda p: p.get("metadata", {}).get("creationTimestamp", ""))
+        if pods_of_job:
+            p = pods_of_job[-1]
+            try:
+                containers = p.get("spec", {}).get("containers", []) or [{}]
+                cause = last_exception(read_log(client, namespace, p["metadata"]["name"],
+                                                containers[0].get("name", "")))
+                if cause:
+                    detail = cause
+            except Exception as exc:
+                logger.warning("Could not read log of failed job %s: %s", meta.get("name"), exc)
+        _add(incidents, "failed run", source, failed.get("reason") or "Failed", detail)
+    return incidents
+
+
 # ── Rendering ─────────────────────────────────────────────────────────────────
 
-def render(entries: "OrderedDict[tuple, Entry]", scanned: int, unreadable: list[str]) -> tuple[str, str]:
+def render(entries: "OrderedDict[tuple, Entry]", scanned: int, unreadable: list[str],
+           incidents: "OrderedDict[tuple, Incident] | None" = None) -> tuple[str, str]:
+    incidents = incidents or OrderedDict()
     total = sum(e.count for e in entries.values())
     kinds = len(entries)
+    runs = sum(i.count for i in incidents.values())
     subject = (
         f"Job Radar {settings.environment}: "
         f"{kinds} error type{'s' if kinds != 1 else ''}, "
         f"{total} error{'s' if total != 1 else ''} (last hour)"
     )
+    if runs:
+        subject += f", {runs} failed run{'s' if runs != 1 else ''}/kill{'s' if runs != 1 else ''}"
 
     by_service: "OrderedDict[str, list[Entry]]" = OrderedDict()
     for e in sorted(entries.values(), key=lambda e: e.count, reverse=True):
@@ -239,6 +370,15 @@ def render(entries: "OrderedDict[tuple, Entry]", scanned: int, unreadable: list[
         f"{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC.",
         "",
     ]
+    if incidents:
+        # First: these are invisible in the logs, and an OOM kill is often the
+        # cause of the errors listed below it.
+        lines.append("── failed runs & killed containers " + "─" * 22)
+        for i in sorted(incidents.values(), key=lambda i: i.count, reverse=True):
+            lines.append(f"  [{i.count}×] {i.kind}: {i.source} — {i.reason}")
+            lines.append(f"    {i.detail}")
+            lines.append("")
+        lines.append("")
     for service, items in by_service.items():
         lines.append(f"── {service} " + "─" * max(0, 56 - len(service)))
         for e in items:
@@ -296,6 +436,14 @@ def main() -> int:
 
     entries: "OrderedDict[tuple, Entry]" = OrderedDict()
     unreadable: list[str] = []
+    try:
+        incidents = find_incidents(client, namespace)
+    except Exception as exc:
+        # Named in the footer, like an unreadable container — most likely the
+        # batch/jobs permission is missing. The log scan still runs.
+        logger.warning("Could not check for failed runs: %s", exc)
+        incidents = OrderedDict()
+        unreadable.append("failed-run check (jobs/pod status)")
     for pod, container, service in containers:
         try:
             collect(service, read_log(client, namespace, pod, container), entries)
@@ -305,13 +453,13 @@ def main() -> int:
             logger.warning("Could not read logs for %s/%s: %s", pod, container, exc)
             unreadable.append(f"{pod}/{container}")
 
-    if not entries and not unreadable:
+    if not entries and not unreadable and not incidents:
         # Log the quiet hour so "no email" and "job never ran" stay distinguishable.
         logger.info("Log digest: no errors in %d container(s)", len(containers))
         return 0
 
-    subject, body = render(entries, len(containers), unreadable)
-    if not entries:
+    subject, body = render(entries, len(containers), unreadable, incidents)
+    if not entries and not incidents:
         subject = f"Job Radar {settings.environment}: log digest could not read some containers"
     send_email(to, subject, body)
     logger.info("Log digest: %d fault(s) across %d container(s) → %s",
