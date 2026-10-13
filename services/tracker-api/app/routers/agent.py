@@ -1288,7 +1288,26 @@ def list_inbox(
 
     total = q.count()
     items = q.order_by(models.InboxEmail.received_at.desc()).offset(skip).limit(limit).all()
-    return schemas.PaginatedInbox(total=total, items=items)
+    out = [schemas.InboxEmailOut.model_validate(e) for e in items]
+
+    # Name the job each "possible duplicate" matched, so the flag can be acted
+    # on. Looked up among THIS user's reviews only — the id is agent-supplied.
+    wanted = {p.matched_review_id for e in out for p in e.postings if p.matched_review_id}
+    if wanted:
+        rows = (
+            db.query(models.UserJobReview, models.Job)
+            .join(models.Job, models.Job.id == models.UserJobReview.job_id)
+            .filter(models.UserJobReview.user_id == current_user.id,
+                    models.UserJobReview.id.in_(wanted))
+            .all()
+        )
+        briefs = {r.id: schemas.MatchedJobBrief(review_id=r.id, title=j.title, company=j.company,
+                                                status=getattr(r.status, "value", r.status))
+                  for r, j in rows}
+        for e in out:
+            for p in e.postings:
+                p.matched_job = briefs.get(p.matched_review_id)
+    return schemas.PaginatedInbox(total=total, items=out)
 
 
 @router.get("/stats", response_model=schemas.AgentStatsOut)
@@ -1360,6 +1379,31 @@ def _compute_stats(user_id: Optional[UUID], db: Session) -> schemas.AgentStatsOu
         jobs_imported=jobs_imported,
         last_run=last_run_out,
     )
+
+
+@router.patch("/inbox/postings/{posting_id}", response_model=schemas.InboxPostingOut)
+def update_inbox_posting(
+    posting_id: UUID,
+    payload: schemas.InboxPostingUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Skip a posting ("same job" / "not interested"), or undo that. Imported
+    postings stay imported — that state belongs to the import flow."""
+    posting = (
+        db.query(models.InboxPosting)
+        .filter(models.InboxPosting.id == posting_id,
+                models.InboxPosting.user_id == current_user.id)
+        .first()
+    )
+    if posting is None:
+        raise HTTPException(status_code=404, detail="Posting not found")
+    if posting.import_status == models.ImportStatus.IMPORTED:
+        raise HTTPException(status_code=409, detail="Already imported")
+    posting.import_status = models.ImportStatus(payload.import_status)
+    db.commit()
+    db.refresh(posting)
+    return posting
 
 
 # ── /{id} param routes last (route ordering) ─────────────────

@@ -2,8 +2,9 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Inbox as InboxIcon, ChevronRight, ChevronDown, ExternalLink, Check, EyeOff,
-  Trash2, AlertTriangle, Loader2, Building2, CircleDot,
+  Trash2, AlertTriangle, Loader2, Building2, CircleDot, Undo2, Copy,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
@@ -58,7 +59,13 @@ function StatusBadge({ status }: { status: EmailStatus }) {
 
 // ─── Posting / interaction detail ─────────────────────────────
 
-function PostingRow({ p, onOpen }: { p: InboxPosting; onOpen: (url: string) => void }) {
+type PostingStatus = "pending" | "dismissed";
+
+function PostingRow({ p, onOpen, onStatus, busy }: {
+  p: InboxPosting; onOpen: (url: string) => void;
+  onStatus: (id: string, s: PostingStatus) => void; busy: boolean;
+}) {
+  const skipped = p.import_status === "dismissed";
   const href = safeHref(p.link);   // [C2] only http/https becomes a link
   // The title is the click target: a link opening the source in a new tab when
   // there's a safe URL, otherwise plain (inert) text. {text} is React-escaped.
@@ -71,7 +78,7 @@ function PostingRow({ p, onOpen }: { p: InboxPosting; onOpen: (url: string) => v
     </span>
   );
   return (
-    <div className="flex items-start gap-2 py-2 border-t first:border-t-0">
+    <div className={cn("flex items-start gap-2 py-2 border-t first:border-t-0", skipped && "opacity-50")}>
       <Building2 className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -91,10 +98,16 @@ function PostingRow({ p, onOpen }: { p: InboxPosting; onOpen: (url: string) => v
               action
             </Badge>
           )}
-          {p.possible_duplicate && (
+          {/* A duplicate you can act on: which job it matched, linked. Without the
+              match (an older agent, or it named a job you've since deleted) it
+              stays a plain hint. */}
+          {p.possible_duplicate && !p.matched_job && (
             <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-700 dark:text-amber-400">
               possible duplicate
             </Badge>
+          )}
+          {skipped && (
+            <Badge variant="outline" className="text-[10px] text-muted-foreground">skipped</Badge>
           )}
           {p.import_status === "imported" && (
             <Badge variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-700 dark:text-emerald-400">
@@ -102,6 +115,35 @@ function PostingRow({ p, onOpen }: { p: InboxPosting; onOpen: (url: string) => v
             </Badge>
           )}
         </div>
+        {p.matched_job && (
+          <div className="mt-1 flex items-center gap-1.5 text-xs text-amber-800 dark:text-amber-300">
+            <Copy className="h-3 w-3 shrink-0" />
+            <span>
+              Looks like a job you already have:{" "}
+              <Link to={`/jobs/${p.matched_job.review_id}`} className="underline underline-offset-2 hover:text-foreground">
+                {p.matched_job.title}
+              </Link>
+              <span className="text-muted-foreground"> · {p.matched_job.status.replace(/_/g, " ")}</span>
+            </span>
+          </div>
+        )}
+        {p.import_status === "pending" && (
+          <div className="mt-1 flex gap-1.5">
+            <Button variant="outline" size="sm" className="h-6 px-2 text-xs" disabled={busy}
+                    onClick={() => onStatus(p.id, "dismissed")}>
+              <EyeOff className="h-3 w-3 mr-1" />
+              {p.matched_job ? "Same job — skip" : "Skip"}
+            </Button>
+          </div>
+        )}
+        {skipped && (
+          <div className="mt-1">
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={busy}
+                    onClick={() => onStatus(p.id, "pending")}>
+              <Undo2 className="h-3 w-3 mr-1" /> Undo
+            </Button>
+          </div>
+        )}
         {/* Non-http(s) link from the agent — show inert, never as an href */}
         {!href && p.link && (
           <span className="text-xs text-muted-foreground break-all mt-0.5 block">{p.link}</span>
@@ -130,7 +172,7 @@ function InteractionRow({ i }: { i: InboxInteraction }) {
 // ─── Email row (expandable) ───────────────────────────────────
 
 function EmailRow({
-  email, expanded, onToggle, onPatch, onDelete, onOpen, busy,
+  email, expanded, onToggle, onPatch, onDelete, onOpen, onPostingStatus, busy,
 }: {
   email: InboxEmail;
   expanded: boolean;
@@ -138,6 +180,7 @@ function EmailRow({
   onPatch: (status: EmailStatus) => void;
   onDelete: () => void;
   onOpen: (url: string) => void;
+  onPostingStatus: (id: string, s: PostingStatus) => void;
   busy: boolean;
 }) {
   const needs = email.status === "needs_review";
@@ -185,7 +228,7 @@ function EmailRow({
 
           {email.postings.length > 0 && (
             <div className="mb-1">
-              {email.postings.map((p) => <PostingRow key={p.id} p={p} onOpen={onOpen} />)}
+              {email.postings.map((p) => <PostingRow key={p.id} p={p} onOpen={onOpen} onStatus={onPostingStatus} busy={busy} />)}
             </div>
           )}
           {email.interactions.map((i) => <InteractionRow key={i.id} i={i} />)}
@@ -265,6 +308,14 @@ export function InboxPage() {
     },
     onError: (e: any) =>
       toast({ title: "Update failed", description: e?.response?.data?.detail, variant: "destructive" }),
+  });
+
+  // Skip a posting ("same job" / not interested), or undo that.
+  const postingMut = useMutation({
+    mutationFn: ({ id, s }: { id: string; s: PostingStatus }) =>
+      agentApi.patch(`/agent/inbox/postings/${id}`, { import_status: s }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["inbox"] }),
+    onError: () => toast({ title: "Couldn't update that posting", variant: "destructive" }),
   });
 
   const deleteMut = useMutation({
@@ -350,7 +401,8 @@ export function InboxPage() {
               onPatch={(s) => patchMut.mutate({ id: email.id, status: s })}
               onDelete={() => setDeleteTarget(email)}
               onOpen={openExternal}
-              busy={busy}
+              onPostingStatus={(id, s) => postingMut.mutate({ id, s })}
+              busy={busy || postingMut.isPending}
             />
           ))}
         </div>

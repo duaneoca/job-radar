@@ -131,7 +131,9 @@ def test_manual_job_dedup_by_url(client):
 def test_manual_job_ats_sources(client):
     """Newer sources (ashby, greenhouse, lever, jsearch) are accepted."""
     for i, source in enumerate(("ashby", "greenhouse", "lever", "jsearch")):
-        payload = {**JOB_PAYLOAD, "source": source,
+        # Distinct titles: an identical role would be recognised as one the
+        # user already has (same company, title, city) and not re-added.
+        payload = {**JOB_PAYLOAD, "source": source, "title": f"{JOB_PAYLOAD['title']} {i}",
                    "url": f"https://example.com/{source}/{i}"}
         with patch("app.routers.jobs._celery"):
             resp = client.post("/jobs/manual", json=payload)

@@ -202,6 +202,10 @@ class UserJobReviewOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     timeline: List[TimelineEventOut] = []
+    # Set by POST /jobs/manual when the import matched a job the user already
+    # had: "same_link" (identical listing) or "same_role" (same company, title
+    # and city from another listing — the page offers to add it separately).
+    already_had: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -951,6 +955,16 @@ class AgentRunOut(BaseModel):
 
 
 # Frontend inbox views
+class MatchedJobBrief(BaseModel):
+    """The job a 'possible duplicate' posting matched — so the flag can be acted
+    on. Only ever filled from the caller's own reviews (matched_review_id is
+    agent-supplied and untrusted, H1)."""
+    review_id: UUID
+    title: str
+    company: str
+    status: str
+
+
 class InboxPostingOut(BaseModel):
     id: UUID
     company: str
@@ -959,6 +973,7 @@ class InboxPostingOut(BaseModel):
     action_required: bool
     possible_duplicate: bool
     matched_review_id: Optional[UUID]
+    matched_job: Optional[MatchedJobBrief] = None
     import_status: ImportStatus
     imported_review_id: Optional[UUID]
     created_at: datetime
@@ -980,6 +995,11 @@ class InboxInteractionOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class InboxPostingUpdate(BaseModel):
+    """PATCH /agent/inbox/postings/{id} — skip a posting, or undo that."""
+    import_status: Literal["pending", "dismissed"]
 
 
 class InboxEmailOut(BaseModel):

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Loader2, Plus } from "lucide-react";
+import { ArrowLeft, Copy, Loader2, Plus } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -36,6 +36,9 @@ function decodeHash(): BookmarkletData {
 export function AddJobPage() {
   const navigate = useNavigate();
   const [saving, setSaving] = useState(false);
+  // Set when the import matched a role already in the list from another listing
+  // (same company, title and city): offer to open it or add separately.
+  const [sameRole, setSameRole] = useState<{ id: string; title: string; status: string; url: string } | null>(null);
 
   // Pre-fill from bookmarklet hash on first render
   const [prefilled] = useState<BookmarkletData>(() => decodeHash());
@@ -64,7 +67,10 @@ export function AddJobPage() {
       toast({ title: "Title, company and URL are required", variant: "destructive" });
       return;
     }
+    await save(false);
+  }
 
+  async function save(separate: boolean) {
     setSaving(true);
     try {
       const payload = {
@@ -79,8 +85,14 @@ export function AddJobPage() {
         description: description.trim() || null,
         external_id: externalId || null,
       };
-      const res = await jobsApi.post("/jobs/manual", payload);
+      const res = await jobsApi.post("/jobs/manual" + (separate ? "?separate=true" : ""), payload);
       const review = res.data;
+      if (review.already_had === "same_role") {
+        // Same role from another listing — not added, not re-scored. Ask rather
+        // than assume: it may be a genuinely separate opening.
+        setSameRole({ id: review.id, title: review.title, status: review.status, url: review.url });
+        return;
+      }
       if (res.status === 200) {
         toast({ title: "Already in your list", description: "This job was already saved — not re-added." });
       } else {
@@ -118,6 +130,29 @@ export function AddJobPage() {
           )}
         </div>
       </div>
+
+      {sameRole && (
+        <div className="rounded-lg border border-amber-400/50 bg-amber-50/60 dark:bg-amber-950/20 p-4 space-y-3">
+          <div className="flex items-start gap-2">
+            <Copy className="h-4 w-4 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div className="text-sm space-y-1">
+              <p className="font-medium">You already have this job</p>
+              <p className="text-muted-foreground">
+                <span className="text-foreground">{sameRole.title}</span> · {sameRole.status.replace(/_/g, " ")} — same
+                company, title and city. It wasn't added again or re-scored.
+                {sameRole.url === url.trim() && " Your entry now uses the link you imported."}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" onClick={() => navigate(`/jobs/${sameRole.id}`)}>Open it</Button>
+            <Button size="sm" variant="outline" disabled={saving} onClick={() => save(true)}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
+              Add as a separate job anyway
+            </Button>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
         {/* Title + Company */}

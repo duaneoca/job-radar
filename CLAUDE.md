@@ -477,6 +477,12 @@ get`. It cannot read secrets and cannot see `jobradar-staging`.
   source → `date_scraped` (last seen). A review the SYSTEM expired comes back with a
   timeline note if the new listing is itself recent (else posting age re-expires it);
   DISMISSED never comes back. The merge script gives kept copies the newest same-source link.
+  Manual/bookmarklet imports check the same key: a role the user already has returns theirs
+  (`already_had: "same_role"`, 200, not re-scored) and the page offers `?separate=true`; an
+  imported link replaces an aggregator copy's on a NEW Job row (rows are shared — never edit
+  one under another user). Inbox postings show the job a `possible_duplicate` matched
+  (`matched_job`, own reviews only — the id is agent-supplied) and can be skipped/undone
+  (`PATCH /agent/inbox/postings/{id}`).
   Adzuna liveness can't be probed: its pages 403 non-browsers identically for live and dead
   ads, and even a narrow API search misses ads it served the same morning.
 - Never treat absence from an aggregator search as evidence: Adzuna is queried

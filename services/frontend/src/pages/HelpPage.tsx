@@ -142,8 +142,18 @@ function JobPipelineTab() {
       <Separator />
 
       <H2>Deduplication</H2>
-      <P>Jobs are deduplicated by source + external ID. The scraper won't create
-        duplicate listings — it only adds a job when it hasn't been seen before.</P>
+      <P>Job boards list the same opening many times — Adzuna re-posts openings under new
+        IDs every few days, and the same role turns up on several sites. Job Radar treats a
+        job with the <strong>same company, title and city</strong> as one you already have:
+        it isn't added again or re-scored. Instead your existing entry is refreshed with the
+        newest link, so you're less likely to click through to an ad that's been taken down.
+        A job that had expired comes back to your list if it's advertised again recently;
+        jobs you dismissed stay dismissed.</P>
+      <P>Two cases are never merged: the same title in different cities (they may be
+        separate openings), and listings from a company's own careers board. Jobs you add
+        with the bookmarklet are checked too — if you already have the role you're taken to
+        it, and can choose <em>Add as a separate job anyway</em> if it really is a different
+        opening.</P>
 
       <Separator />
 
@@ -441,6 +451,11 @@ function InboxRecruitersTab({ agentEnabled }: { agentEnabled: boolean }) {
             message into a category (application confirmation, recruiter outreach, interview
             request, rejection, and so on), and matches it back to the job in your pipeline —
             logging the update on that job's timeline automatically.</P>
+          <P>A posting marked as a <strong>possible duplicate</strong> shows which of your
+            jobs it looks like, with a link to it. If it's the same job, choose
+            <em>Same job — skip</em>; if not, open the link and import it as usual (if it turns
+            out you have it after all, the import takes you to it rather than adding a copy).
+            Any posting can be skipped, and <em>Undo</em> brings it back.</P>
           <P>The email agent is an optional feature the administrator can turn on or off
             globally. When it's off, the Inbox tab and the Email Agent settings are hidden —
             the Recruiters contact list below stays available either way.</P>
