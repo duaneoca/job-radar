@@ -42,6 +42,18 @@ export interface Release {
 export const RELEASES: Release[] = [
   // Newest first. See the module comment before adding one.
   {
+    version: "v1.16.1",
+    date: "2026-10-14",
+    headline: "Company research no longer fails partway through",
+    notes: [
+      {
+        title: "Research and longer answers finish again",
+        detail:
+          "Company research often failed with \"Generation failed\" or a message saying the answer was cut off, and the work was lost. Longer application answers could hit the same limit. We'd set the space for these answers too small. That's fixed, and it costs you nothing extra: you're only billed for what the AI actually writes. If research failed for you recently, just run it again.",
+      },
+    ],
+  },
+  {
     version: "v1.16.0",
     date: "2026-10-13",
     headline: "Possible duplicates in your Inbox are now easy to deal with.",
