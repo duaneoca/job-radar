@@ -25,6 +25,14 @@ from app.llm import get_llm_provider, get_tavily_key, llm_complete
 # uses the key's writing model; everything else defaults to the analysis model.
 WRITING = models.MODEL_PURPOSE_WRITING
 
+# Ceiling for generated text — research, application answers, refine, extract.
+# These ran on llm_complete's 1024 default, and research with Tavily context
+# outgrew it: on 2026-10-14, 4 of 6 research requests in production were cut off
+# and thrown away. Only tokens actually generated are billed, so a roomy ceiling
+# costs nothing on answers that finish early. (Interview prep and résumé
+# tailoring set their own, larger.)
+GENERATION_MAX_TOKENS = 4096
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/jobs", tags=["generate"])
@@ -211,6 +219,7 @@ def generate_research(
         messages=[{"role": "user", "content": f"{_job_block(job)}{web_context}{_resume_block(profile)}\n\n## Research Request\n{research_prompt}"}],
         api_key=api_key,
         model=model,
+        max_tokens=GENERATION_MAX_TOKENS,
         db=db,
         user_id=current_user.id,
     )
@@ -255,6 +264,7 @@ def generate_application_answer(
         messages=[{"role": "user", "content": f"{_job_block(job)}{_resume_block(profile)}\n\n## Task: {template['label']}\n{template['prompt']}"}],
         api_key=api_key,
         model=model,
+        max_tokens=GENERATION_MAX_TOKENS,
         db=db,
         user_id=current_user.id,
     )
@@ -324,7 +334,7 @@ def refine_application(
 
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
     return {"response": llm_complete(system=system_prompt, messages=messages, api_key=api_key,
-                                 model=model, db=db, user_id=current_user.id)}
+                                 model=model, max_tokens=GENERATION_MAX_TOKENS, db=db, user_id=current_user.id)}
 
 
 # ── Prompt-extraction (merge conversation learnings into existing prompts) ────
@@ -409,6 +419,7 @@ def extract_prompt_changes(
         messages=[{"role": "user", "content": user_content}],
         api_key=api_key,
         model=model,
+        max_tokens=GENERATION_MAX_TOKENS,
         db=db,
         user_id=current_user.id,
     )}

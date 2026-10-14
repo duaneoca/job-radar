@@ -555,9 +555,12 @@ def llm_complete(
         logger.error("Response truncated at max_tokens=%s (model=%s)", max_tokens, model)
         raise HTTPException(
             status_code=502,
-            detail=("The AI's response was cut off before it finished. This usually means the "
-                    "request asked for more than fits — try shortening your custom prompt or "
-                    "writing skills."),
+            # Not "shorten your prompt": the usual cause was our own ceiling being
+            # too low (research, 2026-10). Say what happened; point at the prompt
+            # only as the thing to check if it keeps happening.
+            detail=("The AI's answer was cut off before it finished — it ran longer than the "
+                    "space allowed for this kind of answer. Try again. If it keeps happening, a "
+                    "long custom prompt or writing skill may be pushing it over."),
         )
 
     if db is not None and user_id is not None:
