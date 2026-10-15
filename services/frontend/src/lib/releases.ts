@@ -42,6 +42,23 @@ export interface Release {
 export const RELEASES: Release[] = [
   // Newest first. See the module comment before adding one.
   {
+    version: "v1.17.0",
+    date: "2026-10-15",
+    headline: "Inbox moves next to Recruiters, and the tabs get icons",
+    notes: [
+      {
+        title: "Inbox is now a tab on the Jobs page",
+        detail:
+          "Inbox has moved from the top bar to the row with Jobs, Connections and Recruiters, and its count of emails waiting for review comes with it. Old links and bookmarks to the Inbox still work.",
+      },
+      {
+        title: "Icons for Jobs, Connections and Recruiters",
+        detail:
+          "Each tab has an icon now: a briefcase, a plug and a handshake. On a phone the tabs show just the icons, so all four fit on one line.",
+      },
+    ],
+  },
+  {
     version: "v1.16.1",
     date: "2026-10-14",
     headline: "Company research no longer fails partway through",

@@ -8,7 +8,6 @@ import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
 import { SignupPage } from "./pages/SignupPage";
 import { JobsPage } from "./pages/JobsPage";
-import { InboxPage } from "./pages/InboxPage";
 import { JobDetailPage } from "./pages/JobDetailPage";
 import { TailorReviewPage } from "./pages/TailorReviewPage";
 import { TailorPrintPage } from "./pages/TailorPrintPage";
@@ -51,13 +50,6 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 function RequireAdmin({ children }: { children: React.ReactNode }) {
   const { user } = useAuthStore();
   if (!user?.is_admin) return <Navigate to="/jobs" replace />;
-  return <>{children}</>;
-}
-
-// Email agent is a global admin toggle — when off, agent pages bounce to /jobs.
-function RequireAgentEnabled({ children }: { children: React.ReactNode }) {
-  const { user } = useAuthStore();
-  if (!user?.email_agent_enabled) return <Navigate to="/jobs" replace />;
   return <>{children}</>;
 }
 
@@ -104,20 +96,9 @@ export default function App() {
             </RequireAuth>
           }
         />
-        <Route
-          path="/inbox"
-          element={
-            <RequireAuth>
-              <RequireAgentEnabled>
-                <Layout>
-                  <InboxPage />
-                </Layout>
-              </RequireAgentEnabled>
-            </RequireAuth>
-          }
-        />
-        {/* Recruiters moved onto the Jobs page as a tab. Kept as a redirect so
-            existing bookmarks and links don't 404. */}
+        {/* Recruiters and Inbox moved onto the Jobs page as tabs. Kept as
+            redirects so existing bookmarks and links don't 404. */}
+        <Route path="/inbox" element={<Navigate to="/jobs?tab=inbox" replace />} />
         <Route path="/recruiters" element={<Navigate to="/jobs?tab=recruiters" replace />} />
         <Route
           path="/jobs/add"
