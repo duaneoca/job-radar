@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Search, SlidersHorizontal, ExternalLink, RefreshCw, ChevronLeft, ChevronRight,
   MapPin, Building2, DollarSign, Star, Check, UserCheck, Loader2, Plus, Trash2, X, AlertTriangle,
-  Briefcase, Unplug, Handshake,
+  Briefcase, Unplug, Handshake, Inbox,
 } from "lucide-react";
 import { ColumnFilter } from "../components/ColumnFilter";
 import { ConnectionsTable } from "../components/ConnectionsTable";
@@ -768,8 +768,7 @@ export function JobsPage() {
       className="space-y-4"
     >
       {/* Icons and labels together. Below sm the labels drop and the icons carry
-          the row — four labelled tabs don't fit a phone. Inbox has no icon, so
-          its label stays. */}
+          the row — four labelled tabs don't fit a phone. */}
       <TabsList>
         <TabsTrigger value="jobs" className="gap-1.5" aria-label="Jobs">
           <Briefcase className="h-4 w-4" /><span className="hidden sm:inline">Jobs</span>
@@ -781,8 +780,8 @@ export function JobsPage() {
           <Handshake className="h-4 w-4" /><span className="hidden sm:inline">Recruiters</span>
         </TabsTrigger>
         {agentEnabled && (
-          <TabsTrigger value="inbox" className="gap-1.5">
-            Inbox
+          <TabsTrigger value="inbox" className="gap-1.5" aria-label={needsCount > 0 ? `Inbox, ${needsCount} need review` : "Inbox"}>
+            <Inbox className="h-4 w-4" /><span className="hidden sm:inline">Inbox</span>
             {needsCount > 0 && (
               <span
                 className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold text-white"
