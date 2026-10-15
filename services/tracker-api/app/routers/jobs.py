@@ -302,6 +302,9 @@ def board_sync(
             missing += 1
             if job.board_missing_count < models.BOARD_MISS_THRESHOLD:
                 continue
+            # Starred reviews expire here too, unlike in _do_expire: this is
+            # evidence the employer took the posting down, not a guess, and the
+            # user would want to know. Cleanup still never deletes them.
             expired += (
                 db.query(models.UserJobReview)
                 .filter(
@@ -337,6 +340,7 @@ def list_jobs(
     min_score: Optional[float] = Query(None, ge=0, le=10),
     recommended_only: Optional[bool] = Query(None),
     has_contact: Optional[bool] = Query(None),
+    starred: Optional[bool] = Query(None),
     search: Optional[str] = Query(None, description="Search title or company"),
     skip: int = Query(0, ge=0),
     limit: int = Query(25, ge=1, le=200),
@@ -378,6 +382,8 @@ def list_jobs(
         q = q.filter(contact_match)
     elif has_contact is False:
         q = q.filter(~contact_match)
+    if starred is not None:
+        q = q.filter(models.UserJobReview.starred == starred)
     if search:
         term = f"%{search}%"
         q = q.filter(

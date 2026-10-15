@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { ListFilter } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
@@ -5,8 +6,10 @@ import {
 } from "./ui/dropdown-menu";
 
 /** Excel-style multi-select column-header filter. Empty selection = no filter. */
-export function ColumnFilter({ label, options, selected, onChange }: {
+export function ColumnFilter({ label, display, options, selected, onChange }: {
   label: string;
+  /** Shown in the header instead of `label` (e.g. an icon); `label` still names the menu. */
+  display?: ReactNode;
   options: { value: string; label: string }[];
   selected: string[];
   onChange: (next: string[]) => void;
@@ -21,8 +24,9 @@ export function ColumnFilter({ label, options, selected, onChange }: {
         <button
           type="button"
           className={`inline-flex items-center gap-1 font-medium outline-none ${active ? "text-primary" : "hover:text-foreground/80"}`}
+          aria-label={display ? `Filter ${label.toLowerCase()}` : undefined}
         >
-          {label}
+          {display ?? label}
           <ListFilter className={`h-3.5 w-3.5 ${active ? "" : "text-muted-foreground"}`} />
           {active && <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-label="filter active" />}
         </button>

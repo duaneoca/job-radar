@@ -227,7 +227,9 @@ export function AddJobPage() {
               id="salMin"
               type="number"
               min={0}
-              step={1000}
+              // step 1, not 1000: the browser rejects any value off the step,
+              // so 1000 blocked real salaries like $187,500.
+              step={1}
               value={salaryMin}
               onChange={(e) => setSalaryMin(e.target.value)}
               placeholder="120000"
@@ -239,7 +241,7 @@ export function AddJobPage() {
               id="salMax"
               type="number"
               min={0}
-              step={1000}
+              step={1}
               value={salaryMax}
               onChange={(e) => setSalaryMax(e.target.value)}
               placeholder="160000"

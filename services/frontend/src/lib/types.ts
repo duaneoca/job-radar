@@ -182,6 +182,8 @@ export interface JobReview {
   notes: string | null;
   date_applied: string | null;
   has_contact: boolean;
+  /** The user's own marker — not the AI's `recommended`. */
+  starred: boolean;
   contact_notes: string | null;
   research_summary: string | null;
   application_answers: Record<string, string> | null;

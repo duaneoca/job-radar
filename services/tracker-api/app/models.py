@@ -267,6 +267,10 @@ class UserJobReview(Base):
 
     # Network — does the user know someone at this company?
     has_contact      = Column(Boolean, default=False)
+    # The user's own "come back to this" marker — not the AI's `recommended`.
+    # Starred reviews skip the guess-based expiry rules and are never deleted by
+    # cleanup; see _do_expire / _do_cleanup.
+    starred          = Column(Boolean, nullable=False, server_default="false", default=False)
     contact_notes    = Column(Text, nullable=True)   # "Sarah at Acme, 2nd-degree via John"
 
     # Recruiter who sourced this role (optional). SET NULL so deleting a recruiter

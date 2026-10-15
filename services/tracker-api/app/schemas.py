@@ -132,6 +132,7 @@ class UserJobReviewUpdate(BaseModel):
     date_applied: Optional[datetime] = None
     has_contact: Optional[bool] = None
     contact_notes: Optional[str] = None
+    starred: Optional[bool] = None
     application_answers: Optional[dict] = None  # {str(template_idx): answer}
     interview_questions: Optional[list] = None  # [{id, category, question, coaching, story_refs, notes}]
 
@@ -190,6 +191,7 @@ class UserJobReviewOut(BaseModel):
     notes: Optional[str]
     date_applied: Optional[datetime]
     has_contact: bool
+    starred: bool = False
     contact_notes: Optional[str]
     research_summary: Optional[str]
     application_answers: Optional[dict]
@@ -251,6 +253,7 @@ class UserJobReviewOut(BaseModel):
             notes=review.notes,
             date_applied=review.date_applied,
             has_contact=review.has_contact,
+            starred=bool(review.starred),
             contact_notes=review.contact_notes,
             research_summary=review.research_summary,
             application_answers=review.application_answers,

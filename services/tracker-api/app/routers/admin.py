@@ -54,6 +54,7 @@ def _do_cleanup(db: Session) -> dict:
     """
     1. Hard-delete UserJobReview rows whose status is terminal (dismissed /
        rejected / expired) and whose updated_at is older than terminal_ttl_days.
+       Never a STARRED review: a star means keep it, whatever the status says.
        The DB-level CASCADE on timeline_events.review_id removes timeline rows
        automatically.
     2. Hard-delete Job rows that now have no reviews from any user (true orphans).
@@ -67,6 +68,7 @@ def _do_cleanup(db: Session) -> dict:
         .filter(
             models.UserJobReview.status.in_(_TERMINAL_STATUSES),
             models.UserJobReview.updated_at < cutoff,
+            models.UserJobReview.starred.is_(False),
         )
         .delete(synchronize_session=False)
     )
@@ -133,7 +135,10 @@ def _do_expire(db: Session) -> dict:
     and expired ads, so there is no signal to read. Posting age is the proxy.
 
     updated_at is reset to now so the terminal grace period starts at expiry.
-    Applied / interviewing / offer and already-terminal statuses are untouched.
+    Applied / interviewing / offer and already-terminal statuses are untouched,
+    and so are STARRED reviews: both rules are guesses, and a star is the user
+    saying they mean to come back. (Board-sync, which is evidence rather than a
+    guess, does expire them — see jobs.board_sync.)
 
     Returns the count of soft-expired reviews, split by rule.
     """
@@ -142,7 +147,11 @@ def _do_expire(db: Session) -> dict:
     def _expire(where) -> int:
         return (
             db.query(models.UserJobReview)
-            .filter(models.UserJobReview.status.in_(_EXPIRABLE_STATUSES), where)
+            .filter(
+                models.UserJobReview.status.in_(_EXPIRABLE_STATUSES),
+                models.UserJobReview.starred.is_(False),
+                where,
+            )
             .update(
                 {
                     models.UserJobReview.status: models.JobStatus.EXPIRED,

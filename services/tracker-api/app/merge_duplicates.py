@@ -11,7 +11,8 @@ Two kinds of copy, both from before ingest learned to recognise them:
 In each group every copy someone worked on is kept, and only untouched
 aggregator copies are deleted. "Touched" means anything a person did: a status past new/reviewed/
 expired (dismissed included — that is a verdict), notes, contact notes, a
-recruiter, research, application answers, interview prep or a tailored résumé.
+recruiter, research, application answers, interview prep, a tailored résumé
+or a star.
   * nobody touched any → keep the most recently scraped (freshest data);
   * one or more were touched → keep all of those, delete the untouched rest;
     a group left with two or more worked copies is listed for the user to
@@ -33,7 +34,7 @@ from app.dedup import AGGREGATOR_SOURCES
 
 _UNTOUCHED_STATUSES = {"new", "reviewed", "expired"}
 _WORK_FIELDS = ("notes", "contact_notes", "recruiter_id", "research_summary",
-                "application_answers", "interview_questions", "resume_tailor")
+                "application_answers", "interview_questions", "resume_tailor", "starred")
 
 
 @dataclass
