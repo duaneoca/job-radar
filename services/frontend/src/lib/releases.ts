@@ -52,9 +52,9 @@ export const RELEASES: Release[] = [
           "Inbox has moved from the top bar to the row with Jobs, Connections and Recruiters, and its count of emails waiting for review comes with it. Old links and bookmarks to the Inbox still work.",
       },
       {
-        title: "Icons for Jobs, Connections and Recruiters",
+        title: "Icons on the Jobs page tabs",
         detail:
-          "Each tab has an icon now: a briefcase, a plug and a handshake. On a phone the tabs show just the icons, so all four fit on one line.",
+          "Each tab has an icon now: a briefcase, a plug, a handshake and an inbox tray. On a phone the tabs show just the icons, so all four fit on one line.",
       },
     ],
   },
