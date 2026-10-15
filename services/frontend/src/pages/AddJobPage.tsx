@@ -33,6 +33,12 @@ function decodeHash(): BookmarkletData {
   }
 }
 
+/** "$187,500", "187,500" or "187500" → 187500. Blank or no digits → null. */
+function parseSalary(raw: string): number | null {
+  const n = parseFloat(raw.replace(/[^0-9.]/g, ""));
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+
 export function AddJobPage() {
   const navigate = useNavigate();
   const [saving, setSaving] = useState(false);
@@ -80,8 +86,8 @@ export function AddJobPage() {
         source,
         location: location.trim() || null,
         remote,
-        salary_min: salaryMin ? parseInt(salaryMin, 10) : null,
-        salary_max: salaryMax ? parseInt(salaryMax, 10) : null,
+        salary_min: parseSalary(salaryMin),
+        salary_max: parseSalary(salaryMax),
         description: description.trim() || null,
         external_id: externalId || null,
       };
@@ -225,26 +231,25 @@ export function AddJobPage() {
             <Label htmlFor="salMin">Salary min (USD)</Label>
             <Input
               id="salMin"
-              type="number"
-              min={0}
-              // step 1, not 1000: the browser rejects any value off the step,
-              // so 1000 blocked real salaries like $187,500.
-              step={1}
+              // Text, not type="number": no spinner arrows or scroll-wheel nudges,
+              // no step rule (step=1000 once refused $187,500), and "187,500" or
+              // "$187,500" can be typed or pasted as written. parseSalary reads it.
+              type="text"
+              inputMode="numeric"
               value={salaryMin}
               onChange={(e) => setSalaryMin(e.target.value)}
-              placeholder="120000"
+              placeholder="120,000"
             />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="salMax">Salary max (USD)</Label>
             <Input
               id="salMax"
-              type="number"
-              min={0}
-              step={1}
+              type="text"
+              inputMode="numeric"
               value={salaryMax}
               onChange={(e) => setSalaryMax(e.target.value)}
-              placeholder="160000"
+              placeholder="160,000"
             />
           </div>
         </div>

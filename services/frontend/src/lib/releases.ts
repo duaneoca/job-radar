@@ -54,7 +54,7 @@ export const RELEASES: Release[] = [
       {
         title: "Any salary can be entered when adding a job",
         detail:
-          "The salary boxes on Add job only accepted round thousands, so a range like $187,500 was refused. Any whole-dollar amount now works.",
+          "The salary boxes on Add job only accepted round thousands, so a range like $187,500 was refused. Any amount now works, and you can type or paste it as written, commas and dollar sign included.",
       },
     ],
   },
