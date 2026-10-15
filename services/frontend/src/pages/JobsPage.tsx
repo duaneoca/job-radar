@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Search, SlidersHorizontal, ExternalLink, RefreshCw, ChevronLeft, ChevronRight,
-  MapPin, Building2, DollarSign, Star, Check, UserCheck, Loader2, Plus, Trash2, X, AlertTriangle,
+  MapPin, Building2, DollarSign, Star, Sparkles, Check, UserCheck, Loader2, Plus, Trash2, X, AlertTriangle,
   Briefcase, Unplug, Handshake, Inbox,
 } from "lucide-react";
 import { ColumnFilter } from "../components/ColumnFilter";
@@ -41,6 +41,7 @@ interface Filters {
   status: string[];
   source: string[];
   contact: string[];   // subset of ["yes", "no"]
+  starred: string[];   // subset of ["yes", "no"]
   remote_only: boolean;
   min_score: string;
   search: string;
@@ -51,9 +52,14 @@ const CONTACT_OPTIONS = [
   { value: "no", label: "No contact" },
 ];
 
+const STARRED_OPTIONS = [
+  { value: "yes", label: "Starred" },
+  { value: "no", label: "Not starred" },
+];
+
 const FILTERS_KEY = "jr-jobs-filters";
 const DEFAULT_FILTERS: Filters = {
-  status: [], source: [], contact: [], remote_only: false, min_score: "", search: "",
+  status: [], source: [], contact: [], starred: [], remote_only: false, min_score: "", search: "",
 };
 
 function loadFilters(): Filters {
@@ -62,6 +68,31 @@ function loadFilters(): Filters {
     if (raw) return { ...DEFAULT_FILTERS, ...JSON.parse(raw) };
   } catch { /* corrupt value — fall back to defaults */ }
   return DEFAULT_FILTERS;
+}
+
+// ─── Star toggle ──────────────────────────────────────────────────────────────
+
+/** The user's own "come back to this" marker. Deliberately not the AI's
+ *  recommendation, which is shown with sparkles instead. */
+function StarButton({ starred, onToggle, className }: {
+  starred: boolean; onToggle: () => void; className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={starred}
+      aria-label={starred ? "Remove star" : "Star this job"}
+      title={starred ? "Remove star" : "Star this job"}
+      className={cn(
+        "inline-flex items-center justify-center rounded p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        starred ? "text-amber-500" : "text-muted-foreground/40 hover:text-amber-500",
+        className,
+      )}
+    >
+      <Star className={cn("h-4 w-4", starred && "fill-current")} />
+    </button>
+  );
 }
 
 // ─── Score breakdown dialog ───────────────────────────────────────────────────
@@ -168,6 +199,7 @@ function JobsTab() {
   if (filters.source.length) params.source = filters.source;
   // contact: one option selected = filter; both or none = no filter.
   if (filters.contact.length === 1) params.has_contact = filters.contact[0] === "yes";
+  if (filters.starred.length === 1) params.starred = filters.starred[0] === "yes";
   if (filters.remote_only) params.remote_only = true;
   if (filters.min_score) params.min_score = Number(filters.min_score);
   if (filters.search) params.search = filters.search;
@@ -220,6 +252,22 @@ function JobsTab() {
     }
   }
 
+  // Optimistic: a star should fill the moment it's clicked, not after a round trip.
+  // On failure the refetch below puts the truth back.
+  async function toggleStar(job: JobReview) {
+    const starred = !job.starred;
+    qc.setQueriesData<JobListResponse>({ queryKey: ["jobs"] }, (old) =>
+      old && { ...old, items: old.items.map((j) => (j.id === job.id ? { ...j, starred } : j)) });
+    if (selected?.id === job.id) setSelected((s) => (s ? { ...s, starred } : s));
+    try {
+      await updateReview.mutateAsync({ id: job.id, patch: { starred } });
+    } catch {
+      if (selected?.id === job.id) setSelected((s) => (s ? { ...s, starred: !starred } : s));
+      qc.invalidateQueries({ queryKey: ["jobs"] });
+      toast({ title: starred ? "Couldn't star the job" : "Couldn't remove the star", variant: "destructive" });
+    }
+  }
+
   async function changeStatus(job: JobReview, status: string) {
     try {
       await updateReview.mutateAsync({ id: job.id, patch: { status: status as any } });
@@ -259,7 +307,7 @@ function JobsTab() {
 
   const activeFilterCount =
     filters.status.length + filters.source.length + filters.contact.length +
-    (filters.remote_only ? 1 : 0) + (filters.min_score ? 1 : 0);
+    filters.starred.length + (filters.remote_only ? 1 : 0) + (filters.min_score ? 1 : 0);
 
   return (
     <div className="space-y-4">
@@ -416,6 +464,10 @@ function JobsTab() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/50">
+              <th className="text-center pl-3 pr-0 py-2.5 font-medium w-8">
+                <ColumnFilter label="Starred" display={<Star className="h-4 w-4" />} options={STARRED_OPTIONS}
+                  selected={filters.starred} onChange={(v) => updateFilter({ starred: v })} />
+              </th>
               <th className="text-left px-3 py-2.5 font-medium">Job</th>
               <th className="text-left px-3 py-2.5 font-medium hidden md:table-cell">Location</th>
               <th className="text-left px-3 py-2.5 font-medium hidden lg:table-cell">Salary</th>
@@ -439,7 +491,7 @@ function JobsTab() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={9} className="text-center py-12 text-muted-foreground">
+                <td colSpan={10} className="text-center py-12 text-muted-foreground">
                   <Loader2 className="h-5 w-5 animate-spin inline mr-2" />
                   Loading…
                 </td>
@@ -447,13 +499,13 @@ function JobsTab() {
             ) : isError && jobs.length === 0 ? (
               // Not "No jobs found" — nothing was found because nothing came back.
               <tr>
-                <td colSpan={9} className="text-center py-12 text-muted-foreground">
+                <td colSpan={10} className="text-center py-12 text-muted-foreground">
                   Couldn't load jobs. Use <span className="font-medium">Try again</span> above.
                 </td>
               </tr>
             ) : jobs.length === 0 ? (
               <tr>
-                <td colSpan={9} className="text-center py-12 text-muted-foreground">
+                <td colSpan={10} className="text-center py-12 text-muted-foreground">
                   No jobs found.
                   {activeFilterCount > 0 && filters.search ? (
                     // The likely case when arriving from a connection's company:
@@ -468,7 +520,7 @@ function JobsTab() {
                         // filters, and resetFilters() would drop the company you
                         // just clicked through from Connections to see.
                         onClick={() => updateFilter({
-                          status: [], source: [], contact: [], remote_only: false, min_score: "",
+                          status: [], source: [], contact: [], starred: [], remote_only: false, min_score: "",
                         })}
                         className="underline hover:text-foreground"
                       >
@@ -487,6 +539,9 @@ function JobsTab() {
                   className={`border-b transition-colors cursor-pointer hover:bg-accent/40 ${selected?.job_id === job.job_id ? "bg-accent/60" : ""}`}
                   onClick={() => openJob(job)}
                 >
+                  <td className="pl-3 pr-0 py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
+                    <StarButton starred={job.starred} onToggle={() => toggleStar(job)} />
+                  </td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-start gap-2">
                       <div className="min-w-0">
@@ -608,7 +663,10 @@ function JobsTab() {
           {selected && (
             <>
               <SheetHeader className="pr-6">
-                <SheetTitle className="text-base leading-snug">{selected.title}</SheetTitle>
+                <div className="flex items-start gap-2">
+                  <StarButton starred={selected.starred} onToggle={() => toggleStar(selected)} className="mt-0.5" />
+                  <SheetTitle className="text-base leading-snug">{selected.title}</SheetTitle>
+                </div>
                 <p className="text-sm text-muted-foreground flex items-center gap-1">
                   <Building2 className="h-3.5 w-3.5" /> {selected.company}
                 </p>
@@ -644,7 +702,7 @@ function JobsTab() {
                     </div>
                     {selected.recommended && (
                       <div className="flex items-center gap-1 text-sm text-yellow-600 dark:text-yellow-400">
-                        <Star className="h-4 w-4 fill-current" />
+                        <Sparkles className="h-4 w-4" />
                         Recommended
                       </div>
                     )}

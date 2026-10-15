@@ -190,6 +190,18 @@ function JobPipelineTab() {
 
       <Separator />
 
+      <H2>Starring jobs</H2>
+      <P>Click the <strong>star</strong> next to a job, in the list or at the top of its
+        details, to mark one you want to come back to: a role you're considering but aren't
+        ready to apply for. Starring doesn't change the job's status. To see only your starred
+        jobs, use the star at the top of that column to filter for <em>Starred</em>.</P>
+      <P>A starred job is never expired for sitting untouched or for its age, and it's never
+        deleted automatically. If the company takes the posting off its own careers board,
+        it's still marked <strong>Expired</strong> so you know, but it stays starred on your
+        list until you remove it.</P>
+
+      <Separator />
+
       <H2>Filtering and sorting</H2>
       <P>The Jobs list defaults to showing New jobs sorted by AI score descending — highest
         matches first. Use the filters to switch status, sort by date, or search by title
@@ -239,7 +251,8 @@ function ScoringTab() {
       <Separator />
 
       <H2>Recommended flag</H2>
-      <P>Jobs with an overall score ≥ 6.0 are flagged as <strong>Recommended</strong>.
+      <P>Jobs with an overall score ≥ 6.0 are flagged as <strong>Recommended</strong>,
+        shown with sparkles next to the score. That's the AI's view; the star is yours.
         You can adjust this threshold by editing the scoring prompt.</P>
 
       <Separator />

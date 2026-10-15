@@ -42,6 +42,23 @@ export interface Release {
 export const RELEASES: Release[] = [
   // Newest first. See the module comment before adding one.
   {
+    version: "v1.18.0",
+    date: "2026-10-15",
+    headline: "Star the jobs you want to come back to",
+    notes: [
+      {
+        title: "Star a job",
+        detail:
+          "Click the star next to any job to mark one you're considering but aren't ready to apply for. The star at the top of that column filters your list to just your starred jobs. Starred jobs are never expired for age or deleted automatically. The AI's Recommended flag now uses sparkles, so the two don't get mixed up.",
+      },
+      {
+        title: "Any salary can be entered when adding a job",
+        detail:
+          "The salary boxes on Add job only accepted round thousands, so a range like $187,500 was refused. Any amount now works, and you can type or paste it as written, commas and dollar sign included.",
+      },
+    ],
+  },
+  {
     version: "v1.17.0",
     date: "2026-10-15",
     headline: "Inbox moves next to Recruiters, and the tabs get icons",
