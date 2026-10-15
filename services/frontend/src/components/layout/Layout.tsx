@@ -1,16 +1,13 @@
 import { useState } from "react";
 import { NavLink, useNavigate, Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { Menu, Briefcase, Radar, Settings, Settings2, LogOut, X, Sun, Moon, Monitor, User, CircleHelp, Inbox } from "lucide-react";
+import { Menu, Briefcase, Radar, Settings, Settings2, LogOut, X, Sun, Moon, Monitor, User, CircleHelp } from "lucide-react";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 import { useDarkMode, type ThemeMode } from "../../hooks/useDarkMode";
 import { useAuthStore } from "../../store/auth";
-import { authApi, agentApi } from "../../lib/api";
-import { cn } from "../../lib/utils";
+import { authApi } from "../../lib/api";
 import { LlmKeyProblemBanner, MissingKeysBanner, useApiKeyStatus } from "../ApiKeyWarning";
 import { ReleaseBanner } from "../ReleaseBanner";
-import type { PaginatedInbox } from "../../lib/types";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -38,18 +35,6 @@ export function Layout({ children }: LayoutProps) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 
-  // Email agent is a global admin toggle; when off, the Inbox tab is hidden and
-  // the agent inbox is never polled.
-  const agentEnabled = !!user?.email_agent_enabled;
-
-  // Inbox "needs review" count for the header tab badge.
-  const { data: inboxNeeds } = useQuery<PaginatedInbox>({
-    queryKey: ["inbox-needs-review"],
-    queryFn: () => agentApi.get("/agent/inbox", { params: { status: "needs_review", limit: 1 } }).then((r) => r.data),
-    enabled: !!user && agentEnabled,
-  });
-  const needsCount = inboxNeeds?.total ?? 0;
-
   async function handleLogout() {
     setOpen(false);
     try { await authApi.post("/auth/logout"); } catch { /* ignore */ }
@@ -70,28 +55,6 @@ export function Layout({ children }: LayoutProps) {
             <span>Job Radar</span>
           </NavLink>
 
-          {/* Inbox tab — to the right of the brand (hidden when the email agent is off) */}
-          {agentEnabled && (
-            <NavLink
-              to="/inbox"
-              className={({ isActive }) =>
-                cn(
-                  "relative flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium transition-colors",
-                  isActive ? "bg-accent text-accent-foreground"
-                           : "text-muted-foreground hover:text-foreground hover:bg-accent/50",
-                )
-              }
-            >
-              <Inbox className="h-4 w-4" />
-              <span className="hidden sm:inline">Inbox</span>
-              {needsCount > 0 && (
-                <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold text-white">
-                  {needsCount}
-                </span>
-              )}
-            </NavLink>
-          )}
-
           {/* Spacer pushes the rest to the right */}
           <div className="flex-1" />
 
@@ -103,8 +66,8 @@ export function Layout({ children }: LayoutProps) {
             className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
           >
             <CircleHelp className="h-4 w-4" />
-            {/* Hidden below sm, like the Recruiters/Inbox labels. Measured at
-                375px with the Inbox tab showing: the label needs 396px, and
+            {/* Hidden below sm. Measured at 375px when the Inbox
+                tab still sat in this header: the label needs 396px, and
                 forcing it wraps the brand onto two lines. Mobile discoverability
                 is handled by the drawer entry instead, which is where a phone
                 user navigates anyway. */}

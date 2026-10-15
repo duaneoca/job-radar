@@ -337,11 +337,10 @@ export function InboxPage() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
-    <div className="max-w-3xl mx-auto space-y-4">
+    <div className="max-w-3xl space-y-4">
       <div className="flex items-center gap-2">
-        <InboxIcon className="h-5 w-5 text-primary" />
-        <h1 className="text-xl font-bold">Inbox</h1>
-        <span className="text-sm text-muted-foreground">{total}</span>
+        {/* The Jobs page tab is the heading; this is just the count. */}
+        <span className="text-sm text-muted-foreground">{total} {total === 1 ? "email" : "emails"}</span>
         {needsCount > 0 && (
           <button
             type="button"

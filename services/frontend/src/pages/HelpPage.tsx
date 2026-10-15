@@ -460,7 +460,7 @@ function InboxRecruitersTab({ agentEnabled }: { agentEnabled: boolean }) {
             globally. When it's off, the Inbox tab and the Email Agent settings are hidden —
             the Recruiters contact list below stays available either way.</P>
           <P>Anything it isn't sure about is escalated to <strong>needs review</strong>: the
-            amber badge on the <strong>Inbox</strong> tab shows how many items are waiting for
+            amber badge on the <strong>Inbox</strong> tab of the Jobs page shows how many items are waiting for
             your call. It never quietly changes a status it isn't confident about.</P>
           <H3>Connecting a mailbox</H3>
           <P>Go to <strong>Settings → Email Agent</strong>. There are two ways to run it:</P>

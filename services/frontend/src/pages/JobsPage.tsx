@@ -4,10 +4,15 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Search, SlidersHorizontal, ExternalLink, RefreshCw, ChevronLeft, ChevronRight,
   MapPin, Building2, DollarSign, Star, Check, UserCheck, Loader2, Plus, Trash2, X, AlertTriangle,
+  Briefcase, Unplug, Handshake,
 } from "lucide-react";
 import { ColumnFilter } from "../components/ColumnFilter";
 import { ConnectionsTable } from "../components/ConnectionsTable";
 import { RecruitersPage } from "./RecruitersPage";
+import { InboxPage } from "./InboxPage";
+import { useAuthStore } from "../store/auth";
+import { agentApi } from "../lib/api";
+import type { PaginatedInbox } from "../lib/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -727,12 +732,28 @@ function JobsTab() {
 
 
 /** Jobs and Connections share a page because they are used together: you find a
- *  role, then check who you know there. The tab lives in the URL (?tab=) so the
- *  connections view can be linked to directly. */
+ *  role, then check who you know there. Recruiters and the email Inbox joined
+ *  them for the same reason. The tab lives in the URL (?tab=) so each view can be
+ *  linked to directly. */
 export function JobsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { user } = useAuthStore();
+  // The email agent is an admin toggle: when it's off the Inbox tab is hidden,
+  // a ?tab=inbox link falls back to Jobs, and the inbox is never polled.
+  const agentEnabled = !!user?.email_agent_enabled;
   const requested = searchParams.get("tab");
-  const tab = requested === "connections" || requested === "recruiters" ? requested : "jobs";
+  const tab =
+    requested === "connections" || requested === "recruiters" ? requested
+    : requested === "inbox" && agentEnabled ? "inbox"
+    : "jobs";
+
+  // Same query key as InboxPage, so the badge and the page share one fetch.
+  const { data: inboxNeeds } = useQuery<PaginatedInbox>({
+    queryKey: ["inbox-needs-review"],
+    queryFn: () => agentApi.get("/agent/inbox", { params: { status: "needs_review", limit: 1 } }).then((r) => r.data),
+    enabled: agentEnabled,
+  });
+  const needsCount = inboxNeeds?.total ?? 0;
 
   return (
     <Tabs
@@ -746,10 +767,32 @@ export function JobsPage() {
       }}
       className="space-y-4"
     >
+      {/* Icons and labels together. Below sm the labels drop and the icons carry
+          the row — four labelled tabs don't fit a phone. Inbox has no icon, so
+          its label stays. */}
       <TabsList>
-        <TabsTrigger value="jobs">Jobs</TabsTrigger>
-        <TabsTrigger value="connections">Connections</TabsTrigger>
-        <TabsTrigger value="recruiters">Recruiters</TabsTrigger>
+        <TabsTrigger value="jobs" className="gap-1.5" aria-label="Jobs">
+          <Briefcase className="h-4 w-4" /><span className="hidden sm:inline">Jobs</span>
+        </TabsTrigger>
+        <TabsTrigger value="connections" className="gap-1.5" aria-label="Connections">
+          <Unplug className="h-4 w-4" /><span className="hidden sm:inline">Connections</span>
+        </TabsTrigger>
+        <TabsTrigger value="recruiters" className="gap-1.5" aria-label="Recruiters">
+          <Handshake className="h-4 w-4" /><span className="hidden sm:inline">Recruiters</span>
+        </TabsTrigger>
+        {agentEnabled && (
+          <TabsTrigger value="inbox" className="gap-1.5">
+            Inbox
+            {needsCount > 0 && (
+              <span
+                className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold text-white"
+                aria-label={`${needsCount} need review`}
+              >
+                {needsCount}
+              </span>
+            )}
+          </TabsTrigger>
+        )}
       </TabsList>
 
       <TabsContent value="jobs"><JobsTab /></TabsContent>
@@ -757,6 +800,7 @@ export function JobsPage() {
         <ConnectionsTable />
       </TabsContent>
       <TabsContent value="recruiters"><RecruitersPage /></TabsContent>
+      {agentEnabled && <TabsContent value="inbox"><InboxPage /></TabsContent>}
     </Tabs>
   );
 }
