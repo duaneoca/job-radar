@@ -37,9 +37,13 @@ def upgrade() -> None:
     # The two hot lookups: "is anything of this kind running for this user?" and
     # "the latest run of each kind for this review" — both read newest-first.
     op.create_index("ix_generation_jobs_user_kind_status", "generation_jobs", ["user_id", "kind", "status"])
+    # One active run per user per kind, decided by the database (see the model).
+    op.create_index("uq_generation_jobs_active", "generation_jobs", ["user_id", "kind"], unique=True,
+                    postgresql_where=sa.text("status IN ('queued', 'running')"))
 
 
 def downgrade() -> None:
+    op.drop_index("uq_generation_jobs_active", table_name="generation_jobs")
     op.drop_index("ix_generation_jobs_user_kind_status", table_name="generation_jobs")
     op.drop_index("ix_generation_jobs_review_id", table_name="generation_jobs")
     op.drop_index("ix_generation_jobs_user_id", table_name="generation_jobs")

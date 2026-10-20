@@ -147,6 +147,51 @@ def test_a_run_for_another_job_is_refused_while_one_is_active(client, db, no_run
     assert client.post(f"/jobs/{rid2}/research").status_code == 202
 
 
+def test_the_database_refuses_a_second_active_run(client, db, no_run):
+    """The partial unique index is the real guard; start()'s check is a fast path."""
+    from sqlalchemy.exc import IntegrityError
+    _seed(db)
+    rid = _scrape(client)
+    first = client.post(f"/jobs/{rid}/research").json()
+    row = db.get(models.GenerationJob, uuid.UUID(first["id"]))
+    db.add(models.GenerationJob(user_id=TEST_USER_ID, review_id=row.review_id, kind="research"))
+    with pytest.raises(IntegrityError):
+        db.flush()
+    db.rollback()
+    # A finished run frees the slot.
+    row.status = models.GENERATION_DONE
+    db.add(models.GenerationJob(user_id=TEST_USER_ID, review_id=row.review_id, kind="research"))
+    db.flush()
+
+
+def test_losing_the_race_attaches_or_refuses(db, test_user, monkeypatch):
+    """Simulate two requests passing the active-job check together: make the
+    check blind, so the second insert hits the index instead."""
+    _seed(db)
+    reviews = []
+    for i in range(2):
+        job_row = models.Job(id=uuid.uuid4(), title=f"T{i}", company="C", url=f"https://x/{i}", source="manual")
+        db.add(job_row)
+        db.flush()
+        r = models.UserJobReview(id=uuid.uuid4(), user_id=TEST_USER_ID, job_id=job_row.id)
+        db.add(r)
+        reviews.append(r)
+    db.commit()
+    winner, created = generation_jobs.start(db, test_user, reviews[0], "research")
+    assert created
+    real = generation_jobs.active_job
+    monkeypatch.setattr(generation_jobs, "active_job",
+                        lambda *a, **k: None if not calls.append(1) and len(calls) == 1 else real(*a, **k))
+    calls: list = []
+    same, created = generation_jobs.start(db, test_user, reviews[0], "research")
+    assert not created and same.id == winner.id
+    calls.clear()
+    with pytest.raises(HTTPException) as exc:
+        generation_jobs.start(db, test_user, reviews[1], "research")
+    assert exc.value.status_code == 409 and "T0" in exc.value.detail
+    assert db.query(models.GenerationJob).count() == 1
+
+
 # ── failure is recorded, not raised ───────────────────────────
 
 def test_llm_failure_is_recorded_on_the_job_at_warning(client, db, monkeypatch, caplog):

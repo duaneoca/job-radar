@@ -40,6 +40,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Callable
 
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app import models
@@ -98,32 +99,48 @@ def active_job(db: Session, user_id: uuid.UUID, kind: str) -> models.GenerationJ
     )
 
 
+def _attach_or_refuse(db: Session, existing: models.GenerationJob, review: models.UserJobReview,
+                      kind: str) -> tuple[models.GenerationJob, bool]:
+    if existing.review_id == review.id:
+        return existing, False
+    other = (
+        db.query(models.Job.title)
+        .join(models.UserJobReview, models.UserJobReview.job_id == models.Job.id)
+        .filter(models.UserJobReview.id == existing.review_id)
+        .scalar()
+    )
+    raise HTTPException(
+        status_code=409,
+        detail=(f"{_KIND_LABEL[kind]} is already running for "
+                f"\"{other or 'another job'}\". Wait for it to finish, then try again."),
+    )
+
+
 def start(db: Session, user: models.User, review: models.UserJobReview, kind: str,
           source: str = models.GENERATION_SOURCE_WEB) -> tuple[models.GenerationJob, bool]:
     """Record a request. Returns (job, created): created is False when an active
     run for the same job already exists and the caller should attach to it
-    rather than schedule another."""
+    rather than schedule another.
+
+    The check below is the fast path; the partial unique index on the table is
+    the guarantee. Two requests that both pass the check race at the insert,
+    and the loser is handled exactly as if it had lost the check."""
     assert kind in models.GENERATION_KINDS, kind
     existing = active_job(db, user.id, kind)
     if existing is not None:
         existing = refresh_if_stale(db, existing)
     if existing is not None and existing.status in models.GENERATION_ACTIVE:
-        if existing.review_id == review.id:
-            return existing, False
-        other = (
-            db.query(models.Job.title)
-            .join(models.UserJobReview, models.UserJobReview.job_id == models.Job.id)
-            .filter(models.UserJobReview.id == existing.review_id)
-            .scalar()
-        )
-        raise HTTPException(
-            status_code=409,
-            detail=(f"{_KIND_LABEL[kind]} is already running for "
-                    f"\"{other or 'another job'}\". Wait for it to finish, then try again."),
-        )
+        return _attach_or_refuse(db, existing, review, kind)
     job = models.GenerationJob(user_id=user.id, review_id=review.id, kind=kind, source=source)
     db.add(job)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        winner = active_job(db, user.id, kind)
+        if winner is None:          # it finished in the meantime: try once more
+            return start(db, user, review, kind, source)
+        return _attach_or_refuse(db, winner, review, kind)
     db.refresh(job)
     return job, True
 

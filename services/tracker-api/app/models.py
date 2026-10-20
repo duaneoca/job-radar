@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     Boolean, Column, Date, DateTime, Enum, Float, Integer,
     String, Text, ForeignKey, JSON, Uuid, UniqueConstraint,
+    Index, text,
 )
 from sqlalchemy.orm import relationship
 
@@ -331,6 +332,17 @@ GENERATION_SOURCE_WEB = "web"
 class GenerationJob(Base):
     """A research or tailor run the user asked for, and how it went."""
     __tablename__ = "generation_jobs"
+    __table_args__ = (
+        # "One active run per user per kind" is enforced HERE, not only by the
+        # check in generation_jobs.start(): two requests can both pass that check
+        # and both insert, and the second run would bill the user's key twice —
+        # easy to provoke once an MCP client retries. The partial unique index
+        # makes the database the arbiter; start() turns the loser's
+        # IntegrityError into "attach" or 409.
+        Index("uq_generation_jobs_active", "user_id", "kind", unique=True,
+              postgresql_where=text("status IN ('queued', 'running')"),
+              sqlite_where=text("status IN ('queued', 'running')")),
+    )
 
     id        = Column(Uuid(), primary_key=True, default=uuid.uuid4)
     user_id   = Column(Uuid(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
