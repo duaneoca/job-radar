@@ -116,14 +116,23 @@ def _scrape(client):
     return client.get("/jobs").json()["items"][0]["id"]
 
 
+def _tailor(client, rid):
+    """Start a tailor run and return the stored state. POST is 202 + a job row
+    (the work runs in the background — tests/test_generation_jobs.py); in tests
+    the TestClient has run it by the time the response comes back."""
+    r = client.post(f"/jobs/{rid}/tailor-resume")
+    assert r.status_code == 202, r.text
+    done = client.get(f"/jobs/{rid}/generation").json()["tailor"]
+    assert done["status"] == "done", done
+    return client.get(f"/jobs/{rid}/tailor-resume").json()
+
+
 def test_tailor_endpoint(client, db, monkeypatch):
     _seed(db)
     rid = _scrape(client)
     monkeypatch.setattr(resume_tailor, "tailor_resume", lambda *a, **k: (_s(TAILORED), NOTES))
 
-    r = client.post(f"/jobs/{rid}/tailor-resume")
-    assert r.status_code == 200
-    state = r.json()
+    state = _tailor(client, rid)
     assert len(state["changes"]) == 3
     assert state["status"] == "draft"
     assert state["original"]["summary"] == "Built data pipelines."
@@ -154,7 +163,7 @@ def test_tailor_reparses_when_stale(client, db, monkeypatch):
     monkeypatch.setattr(resume_tailor, "parse_resume_text", fake_parse)
     monkeypatch.setattr(resume_tailor, "tailor_resume", lambda *a, **k: (_s(TAILORED), NOTES))
 
-    assert client.post(f"/jobs/{rid}/tailor-resume").status_code == 200
+    _tailor(client, rid)
     assert calls["parse"] == 1                       # re-ingested because stale
     assert client.get("/profile").json()["resume_structured_stale"] is False
 
@@ -169,7 +178,7 @@ def test_decisions_accept_reject(client, db, monkeypatch):
     _seed(db)
     rid = _scrape(client)
     monkeypatch.setattr(resume_tailor, "tailor_resume", lambda *a, **k: (_s(TAILORED), NOTES))
-    state = client.post(f"/jobs/{rid}/tailor-resume").json()
+    state = _tailor(client, rid)
     cid = state["changes"][0]["id"]
 
     r = client.patch(f"/jobs/{rid}/tailor-resume/decisions", json={"decisions": {cid: "rejected"}})
@@ -184,7 +193,7 @@ def test_decisions_reject_invalid_value(client, db, monkeypatch):
     _seed(db)
     rid = _scrape(client)
     monkeypatch.setattr(resume_tailor, "tailor_resume", lambda *a, **k: (_s(TAILORED), NOTES))
-    cid = client.post(f"/jobs/{rid}/tailor-resume").json()["changes"][0]["id"]
+    cid = _tailor(client, rid)["changes"][0]["id"]
     assert client.patch(f"/jobs/{rid}/tailor-resume/decisions",
                         json={"decisions": {cid: "maybe"}}).status_code == 400
 
@@ -193,7 +202,7 @@ def test_refine_carries_decisions(client, db, monkeypatch):
     _seed(db)
     rid = _scrape(client)
     monkeypatch.setattr(resume_tailor, "tailor_resume", lambda *a, **k: (_s(TAILORED), NOTES))
-    state = client.post(f"/jobs/{rid}/tailor-resume").json()
+    state = _tailor(client, rid)
     cid = state["changes"][0]["id"]
     client.patch(f"/jobs/{rid}/tailor-resume/decisions", json={"decisions": {cid: "accepted"}})
 
@@ -423,7 +432,7 @@ def test_tailor_response_includes_effective(client, db, monkeypatch):
     rid = _scrape(client)
     monkeypatch.setattr(resume_tailor, "tailor_resume", lambda *a, **k: (_s(TAILORED), NOTES))
 
-    state = client.post(f"/jobs/{rid}/tailor-resume").json()
+    state = _tailor(client, rid)
     assert state["effective"]["summary"] == TAILORED["summary"]     # pending keeps tailored
 
     cid = next(c["id"] for c in state["changes"] if c["path"] == "summary")
@@ -441,7 +450,7 @@ def test_refine_excludes_reorder_card_from_kept_phrasings(client, db, monkeypatc
     rid = _scrape(client)
     monkeypatch.setattr(resume_tailor, "tailor_resume",
                         lambda *a, **k: (_s(_swapped()), []))
-    state = client.post(f"/jobs/{rid}/tailor-resume").json()
+    state = _tailor(client, rid)
     cid = next(c["id"] for c in state["changes"] if c["kind"] == "reordered")
     client.patch(f"/jobs/{rid}/tailor-resume/decisions", json={"decisions": {cid: "rejected"}})
 

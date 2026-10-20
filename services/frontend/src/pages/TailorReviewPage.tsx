@@ -11,6 +11,7 @@ import { toast } from "../hooks/useToast";
 import { effectiveResume } from "../lib/resumeEffective";
 import { customSections, hasSection, isCustom, moveSection, sectionOrder, sectionTitle, type BuiltinKey, type SectionKey } from "../lib/sectionOrder";
 import type { JobReview, TailorState, TailorChange, TailorDecision } from "../lib/types";
+import { isGenerating, useGeneration, useStartGeneration } from "../hooks/useGeneration";
 
 // ─── Rendered résumé (plain structured text — template/PDF is Phase 3) ──────────
 
@@ -249,11 +250,19 @@ export function TailorReviewPage() {
     enabled: !!id,
   });
 
-  const tailorMut = useMutation({
-    mutationFn: () => jobsApi.post(`/jobs/${id}/tailor-resume`).then((r) => r.data),
-    onSuccess: (data) => qc.setQueryData(["tailor", id], data),
-    onError: (e: any) => toast({ title: "Tailoring failed", description: e?.response?.data?.detail, variant: "destructive" }),
+  // Tailoring runs in the background: POST → 202, poll, then the draft is at
+  // GET …/tailor-resume. The user can close this tab while it runs.
+  const generation = useGeneration(id, {
+    tailor: {
+      onDone: () => qc.invalidateQueries({ queryKey: ["tailor", id] }),
+      onFailed: (error) => toast({ title: "Tailoring failed", description: error, variant: "destructive" }),
+    },
   });
+  const tailorRun = generation.data?.tailor ?? null;
+  const tailorMut = useStartGeneration(id, "tailor", {
+    onError: (e: any) => toast({ title: "Couldn't start tailoring", description: e?.response?.data?.detail, variant: "destructive" }),
+  });
+  const tailoring = isGenerating(tailorRun) || tailorMut.isPending;
 
   const refineMut = useMutation({
     mutationFn: () => jobsApi.post(`/jobs/${id}/tailor-resume/refine`, { instruction }).then((r) => r.data),
@@ -277,7 +286,7 @@ export function TailorReviewPage() {
     onError: (e: any) => toast({ title: "Couldn't move that section", description: e?.response?.data?.detail, variant: "destructive" }),
   });
 
-  const busy = tailorMut.isPending || refineMut.isPending;
+  const busy = tailoring || refineMut.isPending;
 
   // origRef/tailRef are the two pane SCROLL CONTAINERS. Locate scrolls each so the
   // matched element lines up with the (stationary) change card — only the side
@@ -341,8 +350,8 @@ export function TailorReviewPage() {
         {state && (
           <div className="ml-auto flex gap-2">
             <Button variant="outline" size="sm" disabled={busy} onClick={() => tailorMut.mutate()}>
-              {tailorMut.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
-              Re-tailor
+              {tailoring ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+              {tailoring ? "Re-tailoring…" : "Re-tailor"}
             </Button>
             <Button size="sm" onClick={() => window.open(`/jobs/${id}/tailor/print`, "_blank", "noopener,noreferrer")}>
               <Printer className="h-4 w-4 mr-1" /> Download PDF
@@ -369,8 +378,16 @@ export function TailorReviewPage() {
               Every change is shown for your approval.
             </p>
             <Button onClick={() => tailorMut.mutate()} disabled={busy}>
-              {tailorMut.isPending ? <><Loader2 className="h-4 w-4 animate-spin mr-1" />Tailoring…</> : <><Sparkles className="h-4 w-4 mr-1" />Tailor résumé</>}
+              {tailoring ? <><Loader2 className="h-4 w-4 animate-spin mr-1" />Tailoring…</> : <><Sparkles className="h-4 w-4 mr-1" />Tailor résumé</>}
             </Button>
+            {tailoring && (
+              <p className="text-xs text-muted-foreground">
+                Running in the background — this takes a minute or so. You can close this tab; the draft is saved with the job.
+              </p>
+            )}
+            {tailorRun?.status === "failed" && !tailoring && (
+              <p className="text-xs text-destructive">Last attempt failed: {tailorRun.error}</p>
+            )}
           </div>
         </div>
       ) : (

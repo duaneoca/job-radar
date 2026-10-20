@@ -615,6 +615,30 @@ class PrintSettingsIn(BaseModel):
     settings: PrintSettings
 
 
+# ── Background generation ─────────────────────────────────────
+
+class GenerationJobOut(BaseModel):
+    """One research / tailor run. `status` is queued → running → done | failed;
+    `error` is set only when failed, and is safe to show the user."""
+    id: UUID
+    review_id: UUID
+    kind: str
+    status: str
+    source: str
+    error: Optional[str] = None
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class GenerationStatusOut(BaseModel):
+    """The latest run of each kind for one job, or null if never requested."""
+    research: Optional[GenerationJobOut] = None
+    tailor: Optional[GenerationJobOut] = None
+
+
 class TailorRefineIn(BaseModel):
     instruction: str   # "emphasize cloud architecture; leave the summary alone"
 

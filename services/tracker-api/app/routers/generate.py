@@ -10,13 +10,13 @@ import uuid as uuid_lib
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 
 from sqlalchemy.orm.attributes import flag_modified
 
-from app import models, resume_tailor, schemas
+from app import generation_jobs, models, resume_tailor, schemas
 from app.database import get_db
 from app.deps import get_current_user
 from app.llm import get_llm_provider, get_tavily_key, llm_complete
@@ -179,24 +179,20 @@ Description:
 {job.description or 'Not provided'}"""
 
 
-@router.post("/{review_id}/research")
-def generate_research(
-    review_id: UUID,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
-):
-    """Generate an AI company research summary for a job."""
-    review = _get_review(review_id, current_user, db)
+def run_research(db: Session, user: models.User, review: models.UserJobReview) -> None:
+    """Generate the company research summary and store it on the review.
+    Runs in the background (app/generation_jobs.py); raises HTTPException with a
+    user-facing detail on any failure, which the runner records on the job."""
     job = review.job
 
-    criteria = _get_criteria(current_user.id, db)
-    profile = _get_profile(current_user.id, db)
-    api_key, model = get_llm_provider(current_user.id, db)
+    criteria = _get_criteria(user.id, db)
+    profile = _get_profile(user.id, db)
+    api_key, model = get_llm_provider(user.id, db)
     research_prompt = (criteria.research_prompt if criteria else None) or DEFAULT_RESEARCH_PROMPT
 
     # Tavily web search — enrich context with live company data if key is set
     web_context = ""
-    tavily_key = get_tavily_key(current_user.id, db)
+    tavily_key = get_tavily_key(user.id, db)
     if tavily_key:
         try:
             from tavily import TavilyClient
@@ -221,13 +217,30 @@ def generate_research(
         model=model,
         max_tokens=GENERATION_MAX_TOKENS,
         db=db,
-        user_id=current_user.id,
+        user_id=user.id,
     )
 
     review.research_summary = summary
     db.commit()
 
-    return {"summary": summary}
+
+@router.post("/{review_id}/research", status_code=202, response_model=schemas.GenerationJobOut)
+def generate_research(
+    review_id: UUID,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Start company research for a job. Returns the run to poll
+    (GET /jobs/{id}/generation); the summary lands on the job when it's done."""
+    review = _get_review(review_id, current_user, db)
+    # Preflight what the user can fix now — no key, no model — so they hear it
+    # from this request, not from a failed row a minute later.
+    get_llm_provider(current_user.id, db)
+    job, created = generation_jobs.start(db, current_user, review, models.GENERATION_KIND_RESEARCH)
+    if created:
+        background.add_task(generation_jobs.run, job.id)
+    return job
 
 
 @router.post("/{review_id}/application/{template_idx}")
@@ -618,34 +631,84 @@ def get_tailored_resume(
     return _with_effective(state)
 
 
-@router.post("/{review_id}/tailor-resume")
-def tailor_resume_endpoint(
-    review_id: UUID,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
-):
-    """Tailor the user's résumé to this job. Parses the résumé if needed, runs the
-    tailor under the locked honesty core, computes the change diff, stores + returns
-    the per-job tailor state. BYOK."""
-    review = _get_review(review_id, current_user, db)
-    profile = _get_profile(current_user.id, db)
-    if not profile or not (profile.resume_text or "").strip():
-        raise HTTPException(status_code=400, detail="Add your résumé (Settings → Résumé) before tailoring.")
+_NO_RESUME_DETAIL = "Add your résumé (Settings → Résumé) before tailoring."
 
-    structured = _fresh_structured(profile, current_user.id, db)
+
+def run_tailor(db: Session, user: models.User, review: models.UserJobReview) -> None:
+    """Tailor the user's résumé to this job: parse the résumé if needed, run the
+    tailor under the locked honesty core, compute the change diff, store the
+    per-job tailor state. Runs in the background (app/generation_jobs.py). BYOK."""
+    profile = _get_profile(user.id, db)
+    if not profile or not (profile.resume_text or "").strip():
+        raise HTTPException(status_code=400, detail=_NO_RESUME_DETAIL)
+
+    structured = _fresh_structured(profile, user.id, db)
     honesty = resume_tailor.derive_honesty_facts(structured)
-    criteria = _get_criteria(current_user.id, db)
+    criteria = _get_criteria(user.id, db)
     style = (criteria.resume_tailor_prompt if criteria else None) or resume_tailor.DEFAULT_RESUME_TAILOR_PROMPT
-    api_key, model = get_llm_provider(current_user.id, db, WRITING)
+    api_key, model = get_llm_provider(user.id, db, WRITING)
 
     tailored, notes = resume_tailor.tailor_resume(
         structured, honesty, _job_block(review.job), style, api_key, model,
-        skills_text=skills_block(criteria, "resume"), db=db, user_id=current_user.id)
+        skills_text=skills_block(criteria, "resume"), db=db, user_id=user.id)
     state = resume_tailor.build_tailor_state(structured, tailored, notes, model, honesty)
 
     review.resume_tailor = state
     db.commit()
-    return _with_effective(state)
+
+
+@router.post("/{review_id}/tailor-resume", status_code=202, response_model=schemas.GenerationJobOut)
+def tailor_resume_endpoint(
+    review_id: UUID,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Start tailoring the user's résumé to this job. Returns the run to poll
+    (GET /jobs/{id}/generation); the draft appears at GET …/tailor-resume when
+    it's done, and the Keep / Don't keep review stays in the app."""
+    review = _get_review(review_id, current_user, db)
+    profile = _get_profile(current_user.id, db)
+    if not profile or not (profile.resume_text or "").strip():
+        raise HTTPException(status_code=400, detail=_NO_RESUME_DETAIL)
+    get_llm_provider(current_user.id, db, WRITING)     # preflight, see generate_research
+    job, created = generation_jobs.start(db, current_user, review, models.GENERATION_KIND_TAILOR)
+    if created:
+        background.add_task(generation_jobs.run, job.id)
+    return job
+
+
+@router.get("/{review_id}/generation", response_model=schemas.GenerationStatusOut)
+def generation_status(
+    review_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """The latest research and tailor runs for this job — what a page polls, and
+    what it reads on load to show a run that is still going."""
+    _get_review(review_id, current_user, db)
+    return generation_jobs.latest_for_review(db, review_id, current_user.id)
+
+
+@router.get("/{review_id}/generation/{job_id}", response_model=schemas.GenerationJobOut)
+def generation_job(
+    review_id: UUID,
+    job_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """One run by id (the 202 response named it)."""
+    _get_review(review_id, current_user, db)
+    job = generation_jobs.get_for_user(db, job_id, current_user.id)
+    if job.review_id != review_id:
+        raise HTTPException(status_code=404, detail="Not found")
+    return job
+
+
+generation_jobs.RUNNERS.update({
+    models.GENERATION_KIND_RESEARCH: run_research,
+    models.GENERATION_KIND_TAILOR: run_tailor,
+})
 
 
 @router.post("/{review_id}/tailor-resume/refine")

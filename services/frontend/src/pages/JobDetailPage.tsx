@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft, ExternalLink, Star, Building2, MapPin, DollarSign,
+  ArrowLeft, ExternalLink, Building2, MapPin, DollarSign,
   UserCheck, Users, Loader2, Calendar, Sparkles, MessageSquarePlus, Plus, AlertTriangle,
   Send, Trash2, Wand2, FileText,
 } from "lucide-react";
@@ -23,6 +23,7 @@ import type { JobReview, Criteria, ApplicationTemplate, InterviewQuestion, Linke
 import { useState } from "react";
 import { RefinementDrawer } from "../components/RefinementDrawer";
 import { InterviewPrepCard } from "../components/InterviewPrepCard";
+import { isGenerating, useGeneration, useStartGeneration } from "../hooks/useGeneration";
 
 const DEFAULT_APP_TEMPLATES: ApplicationTemplate[] = [
   {
@@ -128,6 +129,10 @@ function TailorTab({ reviewId }: { reviewId: string }) {
     queryFn: () =>
       jobsApi.get(`/jobs/${reviewId}/tailor-resume`).then((r) => r.data).catch(() => null),
   });
+  // The page polls this; here it only reads it. A run may have been started
+  // from the tailor tab, or by an MCP client.
+  const tailorRun = useGeneration(reviewId).data?.tailor ?? null;
+  const tailoring = isGenerating(tailorRun);
 
   function openTailor() {
     window.open(`/jobs/${reviewId}/tailor`, "_blank", "noopener,noreferrer");
@@ -150,10 +155,23 @@ function TailorTab({ reviewId }: { reviewId: string }) {
         </div>
       </div>
 
-      {state?.base_changed && (
+      {state?.base_changed && !tailoring && (
         <div className="flex items-start gap-2 rounded-md border border-amber-300/60 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 px-3 py-2 text-xs">
           <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
           <span>Your résumé changed since this was tailored — re-tailor to refresh.</span>
+        </div>
+      )}
+
+      {tailoring && (
+        <div className="flex items-start gap-2 rounded-md border px-3 py-2 text-xs text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin shrink-0 mt-0.5" />
+          <span>Tailoring in the background — this takes a minute or so. The draft is saved with the job; open the review when it's done.</span>
+        </div>
+      )}
+      {tailorRun?.status === "failed" && !tailoring && (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/40 px-3 py-2 text-xs">
+          <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+          <span>Last tailoring attempt failed: {tailorRun.error}</span>
         </div>
       )}
 
@@ -211,9 +229,22 @@ export function JobDetailPage() {
   const [notesDraft, setNotesDraft] = useState<string | null>(null);
   const notes = notesDraft ?? job?.notes ?? "";
 
-  // Research tab state
-  const [researchSummary, setResearchSummary] = useState<string | null>(null);
-  const [generatingResearch, setGeneratingResearch] = useState(false);
+  // Research and tailoring run in the background (POST → 202, then poll). The
+  // result lands on the job / the tailor state; refresh those when a run ends.
+  const generation = useGeneration(id, {
+    research: {
+      onDone: () => qc.invalidateQueries({ queryKey: ["job", id] }),
+      onFailed: (error) => toast({ title: "Research generation failed", description: error, variant: "destructive" }),
+    },
+    tailor: {
+      onDone: () => qc.invalidateQueries({ queryKey: ["tailor", id] }),
+    },
+  });
+  const researchRun = generation.data?.research ?? null;
+  const startResearch = useStartGeneration(id, "research", {
+    onError: (err) => toast({ title: "Couldn't start research", description: apiErrorMessage(err), variant: "destructive" }),
+  });
+  const generatingResearch = isGenerating(researchRun) || startResearch.isPending;
 
   // Application tab state — local overrides for generated/edited answers
   const [answerDrafts, setAnswerDrafts] = useState<Record<number, string>>({});
@@ -285,22 +316,8 @@ export function JobDetailPage() {
     return "Unexpected error — check the browser console for details.";
   }
 
-  async function generateResearch() {
-    setGeneratingResearch(true);
-    try {
-      const res = await jobsApi.post(`/jobs/${id}/research`);
-      setResearchSummary(res.data.summary);
-      qc.invalidateQueries({ queryKey: ["job", id] });
-    } catch (err: any) {
-      console.error("Research generation error:", err?.response ?? err);
-      toast({
-        title: "Research generation failed",
-        description: apiErrorMessage(err),
-        variant: "destructive",
-      });
-    } finally {
-      setGeneratingResearch(false);
-    }
+  function generateResearch() {
+    startResearch.mutate();
   }
 
   async function generateAnswer(templateIdx: number) {
@@ -431,7 +448,7 @@ export function JobDetailPage() {
     );
   }
 
-  const displayedResearch = researchSummary ?? job.research_summary ?? null;
+  const displayedResearch = job.research_summary ?? null;
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -510,7 +527,8 @@ export function JobDetailPage() {
             <div className="flex-1 space-y-1">
               {job.recommended && (
                 <div className="flex items-center gap-1 text-sm font-medium text-yellow-600 dark:text-yellow-400">
-                  <Star className="h-4 w-4 fill-current" />
+                  {/* Sparkles, not a star: the star is the user's own marker (v1.18.0). */}
+                  <Sparkles className="h-4 w-4" />
                   Recommended for you
                 </div>
               )}
@@ -663,6 +681,18 @@ export function JobDetailPage() {
                 : <><Sparkles className="h-4 w-4 mr-1" />{displayedResearch ? "Regenerate" : "Generate"}</>}
             </Button>
           </div>
+
+          {generatingResearch && (
+            <p className="text-xs text-muted-foreground">
+              Running in the background — you can leave this page. The summary appears here when it's done.
+            </p>
+          )}
+          {researchRun?.status === "failed" && !generatingResearch && (
+            <div className="flex items-start gap-2 rounded-md border border-destructive/40 px-3 py-2 text-xs">
+              <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+              <span>Last attempt failed: {researchRun.error}</span>
+            </div>
+          )}
 
           {displayedResearch ? (
             <div className="rounded-lg border bg-muted/30 p-4 text-sm leading-relaxed whitespace-pre-wrap">

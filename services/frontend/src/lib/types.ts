@@ -360,6 +360,27 @@ export interface TailorState {
   default_print_settings?: Partial<import("./resumeSettings").ResumeSettings> | null;
 }
 
+/** A research or tailor run. POST …/research or …/tailor-resume returns one
+ *  (202, status "queued"); GET …/generation returns the latest of each kind. */
+export type GenerationKind = "research" | "tailor";
+export type GenerationStatus = "queued" | "running" | "done" | "failed";
+export interface GenerationJob {
+  id: string;
+  review_id: string;
+  kind: GenerationKind;
+  status: GenerationStatus;
+  source: string;
+  /** Set only when failed; safe to show. */
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+export interface GenerationStatusOut {
+  research: GenerationJob | null;
+  tailor: GenerationJob | null;
+}
+
 export interface Profile {
   id: string;
   user_id: string;
