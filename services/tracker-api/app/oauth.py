@@ -90,13 +90,18 @@ _PATTERN_REDIRECTS = [
     (re.compile(r"^https://oauth-redirect\.googleusercontent\.com/r/user_bound_custom-mcp-[A-Za-z0-9._-]{1,200}$"), "google"),
 ]
 
-# Hosts a Client ID Metadata Document may be fetched from. Also the SSRF guard:
-# nothing private can match. The document's redirect_uris must STILL pass the
-# redirect allowlist above, and name the same vendor as the document host.
+# Hosts a Client ID Metadata Document may be fetched from. This is NOT the
+# admission control — the redirect allowlist above is load-bearing, and open
+# DCR admits the same clients anyway. Host matching does two lesser jobs:
+# it keeps the fetch off anything but a vendor origin (so the server never
+# requests an arbitrary or private address on a client's say-so), and it
+# labels the vendor so a document can't claim to be Claude while redirecting
+# to ChatGPT. Kept to specific hosts: a broad suffix such as
+# googleusercontent.com would include user-upload hosts.
 _CIMD_HOSTS = {
     "anthropic": ("claude.ai", "claude.com"),
     "openai":    ("chatgpt.com", "openai.com"),
-    "google":    ("google.com", "googleusercontent.com", "gemini.google.com"),
+    "google":    ("gemini.google.com", "accounts.google.com", "oauth-redirect.googleusercontent.com"),
     "xai":       ("grok.com", "x.ai"),
 }
 
@@ -372,6 +377,11 @@ def check_authorization_request(db: Session, params: dict) -> tuple[models.OAuth
         scopes = parse_scope(params.get("scope"))
     except ValueError as e:
         raise back("invalid_scope", f"Unknown scope: {e}")
+    # RFC 8707 resource indicator: validated and recorded on the code, but
+    # tokens are NOT audience-bound to it. Deliberate: there is one resource
+    # server (the MCP connector, which forwards the bearer here), so binding
+    # would buy nothing yet. If a second resource server ever appears, bind
+    # tokens to `resource` and check it in user_from_bearer.
     resource = params.get("resource")
     if resource and (len(resource) > 512 or not resource.startswith("https://")):
         raise back("invalid_target", "resource must be an https URL.")
@@ -550,7 +560,11 @@ def route_scope(method: str, path: str) -> str | None:
     return None
 
 
-def user_from_bearer(authorization: str, method: str, path: str, db: Session) -> models.User:
+def user_from_bearer(authorization: str, request, db: Session) -> models.User:
+    """Resolve a connected app's token to its user, hold it to ROUTE_POLICY, and
+    leave the vendor on `request.state.oauth_vendor` so what the app does can be
+    attributed to it (generation jobs, timeline)."""
+    method, path = request.method, request.url.path
     raw = authorization.split(None, 1)[1]
     tok = (db.query(models.OAuthToken)
            .filter(models.OAuthToken.token_hash == _hash(raw), models.OAuthToken.kind == models.OAUTH_TOKEN_ACCESS)
@@ -577,4 +591,26 @@ def user_from_bearer(authorization: str, method: str, path: str, db: Session) ->
     if last is None or now - last > LAST_USED_WRITE_INTERVAL:
         grant.last_used_at = now
         db.commit()
+    request.state.oauth_vendor = grant.client.vendor
     return user
+
+
+def actor(request) -> str:
+    """Who is acting: the vendor key of a connected app, else "web"."""
+    return getattr(request.state, "oauth_vendor", None) or models.GENERATION_SOURCE_WEB
+
+
+def sweep_clients(db: Session, older_than: timedelta = timedelta(days=1)) -> int:
+    """Nightly: drop DCR registrations that never led to a grant. Every fresh
+    Claude connection registers a new client, and so can anyone with the URL,
+    so without this the table only grows. A client with any grant, revoked or
+    not, is kept — it is history on the Connected apps page."""
+    cutoff = _utcnow() - older_than
+    granted = db.query(models.OAuthGrant.client_id)
+    n = (db.query(models.OAuthClient)
+           .filter(models.OAuthClient.kind == models.OAUTH_CLIENT_DCR,
+                   models.OAuthClient.created_at < cutoff,
+                   models.OAuthClient.id.not_in(granted))
+           .delete(synchronize_session=False))
+    db.commit()
+    return n

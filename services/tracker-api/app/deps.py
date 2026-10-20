@@ -36,7 +36,7 @@ def get_current_user(
     # A connected app (Claude, ChatGPT, …) acting as the user. Checked before the
     # cookie so a browser that somehow sends both gets the narrower identity.
     if authorization and oauth.is_bearer(authorization):
-        return oauth.user_from_bearer(authorization, request.method, request.url.path, db)
+        return oauth.user_from_bearer(authorization, request, db)
 
     # Internal service-to-service calls bypass JWT (ai-reviewer, scraper) — but
     # only when they present the shared internal token. This path can act as ANY

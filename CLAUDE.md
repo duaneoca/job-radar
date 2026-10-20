@@ -163,7 +163,15 @@ MCP Python SDK's server auth needs pydantic ≥ 2.11 (we pin 2.10 behind the def
 LiteLLM upgrade) and has neither server-side CIMD nor a redirect allowlist. Any change
 to the allowlist or `ROUTE_POLICY` is a security change; `tests/test_oauth.py` pins
 both. The vendor callbacks for Gemini and Grok come from operator reports, not vendor
-docs — verify against a live connector.
+docs — verify against a live connector. **Rate-limit keys never come from
+`X-Forwarded-For`** (`ratelimit.client_ip`): nginx appends to it, so its first element
+is the caller's to choose — a chosen key is a bypassed limiter and, sprayed, a
+memory-growth primitive. Keys come from `CF-Connecting-IP` / `X-Real-IP`, the table is
+capped (`_MAX_KEYS`), and `/oauth/register` also has a global ceiling plus a nightly
+sweep of registrations that never led to a grant. A caller reaching the origin without
+Cloudflare could still forge `CF-Connecting-IP`; the fix for that is the EC2 security
+group (80/443 from Cloudflare's ranges only), not code. `nginx.conf` sends
+`frame-ancestors 'none'` so the consent page can't be clickjacked.
 
 **Email agent auth — the invariant:** every **per-user operational** endpoint accepts
 **either** `X-Agent-Key` (local self-host → user from key) **or** `X-Internal-Token` +

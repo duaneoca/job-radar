@@ -35,10 +35,14 @@ def _base_url(request: Request) -> str:
 
 
 def _client_ip(request: Request) -> str:
-    fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",")[0].strip()
-    return request.client.host if request.client else "?"
+    return ratelimit.client_ip(request.headers, request.client)
+
+
+# Registrations across ALL callers per window. Per-IP limits can be sidestepped
+# by anyone with many addresses, and /oauth/register creates rows without
+# auth; this bounds the table whatever the caller does. Real traffic is one
+# registration per new connection — hundreds a quarter-hour is already absurd.
+GLOBAL_REGISTER_LIMIT = 200
 
 
 async def _form(request: Request) -> dict:
@@ -66,9 +70,11 @@ def authorization_server_metadata(request: Request):
 @router.post("/oauth/register", status_code=201)
 async def register(request: Request, db: Session = Depends(get_db)):
     ip = _client_ip(request)
-    if not ratelimit.is_allowed(f"oauth-register:{ip}"):
+    if (not ratelimit.is_allowed(f"oauth-register:{ip}")
+            or not ratelimit.is_allowed("oauth-register:*", GLOBAL_REGISTER_LIMIT)):
         raise HTTPException(status_code=429, detail="Too many registrations. Try again later.")
     ratelimit.record_failure(f"oauth-register:{ip}")     # counts attempts, not failures
+    ratelimit.record_failure("oauth-register:*")
     try:
         body = await request.json()
     except Exception:

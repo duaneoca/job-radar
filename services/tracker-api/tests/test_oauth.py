@@ -70,9 +70,10 @@ def _pkce():
     return verifier, challenge
 
 
-def _register(api, redirect_uris=(CLAUDE_CB,), name="Claude", **extra):
+def _register(api, redirect_uris=(CLAUDE_CB,), name="Claude", headers=None, **extra):
     r = api.post("/oauth/register", json={"redirect_uris": list(redirect_uris), "client_name": name,
-                                          "token_endpoint_auth_method": "none", **extra})
+                                          "token_endpoint_auth_method": "none", **extra},
+                 headers=headers or {})
     return r
 
 
@@ -174,6 +175,48 @@ def test_registration_is_rate_limited(api):
     assert _register(api).status_code == 429
 
 
+def test_a_forged_x_forwarded_for_does_not_reset_the_limiter(api):
+    """nginx appends to X-Forwarded-For, so its first element is the client's
+    to choose. It must never be the key."""
+    for i in range(10):
+        assert _register(api, headers={"X-Forwarded-For": f"10.0.0.{i}, 1.2.3.4"}).status_code == 201
+    assert _register(api, headers={"X-Forwarded-For": "10.0.0.99, 1.2.3.4"}).status_code == 429
+
+
+def test_cloudflares_header_is_the_key(api):
+    for _ in range(10):
+        assert _register(api, headers={"CF-Connecting-IP": "203.0.113.5"}).status_code == 201
+    assert _register(api, headers={"CF-Connecting-IP": "203.0.113.5"}).status_code == 429
+    assert _register(api, headers={"CF-Connecting-IP": "203.0.113.6"}).status_code == 201
+
+
+def test_registrations_have_a_global_ceiling(api, monkeypatch):
+    from app.routers import oauth as oauth_router
+    monkeypatch.setattr(oauth_router, "GLOBAL_REGISTER_LIMIT", 3)
+    for i in range(3):
+        assert _register(api, headers={"CF-Connecting-IP": f"198.51.100.{i}"}).status_code == 201
+    assert _register(api, headers={"CF-Connecting-IP": "198.51.100.200"}).status_code == 429
+
+
+def test_limiter_table_is_bounded():
+    from app import ratelimit
+    for i in range(ratelimit._MAX_KEYS + 2_000):
+        ratelimit.record_failure(f"spray:{i}")
+    assert len(ratelimit._failures) <= ratelimit._MAX_KEYS
+
+
+def test_unused_registrations_are_swept_and_granted_ones_kept(web, api, db):
+    from app.routers.admin import _do_cleanup
+    unused = _register(api).json()["client_id"]
+    _consent(web, api)                                  # a client with a grant
+    for c in db.query(models.OAuthClient):
+        c.created_at = oauth._utcnow() - timedelta(days=2)
+    db.commit()
+    assert _do_cleanup(db)["oauth_clients_deleted"] == 1
+    assert db.get(models.OAuthClient, unused) is None
+    assert db.query(models.OAuthClient).count() == 1
+
+
 # ── CIMD ──────────────────────────────────────────────────────
 
 CIMD_URL = "https://claude.ai/oauth/hosted-client-metadata"
@@ -219,6 +262,8 @@ def test_cimd_refetches_after_a_day(web, db, monkeypatch):
     "https://10.0.0.5/metadata.json",
     "https://claude.ai.evil.com/metadata.json",
     "http://claude.ai/oauth/metadata",
+    "https://commondatastorage.googleusercontent.com/bucket/metadata.json",   # user-upload host
+    "https://sites.google.com/view/anything/metadata.json",
 ])
 def test_cimd_from_a_non_vendor_host_is_never_fetched(web, monkeypatch, url):
     monkeypatch.setattr(oauth, "_fetch_cimd", lambda u: pytest.fail("must not fetch " + u))
@@ -493,8 +538,10 @@ def test_generate_scope_starts_research(web, api, monkeypatch):
     db.commit()
     monkeypatch.setattr(generate_mod, "llm_complete", lambda *a, **k: "Acme builds widgets.")
     r = api.post(f"/jobs/{rid}/research", headers=h)
-    assert r.status_code == 202 and r.json()["source"] == "web"
+    assert r.status_code == 202 and r.json()["source"] == "anthropic"      # attributed to the app
     assert api.get(f"/jobs/{rid}", headers=h).json()["research_summary"] == "Acme builds widgets."
+    events = {e["event_type"]: e["description"] for e in api.get(f"/jobs/{rid}/timeline", headers=h).json()}
+    assert events["research_generated"] == "Company research generated via Claude (Anthropic)"
 
 
 def test_expired_revoked_and_garbage_bearers_are_401(web, api, db):

@@ -10,13 +10,13 @@ import uuid as uuid_lib
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 
 from sqlalchemy.orm.attributes import flag_modified
 
-from app import generation_jobs, models, resume_tailor, schemas
+from app import generation_jobs, models, oauth, resume_tailor, schemas
 from app.database import get_db
 from app.deps import get_current_user
 from app.llm import get_llm_provider, get_tavily_key, llm_complete
@@ -228,6 +228,7 @@ def run_research(db: Session, user: models.User, review: models.UserJobReview) -
 def generate_research(
     review_id: UUID,
     background: BackgroundTasks,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
@@ -237,7 +238,8 @@ def generate_research(
     # Preflight what the user can fix now — no key, no model — so they hear it
     # from this request, not from a failed row a minute later.
     get_llm_provider(current_user.id, db)
-    job, created = generation_jobs.start(db, current_user, review, models.GENERATION_KIND_RESEARCH)
+    job, created = generation_jobs.start(db, current_user, review, models.GENERATION_KIND_RESEARCH,
+                                         source=oauth.actor(request))
     if created:
         background.add_task(generation_jobs.run, job.id)
     return job
@@ -661,6 +663,7 @@ def run_tailor(db: Session, user: models.User, review: models.UserJobReview) -> 
 def tailor_resume_endpoint(
     review_id: UUID,
     background: BackgroundTasks,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
@@ -672,7 +675,8 @@ def tailor_resume_endpoint(
     if not profile or not (profile.resume_text or "").strip():
         raise HTTPException(status_code=400, detail=_NO_RESUME_DETAIL)
     get_llm_provider(current_user.id, db, WRITING)     # preflight, see generate_research
-    job, created = generation_jobs.start(db, current_user, review, models.GENERATION_KIND_TAILOR)
+    job, created = generation_jobs.start(db, current_user, review, models.GENERATION_KIND_TAILOR,
+                                         source=oauth.actor(request))
     if created:
         background.add_task(generation_jobs.run, job.id)
     return job
