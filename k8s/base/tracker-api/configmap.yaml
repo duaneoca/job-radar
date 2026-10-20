@@ -7,4 +7,7 @@ data:
   ENVIRONMENT: "production"
   REDIS_URL: "redis://redis:6379/0"
   TRACKER_API_URL: "http://jobradar-tracker-api"
+  # OAuth issuer for connected AI assistants — must be exactly the origin users
+  # type. Staging patches it.
+  PUBLIC_BASE_URL: "https://job-radar.net"
   # DATABASE_URL and SECRET_KEY are in secrets

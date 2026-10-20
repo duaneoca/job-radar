@@ -197,6 +197,7 @@ class User(Base):
     slack_connection  = relationship("SlackConnection", back_populates="user", cascade="all, delete-orphan", uselist=False)
     hitl_decisions    = relationship("HitlDecision", back_populates="user", cascade="all, delete-orphan")
     generation_jobs   = relationship("GenerationJob", back_populates="user", cascade="all, delete-orphan")
+    oauth_grants      = relationship("OAuthGrant", back_populates="user", cascade="all, delete-orphan")
     agent_runs        = relationship("AgentRun", back_populates="user", cascade="all, delete-orphan")
 
 
@@ -362,6 +363,96 @@ class GenerationJob(Base):
 
     user   = relationship("User", back_populates="generation_jobs")
     review = relationship("UserJobReview", back_populates="generation_jobs")
+
+
+# ── OAuth: AI assistants connecting as the user ──────────────
+#
+# Job Radar is the authorization server for its own MCP connector
+# (app/oauth.py). Clients are the vendors' hosted assistants only — registered
+# by DCR or identified by a Client ID Metadata Document, and in both cases
+# admitted solely by their redirect URI matching the vendor allowlist.
+
+OAUTH_SCOPE_JOBS_READ = "jobs:read"
+OAUTH_SCOPE_JOBS_WRITE = "jobs:write"
+OAUTH_SCOPE_GENERATE = "generate"
+OAUTH_SCOPES = {
+    OAUTH_SCOPE_JOBS_READ:  "See your jobs, scores, notes and research",
+    OAUTH_SCOPE_JOBS_WRITE: "Star jobs, change their status, add notes",
+    OAUTH_SCOPE_GENERATE:   "Run company research and résumé tailoring (bills your AI key)",
+}
+
+OAUTH_CLIENT_DCR = "dcr"
+OAUTH_CLIENT_CIMD = "cimd"
+
+OAUTH_TOKEN_ACCESS = "access"
+OAUTH_TOKEN_REFRESH = "refresh"
+
+
+class OAuthClient(Base):
+    """A registered assistant. `id` is the client_id: a random string for DCR,
+    the metadata document's URL for CIMD. `vendor` is derived from the
+    allowlisted redirect URIs, never from what the client called itself."""
+    __tablename__ = "oauth_clients"
+
+    id            = Column(String(512), primary_key=True)
+    kind          = Column(String(10), nullable=False)          # dcr | cimd
+    vendor        = Column(String(20), nullable=False)          # anthropic | openai | google | xai
+    client_name   = Column(String(100), nullable=True)          # self-asserted; shown second
+    redirect_uris = Column(JSON, nullable=False)                # list[str], all allowlisted
+    created_at    = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    # CIMD only: when the document was last fetched; refetched after a day.
+    metadata_fetched_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class OAuthAuthorizationCode(Base):
+    """One consent, redeemable once within minutes. Only the hash is stored."""
+    __tablename__ = "oauth_authorization_codes"
+
+    code_hash      = Column(String(64), primary_key=True)
+    client_id      = Column(String(512), ForeignKey("oauth_clients.id", ondelete="CASCADE"), nullable=False)
+    user_id        = Column(Uuid(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    redirect_uri   = Column(String(2048), nullable=False)
+    scope          = Column(String(200), nullable=False)
+    code_challenge = Column(String(128), nullable=False)        # PKCE S256 only
+    resource       = Column(String(512), nullable=True)         # RFC 8707, echoed if sent
+    expires_at     = Column(DateTime(timezone=True), nullable=False)
+    used_at        = Column(DateTime(timezone=True), nullable=True)
+
+
+class OAuthGrant(Base):
+    """What the user agreed to for one client — the row behind a 'Connected app'.
+    Revoking it kills every token issued under it."""
+    __tablename__ = "oauth_grants"
+
+    id           = Column(Uuid(), primary_key=True, default=uuid.uuid4)
+    user_id      = Column(Uuid(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    client_id    = Column(String(512), ForeignKey("oauth_clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    scope        = Column(String(200), nullable=False)
+    created_at   = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
+    revoked_at   = Column(DateTime(timezone=True), nullable=True)
+
+    user   = relationship("User", back_populates="oauth_grants")
+    client = relationship("OAuthClient")
+    tokens = relationship("OAuthToken", back_populates="grant", cascade="all, delete-orphan")
+
+
+class OAuthToken(Base):
+    """An access or refresh token, stored hashed. A refresh token is single-use:
+    rotating it sets `replaced_by`, and presenting it again after that is taken
+    as theft — the whole grant is revoked."""
+    __tablename__ = "oauth_tokens"
+
+    id          = Column(Uuid(), primary_key=True, default=uuid.uuid4)
+    grant_id    = Column(Uuid(), ForeignKey("oauth_grants.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind        = Column(String(10), nullable=False)             # access | refresh
+    token_hash  = Column(String(64), nullable=False, unique=True, index=True)
+    expires_at  = Column(DateTime(timezone=True), nullable=False)
+    created_at  = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    revoked_at  = Column(DateTime(timezone=True), nullable=True)
+    replaced_by = Column(Uuid(), nullable=True)
+
+    grant = relationship("OAuthGrant", back_populates="tokens")
 
 
 class TimelineEvent(Base):

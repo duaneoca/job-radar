@@ -6,9 +6,10 @@ import hmac
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import Cookie, Depends, Header, HTTPException, status
+from fastapi import Cookie, Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
+from app import oauth
 from app.config import settings
 from app.database import get_db
 from app.models import AgentAPIKey, User
@@ -16,17 +17,26 @@ from app.security import decode_access_token, hash_agent_key
 
 
 def get_current_user(
+    request: Request,
     access_token: str = Cookie(default=None),
+    authorization: str = Header(default=None),
     x_internal_user_id: str = Header(default=None, alias="X-Internal-User-Id"),
     x_internal_token: str = Header(default=None, alias="X-Internal-Token"),
     db: Session = Depends(get_db),
 ) -> User:
-    """Require a valid JWT cookie. Raises 401 if missing or invalid."""
+    """Require a valid JWT cookie — or, for a connected AI assistant, an OAuth
+    bearer token (app/oauth.py), which is also held to that module's route
+    policy. Raises 401 if missing or invalid."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Not authenticated",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+    # A connected app (Claude, ChatGPT, …) acting as the user. Checked before the
+    # cookie so a browser that somehow sends both gets the narrower identity.
+    if authorization and oauth.is_bearer(authorization):
+        return oauth.user_from_bearer(authorization, request.method, request.url.path, db)
 
     # Internal service-to-service calls bypass JWT (ai-reviewer, scraper) — but
     # only when they present the shared internal token. This path can act as ANY
@@ -34,7 +44,7 @@ def get_current_user(
     if x_internal_user_id:
         if not _valid_internal_token(x_internal_token):
             raise credentials_exception
-        user = db.query(User).filter(User.id == x_internal_user_id).first()
+        user = db.query(User).filter(User.id == _uuid_or_401(x_internal_user_id, credentials_exception)).first()
         if user and user.is_approved:
             return user
         raise credentials_exception
@@ -46,7 +56,7 @@ def get_current_user(
     if not user_id:
         raise credentials_exception
 
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == _uuid_or_401(user_id, credentials_exception)).first()
     if not user:
         raise credentials_exception
     if not user.is_approved:
@@ -55,6 +65,15 @@ def get_current_user(
             detail="Account pending approval",
         )
     return user
+
+
+def _uuid_or_401(value: str, exc: HTTPException) -> UUID:
+    """The id column is a real UUID type: Postgres casts a string, SQLite (tests)
+    does not, and a malformed id should be a 401 either way, not a 500."""
+    try:
+        return UUID(str(value))
+    except (ValueError, AttributeError, TypeError):
+        raise exc
 
 
 def get_current_admin(current_user: User = Depends(get_current_user)) -> User:

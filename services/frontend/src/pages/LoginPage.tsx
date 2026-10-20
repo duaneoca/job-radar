@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { Radar } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -13,6 +13,11 @@ export function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  // ?next= is set by pages that need a signed-in user and must not lose their
+  // query string (the OAuth consent page). Same-origin paths only.
+  const [searchParams] = useSearchParams();
+  const rawNext = searchParams.get("next") ?? "";
+  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/jobs";
   const navigate = useNavigate();
   const setUser = useAuthStore((s) => s.setUser);
 
@@ -25,7 +30,7 @@ export function LoginPage() {
       if (res.data.user.must_change_password) {
         navigate("/settings?tab=account&force=1");
       } else {
-        navigate("/jobs");
+        navigate(next);
       }
     } catch (err: any) {
       toast({
