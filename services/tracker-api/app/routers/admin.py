@@ -109,7 +109,7 @@ def _do_cleanup(db: Session) -> dict:
     # Background research / tailor rows: fail anything the process died under,
     # drop finished history past the same grace the reviews get.
     generation = generation_jobs.sweep(db, timedelta(days=settings.terminal_ttl_days))
-    clients_deleted = oauth.sweep_clients(db)
+    oauth_swept = oauth.sweep(db)
 
     logger.info(
         "cleanup_jobs: %d terminal reviews deleted, %d orphan jobs deleted, %d agent runs reaped, "
@@ -122,7 +122,7 @@ def _do_cleanup(db: Session) -> dict:
         "orphan_jobs_deleted": jobs_deleted,
         "agent_runs_reaped": runs_reaped,
         **generation,
-        "oauth_clients_deleted": clients_deleted,
+        **oauth_swept,
     }
 
 

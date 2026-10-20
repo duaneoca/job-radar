@@ -600,17 +600,22 @@ def actor(request) -> str:
     return getattr(request.state, "oauth_vendor", None) or models.GENERATION_SOURCE_WEB
 
 
-def sweep_clients(db: Session, older_than: timedelta = timedelta(days=1)) -> int:
-    """Nightly: drop DCR registrations that never led to a grant. Every fresh
+def sweep(db: Session, older_than: timedelta = timedelta(days=1)) -> dict[str, int]:
+    """Nightly. Drop DCR registrations that never led to a grant: every fresh
     Claude connection registers a new client, and so can anyone with the URL,
     so without this the table only grows. A client with any grant, revoked or
-    not, is kept — it is history on the Connected apps page."""
+    not, is kept — it is history on the Connected apps page. Also drop
+    authorization codes past their expiry: used or not, a code is worthless a
+    day later, and otherwise every successful connect leaves a row forever."""
     cutoff = _utcnow() - older_than
+    codes = (db.query(models.OAuthAuthorizationCode)
+               .filter(models.OAuthAuthorizationCode.expires_at < cutoff)
+               .delete(synchronize_session=False))
     granted = db.query(models.OAuthGrant.client_id)
-    n = (db.query(models.OAuthClient)
-           .filter(models.OAuthClient.kind == models.OAUTH_CLIENT_DCR,
-                   models.OAuthClient.created_at < cutoff,
-                   models.OAuthClient.id.not_in(granted))
-           .delete(synchronize_session=False))
+    clients = (db.query(models.OAuthClient)
+                 .filter(models.OAuthClient.kind == models.OAUTH_CLIENT_DCR,
+                         models.OAuthClient.created_at < cutoff,
+                         models.OAuthClient.id.not_in(granted))
+                 .delete(synchronize_session=False))
     db.commit()
-    return n
+    return {"oauth_clients_deleted": clients, "oauth_codes_deleted": codes}

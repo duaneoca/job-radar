@@ -212,9 +212,15 @@ def test_unused_registrations_are_swept_and_granted_ones_kept(web, api, db):
     for c in db.query(models.OAuthClient):
         c.created_at = oauth._utcnow() - timedelta(days=2)
     db.commit()
-    assert _do_cleanup(db)["oauth_clients_deleted"] == 1
+    for c in db.query(models.OAuthAuthorizationCode):
+        c.expires_at = oauth._utcnow() - timedelta(days=2)
+    db.commit()
+    result = _do_cleanup(db)
+    assert result["oauth_clients_deleted"] == 1 and result["oauth_codes_deleted"] == 1
     assert db.get(models.OAuthClient, unused) is None
     assert db.query(models.OAuthClient).count() == 1
+    assert db.query(models.OAuthAuthorizationCode).count() == 0
+    assert db.query(models.OAuthGrant).count() == 1          # the grant and its tokens are untouched
 
 
 # ── CIMD ──────────────────────────────────────────────────────
