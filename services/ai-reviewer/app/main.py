@@ -106,7 +106,14 @@ _HTTP_PID: int | None = None
 def _http() -> httpx.Client:
     global _HTTP, _HTTP_PID
     if _HTTP is None or _HTTP_PID != os.getpid():
-        _HTTP, _HTTP_PID = httpx.Client(timeout=10), os.getpid()
+        # keepalive_expiry below tracker-api's 5 s (uvicorn's default
+        # timeout_keep_alive): with both at 5 s, a post sent just as the server
+        # closed the idle connection failed with "Server disconnected without
+        # sending a response" — the retry posted it, but the ERROR reached the
+        # digest (3x by 2026-10-22). At 2 s the client never reuses a connection
+        # near the server's cutoff.
+        _HTTP = httpx.Client(timeout=10, limits=httpx.Limits(keepalive_expiry=2.0))
+        _HTTP_PID = os.getpid()
     return _HTTP
 
 
