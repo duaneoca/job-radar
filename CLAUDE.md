@@ -368,12 +368,14 @@ its ~46Mi fork baseline to ~129Mi and stays there. With the parent (~51Mi), the
 embedded beat process (~46Mi) and a second, permanently idle pool child (~49Mi)
 sharing the same 256Mi cgroup, that ratchet OOM-killed three scrapes between
 2026-08-21 and 2026-08-24 (`memory.events` `oom_kill=3`, `memory.peak` pinned at
-exactly 256Mi). Hence `--concurrency=1 --max-tasks-per-child=20` in
+exactly 256Mi). Hence `--concurrency=1 --max-tasks-per-child=1` in
 `k8s/base/scraper/deployment.yaml`. **This is not the ai-reviewer leak** — the
 working set is bounded and reducible, which is why the fix is to shrink the
 footprint rather than raise the ceiling. Concurrency 1 costs nothing: the three
 tasks are network-bound and never genuinely overlap. If boards keep growing, the
-next lever is to stop materialising postings we filter out, not a bigger limit.
+next lever is to stop materialising postings we filter out, not a bigger limit. (It was 20 until 2026-10-22; at ~6 tasks a day that kept one child for ~3 days,
+it reached 159Mi after two runs, and the 06:00 scrape was OOM-killed again. One task per child
+bounds every run to its own working set.)
 
 A killed child loses only the tail of that cycle — jobs are POSTed one at a time as
 they're found, so everything scraped before the kill is saved; what's skipped is the
