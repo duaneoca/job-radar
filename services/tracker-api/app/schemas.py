@@ -1005,6 +1005,22 @@ class InboxPostingUpdate(BaseModel):
     import_status: Literal["pending", "dismissed"]
 
 
+class SeenElsewhereOut(BaseModel):
+    """A posting the agent verified in this email but did not store here, because
+    it had already captured the same job from an earlier email (its dedup
+    window is 30 days). Without this the later email shows a shorter list and
+    looks as if half its jobs were lost. `inbox_email_id` is the email that has
+    the stored copy; null when that copy is gone (deleted, or older than what
+    we keep)."""
+    company: str
+    role: str
+    inbox_email_id: Optional[UUID] = None
+    email_subject: Optional[str] = None
+    received_at: Optional[datetime] = None
+    import_status: Optional[ImportStatus] = None
+    imported_review_id: Optional[UUID] = None
+
+
 class InboxEmailOut(BaseModel):
     id: UUID
     message_id: str
@@ -1019,6 +1035,7 @@ class InboxEmailOut(BaseModel):
     created_at: datetime
     postings: List[InboxPostingOut] = []
     interactions: List[InboxInteractionOut] = []
+    seen_elsewhere: List[SeenElsewhereOut] = []
 
     class Config:
         from_attributes = True

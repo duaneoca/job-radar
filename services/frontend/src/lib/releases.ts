@@ -42,6 +42,23 @@ export interface Release {
 export const RELEASES: Release[] = [
   // Newest first. See the module comment before adding one.
   {
+    version: "v1.19.0",
+    date: "2026-10-22",
+    headline: "Inbox: repeated jobs are named, not dropped",
+    notes: [
+      {
+        title: "Alerts no longer look like they lost half their jobs",
+        detail:
+          "When a job alert repeats jobs an earlier alert already brought in, the inbox keeps them under the first email and now says so under the later one, with a link to the job if you imported it. Before, the later email simply showed fewer jobs than it contained.",
+      },
+      {
+        title: "\"Marked handled\"",
+        detail:
+          "Once an email is handled or dismissed, the row says Marked handled instead of still offering the button.",
+      },
+    ],
+  },
+  {
     version: "v1.18.0",
     date: "2026-10-15",
     headline: "Star the jobs you want to come back to",

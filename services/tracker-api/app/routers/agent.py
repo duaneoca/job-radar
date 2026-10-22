@@ -23,6 +23,7 @@ from uuid import UUID
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app import feature_flags, models, schemas
@@ -1307,7 +1308,72 @@ def list_inbox(
         for e in out:
             for p in e.postings:
                 p.matched_job = briefs.get(p.matched_review_id)
+
+    _attach_seen_elsewhere(items, out, current_user.id, db)
     return schemas.PaginatedInbox(total=total, items=out)
+
+
+def _norm_pair(company: str | None, role: str | None) -> tuple[str, str]:
+    return ((company or "").strip().lower(), (role or "").strip().lower())
+
+
+def _attach_seen_elsewhere(items, out, user_id, db: Session) -> None:
+    """Postings the agent verified in an email but stored under an earlier one.
+
+    The agent records every verified pick in raw_extracted_json.postings and the
+    number it skipped as already seen; the stored rows are the rest. The
+    difference, matched by (company, role) to this user's other stored
+    postings, is what the page shows as "already listed from …". Looked up in
+    one query for the page, newest earlier copy preferred."""
+    missing: dict[UUID, list[tuple[str, str, str, str]]] = {}   # email id → [(co, role, co_l, role_l)]
+    for e in items:
+        raw = e.raw_extracted_json if isinstance(e.raw_extracted_json, dict) else None
+        verified = raw.get("postings") if raw else None
+        if not isinstance(verified, list) or not verified:
+            continue
+        stored = {_norm_pair(p.company, p.role) for p in e.postings}
+        seen: set[tuple[str, str]] = set()
+        for v in verified:
+            if not isinstance(v, dict):
+                continue
+            company, role = v.get("company"), v.get("title") or v.get("role")
+            if not isinstance(company, str) or not isinstance(role, str):
+                continue
+            key = _norm_pair(company, role)
+            if key in stored or key in seen:
+                continue
+            seen.add(key)
+            missing.setdefault(e.id, []).append((company, role, *key))
+    if not missing:
+        return
+
+    companies = {k[2] for lst in missing.values() for k in lst}
+    rows = (
+        db.query(models.InboxPosting, models.InboxEmail)
+        .join(models.InboxEmail, models.InboxEmail.id == models.InboxPosting.inbox_email_id)
+        .filter(models.InboxPosting.user_id == user_id,
+                func.lower(models.InboxPosting.company).in_(companies))
+        .order_by(models.InboxEmail.received_at.desc())
+        .all()
+    )
+    by_key: dict[tuple[str, str], list[tuple[models.InboxPosting, models.InboxEmail]]] = {}
+    for p, e in rows:
+        by_key.setdefault(_norm_pair(p.company, p.role), []).append((p, e))
+
+    received = {e.id: e.received_at for e in items}
+    for email_out in out:
+        for company, role, co_l, role_l in missing.get(email_out.id, []):
+            copies = [(p, e) for p, e in by_key.get((co_l, role_l), []) if e.id != email_out.id]
+            earlier = [c for c in copies if c[1].received_at <= received[email_out.id]]
+            p, e = (earlier or copies or [(None, None)])[0]
+            email_out.seen_elsewhere.append(schemas.SeenElsewhereOut(
+                company=company, role=role,
+                inbox_email_id=e.id if e else None,
+                email_subject=e.subject if e else None,
+                received_at=e.received_at if e else None,
+                import_status=p.import_status if p else None,
+                imported_review_id=p.imported_review_id if p else None,
+            ))
 
 
 @router.get("/stats", response_model=schemas.AgentStatsOut)
