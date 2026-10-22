@@ -44,7 +44,7 @@ export const RELEASES: Release[] = [
   {
     version: "v1.19.0",
     date: "2026-10-22",
-    headline: "Inbox: repeated jobs are named, not dropped",
+    headline: "Inbox repeats are named, not dropped — and status is harder to change by accident",
     notes: [
       {
         title: "Alerts no longer look like they lost half their jobs",
@@ -55,6 +55,11 @@ export const RELEASES: Release[] = [
         title: "\"Marked handled\"",
         detail:
           "Once an email is handled or dismissed, the row says Marked handled instead of still offering the button.",
+      },
+      {
+        title: "A smaller target for changing status",
+        detail:
+          "In the jobs list, the status is now plain text with a small arrow beside it; only the arrow opens the status menu. Before, the whole status box was clickable and sat just under the Status column's filter, so it was easy to mark a job Applied when you meant to filter.",
       },
     ],
   },
