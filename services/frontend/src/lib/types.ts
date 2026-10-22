@@ -121,6 +121,18 @@ export interface InboxEmail {
   created_at: string;
   postings: InboxPosting[];
   interactions: InboxInteraction[];
+  /** Verified in this email but stored under an earlier one (the agent's dedup). */
+  seen_elsewhere: SeenElsewhere[];
+}
+
+export interface SeenElsewhere {
+  company: string;
+  role: string;
+  inbox_email_id: string | null;
+  email_subject: string | null;
+  received_at: string | null;
+  import_status: ImportStatus | null;
+  imported_review_id: string | null;
 }
 
 export interface PaginatedInbox {

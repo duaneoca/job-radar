@@ -232,12 +232,48 @@ function EmailRow({
             </div>
           )}
           {email.interactions.map((i) => <InteractionRow key={i.id} i={i} />)}
-          {email.postings.length === 0 && email.interactions.length === 0 && (
+          {/* The agent keeps each job under the first email that surfaced it, so a
+              later alert carrying the same jobs stores fewer rows. Say so, or the
+              email looks as if half its jobs were lost. */}
+          {(email.seen_elsewhere ?? []).length > 0 && (
+            <div className={cn("py-1", email.postings.length > 0 && "border-t")}>
+              <p className="text-xs text-muted-foreground mt-1 mb-0.5">
+                {email.seen_elsewhere.length === 1 ? "1 posting" : `${email.seen_elsewhere.length} postings`} in this
+                email {email.seen_elsewhere.length === 1 ? "was" : "were"} already listed from an earlier email:
+              </p>
+              {email.seen_elsewhere.map((s, idx) => (
+                <div key={idx} className="flex items-start gap-2 py-1 text-sm opacity-70">
+                  <Copy className="h-3.5 w-3.5 shrink-0 mt-1 text-muted-foreground" />
+                  <span className="min-w-0">
+                    <span className="font-medium">{s.company}</span>
+                    <span className="text-muted-foreground"> · </span>
+                    <span>{s.role}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {" — "}
+                      {s.received_at ? `listed ${fmtDateTime(s.received_at)}` : "the earlier copy is no longer in the inbox"}
+                      {s.import_status === "imported" && s.imported_review_id && (
+                        <> · <Link to={`/jobs/${s.imported_review_id}`} className="underline underline-offset-2 hover:text-foreground">imported</Link></>
+                      )}
+                      {s.import_status === "dismissed" && " · skipped"}
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          {email.postings.length === 0 && email.interactions.length === 0 && (email.seen_elsewhere ?? []).length === 0 && (
             <p className="text-sm text-muted-foreground py-2">No postings or status updates extracted.</p>
           )}
 
           <div className="flex items-center gap-2 mt-3 pt-2 border-t">
-            {email.status !== "processed" && (
+            {/* Once the email is handled or dismissed there is nothing left to
+                mark: say so in the past tense rather than keep offering the
+                button (a dismissed email was still showing "Mark handled"). */}
+            {email.status === "processed" || email.status === "discarded" ? (
+              <span className="inline-flex items-center text-xs text-muted-foreground px-1">
+                <Check className="h-3.5 w-3.5 mr-1" /> Marked handled
+              </span>
+            ) : (
               <Button size="sm" variant="outline" disabled={busy} onClick={() => onPatch("processed")}>
                 <Check className="h-3.5 w-3.5 mr-1" /> Mark handled
               </Button>
