@@ -594,16 +594,28 @@ function JobsTab() {
                     )}
                   </td>
                   <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-                    <Select value={job.status} onValueChange={(v) => changeStatus(job, v)}>
-                      <SelectTrigger className="h-7 text-xs w-28">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {STATUS_OPTIONS.map((s) => (
-                          <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {/* The status is plain text; only the small arrow opens the menu.
+                        A trigger spanning the whole word sat right under the Status
+                        column's filter, and clicking it by mistake marked jobs Applied
+                        (twice, by 2026-10-22). A small target is much harder to hit
+                        by accident. */}
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs whitespace-nowrap">
+                        {STATUS_OPTIONS.find((s) => s.value === job.status)?.label ?? job.status}
+                      </span>
+                      <Select value={job.status} onValueChange={(v) => changeStatus(job, v)}>
+                        <SelectTrigger
+                          aria-label="Change status"
+                          title="Change status"
+                          className="h-6 w-6 shrink-0 justify-center p-0"
+                        />
+                        <SelectContent>
+                          {STATUS_OPTIONS.map((s) => (
+                            <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </td>
                   <td className="px-3 py-2.5 hidden sm:table-cell">
                     <span className="text-xs text-muted-foreground">{formatSource(job.source)}</span>
