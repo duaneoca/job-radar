@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams, Link } from "react-router-dom";
+import { useSearchParams, Link, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, BookmarkIcon, BookOpen, Chrome, Eye, EyeOff, Loader2, MessageSquare, Trash2, Copy, Plus, Unplug } from "lucide-react";
 import { GoogleButton } from "../components/GoogleButton";
@@ -15,6 +15,7 @@ import { keysApi, authApi, agentApi } from "../lib/api";
 import { useAuthStore } from "../store/auth";
 import { toast } from "../hooks/useToast";
 import { useConfirmLinks } from "../hooks/useConfirmLinks";
+import { safeNext } from "../lib/loginRedirect";
 import { formatDate } from "../lib/utils";
 import { AgentStatsView } from "../components/AgentStatsView";
 import { isWritingModelError } from "../lib/types";
@@ -26,6 +27,9 @@ function AccountTab() {
   const { user, setUser } = useAuthStore();
   const [searchParams] = useSearchParams();
   const forced = searchParams.get("force") === "1";
+  // Where the user was going when sign-in made them change their password.
+  const forcedNext = forced && searchParams.get("next") ? safeNext(searchParams.get("next")) : null;
+  const navigate = useNavigate();
   const [confirmLinks, setConfirmLinksPref] = useConfirmLinks();
 
   const [nameVal, setNameVal] = useState(user?.full_name ?? "");
@@ -63,6 +67,7 @@ function AccountTab() {
       setUser(res.data);
       setCurrentPassword(""); setNewPassword(""); setConfirmPassword("");
       toast({ title: "Password changed successfully" });
+      if (forcedNext) navigate(forcedNext);
     } catch (err: any) {
       toast({ title: "Failed to change password", description: err?.response?.data?.detail ?? "Unknown error", variant: "destructive" });
     } finally {
@@ -75,6 +80,7 @@ function AccountTab() {
       {forced && (
         <div className="p-3 rounded-lg bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 text-sm text-yellow-800 dark:text-yellow-200">
           Please change your temporary password before continuing.
+          {forcedNext && " You'll be taken back to where you were afterwards."}
         </div>
       )}
 

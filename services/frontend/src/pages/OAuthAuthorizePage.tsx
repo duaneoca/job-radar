@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Check, Loader2, Radar, ShieldCheck } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { authApi } from "../lib/api";
+import { loginUrl } from "../lib/loginRedirect";
 import { useAuthStore } from "../store/auth";
 import type { OAuthAuthorizeContext } from "../lib/types";
 
@@ -38,8 +39,7 @@ export function OAuthAuthorizePage() {
   }, [ctx.error]);
 
   if (!isAuthenticated()) {
-    const next = location.pathname + location.search;
-    return <Navigate to={`/login?next=${encodeURIComponent(next)}`} replace />;
+    return <Navigate to={loginUrl(location)} replace />;
   }
 
   async function decide(decision: "allow" | "deny") {
