@@ -141,6 +141,38 @@ Key routers:
 
 **Internal no-auth endpoints** use `include_in_schema=False`. Do not add user-facing auth to these; they are only called by other services inside the cluster.
 
+**OAuth for AI assistants (`app/oauth.py`, `routers/oauth.py`) — Job Radar is its own
+authorization server** so Claude, ChatGPT, Gemini and Grok can connect to the MCP
+connector as the user. A deliberately narrow profile: authorization_code + PKCE S256
+and refresh_token only, **public clients only**, and a client is admitted **solely by
+its redirect URI matching the vendor allowlist** (`VENDORS` / `_EXACT_REDIRECTS` /
+`_PATTERN_REDIRECTS`) — a DCR body or a Client ID Metadata Document can call itself
+anything, but the redirect host is the one thing an impostor can't choose. No loopback
+redirects: developer tools (Claude Code, Gemini CLI, Codex) get pasted tokens from
+Settings later. CIMD documents are fetched only from vendor hosts (`_CIMD_HOSTS`, which
+doubles as the SSRF guard), must name themselves as `client_id`, and their
+`redirect_uris` still pass the allowlist. Tokens are random, stored hashed; access 1 h,
+refresh 30 d and rotated — replaying a rotated-out refresh token or a used code revokes
+the whole grant. **What a bearer may call is `ROUTE_POLICY`** (enforced in
+`deps.get_current_user`): the jobs surface only, DELETE never, scope per route
+(`jobs:read` / `jobs:write` / `generate`). The consent page is the SPA route
+`/oauth/authorize` (it calls `…/context` then `…/decide`); errors found before the
+redirect URI is verified never redirect. Issuer = `PUBLIC_BASE_URL`; nginx serves
+`/.well-known/oauth-authorization-server` from tracker-api. **Why hand-written:** the
+MCP Python SDK's server auth needs pydantic ≥ 2.11 (we pin 2.10 behind the deferred
+LiteLLM upgrade) and has neither server-side CIMD nor a redirect allowlist. Any change
+to the allowlist or `ROUTE_POLICY` is a security change; `tests/test_oauth.py` pins
+both. The vendor callbacks for Gemini and Grok come from operator reports, not vendor
+docs — verify against a live connector. **Rate-limit keys never come from
+`X-Forwarded-For`** (`ratelimit.client_ip`): nginx appends to it, so its first element
+is the caller's to choose — a chosen key is a bypassed limiter and, sprayed, a
+memory-growth primitive. Keys come from `CF-Connecting-IP` / `X-Real-IP`, the table is
+capped (`_MAX_KEYS`), and `/oauth/register` also has a global ceiling plus a nightly
+sweep of registrations that never led to a grant. A caller reaching the origin without
+Cloudflare could still forge `CF-Connecting-IP`; the fix for that is the EC2 security
+group (80/443 from Cloudflare's ranges only), not code. `nginx.conf` sends
+`frame-ancestors 'none'` so the consent page can't be clickjacked.
+
 **Email agent auth — the invariant:** every **per-user operational** endpoint accepts
 **either** `X-Agent-Key` (local self-host → user from key) **or** `X-Internal-Token` +
 `X-User-Id` (cloud CronJob, per-user) — see `get_agent_writer`. That set is

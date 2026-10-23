@@ -188,7 +188,8 @@ def run(job_id: uuid.UUID) -> None:
 
         event_type, text = _DONE_EVENT[job.kind]
         if job.source != models.GENERATION_SOURCE_WEB:
-            text += f" via {job.source}"
+            from app import oauth    # vendor labels; local import keeps this module free of oauth at load
+            text += f" via {oauth.VENDORS.get(job.source, job.source)}"
         db.add(models.TimelineEvent(review_id=job.review_id, event_type=event_type, description=text))
         _finish(db, job, models.GENERATION_DONE)
     finally:

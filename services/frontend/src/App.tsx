@@ -6,6 +6,7 @@ import { Layout } from "./components/layout/Layout";
 import { Toaster } from "./components/ui/toaster";
 import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
+import { OAuthAuthorizePage } from "./pages/OAuthAuthorizePage";
 import { SignupPage } from "./pages/SignupPage";
 import { JobsPage } from "./pages/JobsPage";
 import { JobDetailPage } from "./pages/JobDetailPage";
@@ -83,6 +84,9 @@ export default function App() {
       <Routes>
         {/* Public */}
         <Route path="/login" element={<LoginPage />} />
+        {/* OAuth consent for AI assistants. Handles its own sign-in redirect so
+            the query string (the client's request) survives the round trip. */}
+        <Route path="/oauth/authorize" element={<OAuthAuthorizePage />} />
         <Route path="/signup" element={<SignupPage />} />
 
         {/* Protected */}

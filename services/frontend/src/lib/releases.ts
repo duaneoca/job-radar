@@ -67,6 +67,11 @@ export const RELEASES: Release[] = [
           "Once an email is handled or dismissed, the row says Marked handled instead of still offering the button.",
       },
       {
+        title: "Connected apps",
+        detail:
+          "Settings has a new Connected apps page: the AI assistants you've allowed to use your account, what each can do, and a Disconnect button. It's empty until an assistant can connect, which is coming in a later release.",
+      },
+      {
         title: "A smaller target for changing status",
         detail:
           "In the jobs list, the status is now plain text with a small arrow beside it; only the arrow opens the status menu. Before, the whole status box was clickable and sat just under the Status column's filter, so it was easy to mark a job Applied when you meant to filter.",

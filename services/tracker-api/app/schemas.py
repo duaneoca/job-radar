@@ -615,6 +615,53 @@ class PrintSettingsIn(BaseModel):
     settings: PrintSettings
 
 
+# ── OAuth (connected AI assistants) ───────────────────────────
+
+class OAuthScopeOut(BaseModel):
+    id: str
+    label: str
+
+
+class OAuthAuthorizeContext(BaseModel):
+    """What the consent page shows. `vendor_label` is derived from the
+    allowlisted redirect host and is the trustworthy name; `client_name` is
+    whatever the client called itself."""
+    vendor: str
+    vendor_label: str
+    client_name: Optional[str] = None
+    client_kind: str
+    redirect_host: str
+    scopes: List[OAuthScopeOut]
+
+
+class OAuthDecision(BaseModel):
+    """The authorization request's query parameters, passed back verbatim by
+    the consent page, plus the user's answer."""
+    params: dict
+    decision: str   # "allow" | "deny"
+
+    @field_validator("decision")
+    @classmethod
+    def _decision(cls, v: str) -> str:
+        if v not in ("allow", "deny"):
+            raise ValueError("decision must be allow or deny")
+        return v
+
+
+class OAuthRedirect(BaseModel):
+    redirect_to: str
+
+
+class ConnectedAppOut(BaseModel):
+    id: UUID
+    vendor: str
+    vendor_label: str
+    client_name: Optional[str] = None
+    scopes: List[str]
+    created_at: datetime
+    last_used_at: Optional[datetime] = None
+
+
 # ── Background generation ─────────────────────────────────────
 
 class GenerationJobOut(BaseModel):

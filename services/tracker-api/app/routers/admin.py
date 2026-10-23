@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import feature_flags, generation_jobs, models, schemas
+from app import feature_flags, generation_jobs, models, oauth, schemas
 from app.config import settings
 from app.database import get_db
 from app.deps import get_current_admin, require_internal_token
@@ -109,6 +109,7 @@ def _do_cleanup(db: Session) -> dict:
     # Background research / tailor rows: fail anything the process died under,
     # drop finished history past the same grace the reviews get.
     generation = generation_jobs.sweep(db, timedelta(days=settings.terminal_ttl_days))
+    oauth_swept = oauth.sweep(db)
 
     logger.info(
         "cleanup_jobs: %d terminal reviews deleted, %d orphan jobs deleted, %d agent runs reaped, "
@@ -121,6 +122,7 @@ def _do_cleanup(db: Session) -> dict:
         "orphan_jobs_deleted": jobs_deleted,
         "agent_runs_reaped": runs_reaped,
         **generation,
+        **oauth_swept,
     }
 
 

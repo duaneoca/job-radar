@@ -84,6 +84,12 @@ class Settings(BaseSettings):
     slack_oauth_redirect_uri: str = ""  # e.g. https://job-radar.net/api/agent/slack/oauth/callback
     slack_bot_scopes: str = "chat:write,chat:write.public,channels:read"
 
+    # Public origin of the app, e.g. https://job-radar.net. The OAuth issuer and
+    # every URL in its metadata derive from it; AI assistants compare the issuer
+    # byte-for-byte, so it must be exactly what users type. Empty = derive from
+    # the request's Host / X-Forwarded-Proto (dev only).
+    public_base_url: str = ""
+
     # CORS — comma-separated allowed origins. Dev default is the Vite dev server.
     # In production the SPA is same-origin (served by nginx, /api proxied), so this
     # only needs a value if a cross-origin client is ever added.

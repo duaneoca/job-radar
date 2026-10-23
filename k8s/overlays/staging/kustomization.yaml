@@ -26,6 +26,9 @@ patches:
       - op: replace
         path: /data/ENVIRONMENT
         value: staging
+      - op: replace
+        path: /data/PUBLIC_BASE_URL
+        value: https://staging.job-radar.net
     target:
       kind: ConfigMap
       name: tracker-api-config
