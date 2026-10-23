@@ -5,6 +5,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { authApi } from "../lib/api";
+import { safeNext } from "../lib/loginRedirect";
 import { useAuthStore } from "../store/auth";
 import { toast } from "../hooks/useToast";
 import type { User } from "../lib/types";
@@ -13,11 +14,9 @@ export function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  // ?next= is set by pages that need a signed-in user and must not lose their
-  // query string (the OAuth consent page). Same-origin paths only.
+  // Where to go after signing in (lib/loginRedirect.ts) — this origin only.
   const [searchParams] = useSearchParams();
-  const rawNext = searchParams.get("next") ?? "";
-  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/jobs";
+  const next = safeNext(searchParams.get("next"));
   const navigate = useNavigate();
   const setUser = useAuthStore((s) => s.setUser);
 
@@ -28,7 +27,9 @@ export function LoginPage() {
       const res = await authApi.post<{ user: User }>("/auth/login", { email, password });
       setUser(res.data.user);
       if (res.data.user.must_change_password) {
-        navigate("/settings?tab=account&force=1");
+        // Change the temporary password first, then carry on to `next` — on the
+        // OAuth consent page, dropping it would lose the assistant's request.
+        navigate(`/settings?tab=account&force=1&next=${encodeURIComponent(next)}`);
       } else {
         navigate(next);
       }

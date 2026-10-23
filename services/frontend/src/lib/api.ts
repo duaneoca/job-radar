@@ -1,4 +1,6 @@
 import axios from "axios";
+import { useAuthStore } from "../store/auth";
+import { loginUrl } from "./loginRedirect";
 
 // Single axios instance — all backend calls share the same base URL & cookie
 const client = axios.create({
@@ -23,12 +25,12 @@ client.interceptors.response.use(
       !isAuthProbe &&
       !PUBLIC_PATHS.has(window.location.pathname)
     ) {
-      // Come back here after signing in. Without this, an expired session on the
-      // OAuth consent page (an AI assistant's "Allow?" screen) sent the user to
-      // /login and then to /jobs — the assistant's request was lost and no
-      // permissions page ever appeared (2026-10-23).
-      const back = window.location.pathname + window.location.search;
-      window.location.href = "/login?next=" + encodeURIComponent(back);
+      // The session is gone: forget the stored user too, or every guarded page
+      // (and the OAuth consent page) keeps believing it's signed in — a Back
+      // press or another tab would bounce through more 401s. Then sign in and
+      // come back here (lib/loginRedirect.ts).
+      useAuthStore.getState().setUser(null);
+      window.location.href = loginUrl(window.location);
     }
     return Promise.reject(err);
   }

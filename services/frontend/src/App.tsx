@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { loginUrl } from "./lib/loginRedirect";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useDarkMode } from "./hooks/useDarkMode";
 import { useQuery } from "@tanstack/react-query";
@@ -44,7 +45,7 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore();
   const location = useLocation();
-  if (!isAuthenticated()) return <Navigate to="/login" state={{ from: location }} replace />;
+  if (!isAuthenticated()) return <Navigate to={loginUrl(location)} replace />;
   return <>{children}</>;
 }
 

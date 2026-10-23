@@ -79,7 +79,7 @@ export const RELEASES: Release[] = [
       {
         title: "Signing in again takes you back where you were",
         detail:
-          "When your session had expired, signing in used to drop you on the jobs list instead of the page you were on. It now returns you there — including the Allow page when you connect an AI assistant.",
+          "Signing in used to drop you on the jobs list, losing the page you were on, when your session had expired, when you opened a link while signed out, or after changing a temporary password. Each of these now takes you back to that page — including the Allow page when you connect an AI assistant.",
       },
       {
         title: "A smaller target for changing status",
