@@ -381,6 +381,28 @@ export interface GenerationStatusOut {
   tailor: GenerationJob | null;
 }
 
+/** OAuth consent: who is asking. `vendor_label` is derived server-side from the
+ *  allowlisted redirect host and is the trustworthy name. */
+export interface OAuthAuthorizeContext {
+  vendor: string;
+  vendor_label: string;
+  client_name: string | null;
+  client_kind: "dcr" | "cimd";
+  redirect_host: string;
+  scopes: { id: string; label: string }[];
+}
+
+/** An AI assistant the user has let into their account (Settings → Connected apps). */
+export interface ConnectedApp {
+  id: string;
+  vendor: string;
+  vendor_label: string;
+  client_name: string | null;
+  scopes: string[];
+  created_at: string;
+  last_used_at: string | null;
+}
+
 export interface Profile {
   id: string;
   user_id: string;

@@ -14,7 +14,7 @@ from app.logging_config import configure_logging
 from app.memlog import MemoryMiddleware
 from app.models import User
 from app.routers import (
-    admin, agent, auth, connections, criteria, generate, jobs, keys, profile, recruiters,
+    admin, agent, auth, connections, criteria, generate, jobs, keys, oauth, profile, recruiters,
 )
 from app.security import hash_password
 
@@ -83,6 +83,7 @@ app.include_router(connections.router)
 app.include_router(recruiters.router)
 app.include_router(keys.router)
 app.include_router(generate.router)
+app.include_router(oauth.router)
 
 
 @app.on_event("startup")

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, BookmarkIcon, BookOpen, Chrome, Eye, EyeOff, Loader2, MessageSquare, Trash2, Copy, Plus } from "lucide-react";
+import { AlertTriangle, BookmarkIcon, BookOpen, Chrome, Eye, EyeOff, Loader2, MessageSquare, Trash2, Copy, Plus, Unplug } from "lucide-react";
 import { GoogleButton } from "../components/GoogleButton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
@@ -18,7 +18,7 @@ import { useConfirmLinks } from "../hooks/useConfirmLinks";
 import { formatDate } from "../lib/utils";
 import { AgentStatsView } from "../components/AgentStatsView";
 import { isWritingModelError } from "../lib/types";
-import type { APIKey, LLMProvider, AgentApiKey, AgentApiKeyCreated, AgentFolderConfig, EmailCredentialStatus, MailboxFolders, SlackStatus, SlackChannel } from "../lib/types";
+import type { APIKey, LLMProvider, AgentApiKey, AgentApiKeyCreated, AgentFolderConfig, EmailCredentialStatus, MailboxFolders, SlackStatus, SlackChannel, ConnectedApp } from "../lib/types";
 
 // ─── Account Details tab ──────────────────────────────────────────────────────
 
@@ -863,6 +863,83 @@ alert(info);
   return "javascript:" + js.replace(/\n/g, "");
 }
 
+// ─── Connected apps tab ───────────────────────────────────────────────────────
+
+const SCOPE_LABELS: Record<string, string> = {
+  "jobs:read": "see your jobs",
+  "jobs:write": "star jobs, change status, add notes",
+  "generate": "run research and tailoring",
+};
+
+function ConnectedAppsTab() {
+  const qc = useQueryClient();
+  const { data: apps = [], isLoading } = useQuery<ConnectedApp[]>({
+    queryKey: ["connected-apps"],
+    queryFn: () => authApi.get("/oauth/connected-apps").then((r) => r.data),
+  });
+  const [busy, setBusy] = useState<string | null>(null);
+
+  async function disconnect(app: ConnectedApp) {
+    if (!confirm(`Disconnect ${app.vendor_label}? It will have to be connected again to use your account.`)) return;
+    setBusy(app.id);
+    try {
+      await authApi.delete(`/oauth/connected-apps/${app.id}`);
+      qc.invalidateQueries({ queryKey: ["connected-apps"] });
+      toast({ title: `${app.vendor_label} disconnected` });
+    } catch (err: any) {
+      toast({ title: "Couldn't disconnect", description: err?.response?.data?.detail, variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="max-w-2xl space-y-4">
+      <div>
+        <h2 className="text-base font-semibold">Connected apps</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          AI assistants you've allowed to use your Job Radar account — Claude, ChatGPT, Gemini or
+          Grok. Each one can only do what you agreed to when you connected it; none can see your
+          API keys, change your settings, or delete anything. Disconnecting takes effect at once.
+        </p>
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+      ) : apps.length === 0 ? (
+        <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+          Nothing connected. When you add Job Radar as a connector in an AI assistant and allow it
+          in, it appears here.
+        </div>
+      ) : (
+        <ul className="space-y-2">
+          {apps.map((app) => (
+            <li key={app.id} className="rounded-lg border p-3 flex flex-wrap items-start gap-3">
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">{app.vendor_label}</span>
+                  {app.client_name && app.client_name !== app.vendor_label.split(" (")[0] && (
+                    <span className="text-xs text-muted-foreground">calls itself “{app.client_name}”</span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Can {app.scopes.map((s) => SCOPE_LABELS[s] ?? s).join("; ")}.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Connected {formatDate(app.created_at)} · {app.last_used_at ? `last used ${formatDate(app.last_used_at)}` : "not used yet"}
+                </p>
+              </div>
+              <Button variant="outline" size="sm" disabled={busy === app.id} onClick={() => disconnect(app)}>
+                {busy === app.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><Unplug className="h-3.5 w-3.5 mr-1" /> Disconnect</>}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function BookmarkletTab() {
   const appOrigin = window.location.origin;
   const bookmarkletUrl = buildBookmarklet(appOrigin);
@@ -1688,6 +1765,7 @@ export function SettingsPage() {
           <TabsTrigger value="keys">API Keys</TabsTrigger>
           {agentEnabled && <TabsTrigger value="agent">Email Agent</TabsTrigger>}
           <TabsTrigger value="bookmarklet">Bookmarklet</TabsTrigger>
+          <TabsTrigger value="apps">Connected apps</TabsTrigger>
         </TabsList>
         <TabsContent value="account"     className="mt-6"><AccountTab /></TabsContent>
         <TabsContent value="keys"        className="mt-6"><KeysTab /></TabsContent>
@@ -1695,6 +1773,7 @@ export function SettingsPage() {
           <TabsContent value="agent" className="mt-6"><EmailAgentTab /></TabsContent>
         )}
         <TabsContent value="bookmarklet" className="mt-6"><BookmarkletTab /></TabsContent>
+        <TabsContent value="apps"        className="mt-6"><ConnectedAppsTab /></TabsContent>
       </Tabs>
     </div>
   );

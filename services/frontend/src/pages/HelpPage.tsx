@@ -357,6 +357,21 @@ function ApplicationToolsTab() {
 
       <Separator />
 
+      <H2>Connected apps</H2>
+      <P>You can let an AI assistant — Claude, ChatGPT, Gemini or Grok — use your Job Radar
+        account, so you can ask it things like "which of my reviewed jobs are worth an
+        application?" and have it star them or start research for you. When you connect one,
+        Job Radar shows you exactly what it will be able to do and asks you to allow it.</P>
+      <P>A connected assistant can only ever see and update your jobs and start research or
+        tailoring. It can't see your API keys, change your settings, or delete anything, and
+        anything it starts bills your own AI key just as it does when you click the button.
+        You'll see what it did in the job's timeline.</P>
+      <P><strong>Settings → Connected apps</strong> lists everything you've connected, what each
+        can do and when it was last used, with a <em>Disconnect</em> button that cuts it off at
+        once.</P>
+
+      <Separator />
+
       <H2>Timeline</H2>
       <P>The Timeline tab keeps a running log of everything that happens with a job.
         Status changes (New → Applied → Interviewing etc.) and AI review scores are
