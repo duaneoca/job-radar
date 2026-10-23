@@ -494,6 +494,14 @@ function InboxRecruitersTab({ agentEnabled }: { agentEnabled: boolean }) {
           <P>The email agent is an optional feature the administrator can turn on or off
             globally. When it's off, the Inbox tab and the Email Agent settings are hidden —
             the Recruiters contact list below stays available either way.</P>
+          <P><strong>Recruiter emails.</strong> When a recruiter pitches a role, the agent picks out the
+            job title, the company — the real employer if the email names one, otherwise the
+            recruiter's firm marked <em>(agency)</em> — the location, remote or not, and the pay.
+            Click <strong>Add job</strong> on it to open Add Job already filled in, with the email's
+            text as the description. An hourly rate is turned into a yearly salary at 40 hours a
+            week (so $70/hr shows as $145,600), and the description's first line shows the rate as
+            the recruiter quoted it. Recruiter emails rarely link to a posting, so the link is
+            optional. Once you save, the inbox marks the posting <em>imported</em> and links to the job.</P>
           <P>Job boards re-send the same jobs across alerts for days. The agent keeps each job under
             the <em>first</em> email that surfaced it, so a later alert carrying the same jobs
             shows fewer rows — and lists the rest as <em>already listed from an earlier email</em>,

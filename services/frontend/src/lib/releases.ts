@@ -72,6 +72,11 @@ export const RELEASES: Release[] = [
           "Settings has a new Connected apps page: the AI assistants you've allowed to use your account, what each can do, and a Disconnect button. It's empty until an assistant can connect, which is coming in a later release.",
       },
       {
+        title: "Add a job straight from a recruiter email",
+        detail:
+          "Recruiter emails in the inbox now have an Add job button that opens Add Job already filled in: the role, the company (the recruiter's firm, marked agency, when the client isn't named), location, remote, pay and the email's text as the description. Hourly rates become a yearly salary at 40 hours a week. The job link is now optional, since recruiter emails rarely have one, and the inbox marks the posting imported once you save.",
+      },
+      {
         title: "A smaller target for changing status",
         detail:
           "In the jobs list, the status is now plain text with a small arrow beside it; only the arrow opens the status menu. Before, the whole status box was clickable and sat just under the Status column's filter, so it was easy to mark a job Applied when you meant to filter.",

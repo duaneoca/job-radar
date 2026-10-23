@@ -1024,6 +1024,11 @@ def create_inbox_entry(
             action_required=p.action_required,
             possible_duplicate=p.possible_duplicate,
             matched_review_id=p.matched_review_id,
+            location=p.location,
+            remote=p.remote,
+            salary_min=p.salary_min,
+            salary_max=p.salary_max,
+            description=p.description,
         )
         db.add(posting)
         db.flush()
@@ -1445,6 +1450,62 @@ def _compute_stats(user_id: Optional[UUID], db: Session) -> schemas.AgentStatsOu
         jobs_imported=jobs_imported,
         last_run=last_run_out,
     )
+
+
+def _own_posting(posting_id: UUID, user_id, db: Session) -> models.InboxPosting:
+    posting = (
+        db.query(models.InboxPosting)
+        .filter(models.InboxPosting.id == posting_id, models.InboxPosting.user_id == user_id)
+        .first()
+    )
+    if posting is None:
+        raise HTTPException(status_code=404, detail="Posting not found")
+    return posting
+
+
+@router.get("/inbox/postings/{posting_id}", response_model=schemas.InboxPostingDetailOut)
+def get_inbox_posting(
+    posting_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """One posting with its description, for pre-filling Add Job."""
+    posting = _own_posting(posting_id, current_user.id, db)
+    email = db.get(models.InboxEmail, posting.inbox_email_id)
+    return schemas.InboxPostingDetailOut(
+        id=posting.id, company=posting.company, role=posting.role, link=posting.link,
+        location=posting.location, remote=posting.remote,
+        salary_min=posting.salary_min, salary_max=posting.salary_max,
+        description=posting.description, import_status=posting.import_status,
+        imported_review_id=posting.imported_review_id,
+        email_subject=email.subject, email_category=email.category,
+    )
+
+
+@router.post("/inbox/postings/{posting_id}/imported", response_model=schemas.InboxPostingOut)
+def mark_inbox_posting_imported(
+    posting_id: UUID,
+    payload: schemas.InboxPostingImportedIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Record that the user saved this posting as a job (Add Job, or the job they
+    already had). The review must be the user's own — the id comes from the
+    browser. Re-pointing an imported posting is allowed: the latest save wins."""
+    posting = _own_posting(posting_id, current_user.id, db)
+    review = (
+        db.query(models.UserJobReview)
+        .filter(models.UserJobReview.id == payload.review_id,
+                models.UserJobReview.user_id == current_user.id)
+        .first()
+    )
+    if review is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    posting.import_status = models.ImportStatus.IMPORTED
+    posting.imported_review_id = review.id
+    db.commit()
+    db.refresh(posting)
+    return posting
 
 
 @router.patch("/inbox/postings/{posting_id}", response_model=schemas.InboxPostingOut)

@@ -738,6 +738,16 @@ class InboxPosting(Base):
     company        = Column(Text, nullable=False)
     role           = Column(Text, nullable=False)
     link           = Column(Text, nullable=True)   # http/https only, validated at write (C2)
+    # Job details — recruiter postings only, for pre-filling Add Job (spec §3.5).
+    # salary_* are annual; the agent annualizes hourly rates at 2,080 h. The
+    # description is email body text: the one deliberate exception to content
+    # minimization (2026-10-23). Never returned in inbox lists — only by
+    # GET /agent/inbox/postings/{id}.
+    location       = Column(Text, nullable=True)
+    remote         = Column(Boolean, nullable=True)
+    salary_min     = Column(Integer, nullable=True)
+    salary_max     = Column(Integer, nullable=True)
+    description    = Column(Text, nullable=True)
     action_required    = Column(Boolean, nullable=False, default=False)
     possible_duplicate = Column(Boolean, nullable=False, default=False)
     matched_review_id  = Column(Uuid(), ForeignKey("user_job_reviews.id", ondelete="SET NULL"), nullable=True)

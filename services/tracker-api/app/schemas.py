@@ -84,7 +84,9 @@ class AppSettingsUpdate(BaseModel):
 class JobBase(BaseModel):
     title: str
     company: str
-    url: str
+    # "" = no link. Recruiter postings rarely carry one, and inventing a URL would
+    # be worse than none; every page hides the link when it's empty.
+    url: str = ""
     source: JobSource = JobSource.MANUAL
     location: Optional[str] = None
     remote: bool = False
@@ -900,6 +902,10 @@ class PaginatedUsers(BaseModel):
 # ── Email agent — request/response schemas ────────────────────
 
 # POST /agent/inbox
+POSTING_DESCRIPTION_CAP = 20_000
+_SALARY_BAND = (1_000, 5_000_000)
+
+
 class AgentPostingIn(BaseModel):
     company: str
     role: str
@@ -907,6 +913,31 @@ class AgentPostingIn(BaseModel):
     action_required: bool = False
     possible_duplicate: bool = False
     matched_review_id: Optional[UUID] = None
+    # Job details (recruiter postings; spec §3.5). Agent-supplied, so untrusted
+    # (C2): lengths capped here, salaries outside a sane band dropped, never
+    # rendered as anything but text.
+    location: Optional[str] = None
+    remote: Optional[bool] = None
+    salary_min: Optional[int] = None
+    salary_max: Optional[int] = None
+    description: Optional[str] = None
+
+    @field_validator("location")
+    @classmethod
+    def _cap_location(cls, v):
+        v = (v or "").strip()[:200]
+        return v or None
+
+    @field_validator("description")
+    @classmethod
+    def _cap_description(cls, v):
+        v = (v or "").strip()[:POSTING_DESCRIPTION_CAP]
+        return v or None
+
+    @field_validator("salary_min", "salary_max")
+    @classmethod
+    def _sane_salary(cls, v):
+        return v if v is not None and _SALARY_BAND[0] <= v <= _SALARY_BAND[1] else None
 
 
 class AgentRecruiterIn(BaseModel):
@@ -1044,6 +1075,10 @@ class InboxPostingOut(BaseModel):
     company: str
     role: str
     link: Optional[str]
+    location: Optional[str] = None
+    remote: Optional[bool] = None
+    salary_min: Optional[int] = None
+    salary_max: Optional[int] = None
     action_required: bool
     possible_duplicate: bool
     matched_review_id: Optional[UUID]
@@ -1074,6 +1109,31 @@ class InboxInteractionOut(BaseModel):
 class InboxPostingUpdate(BaseModel):
     """PATCH /agent/inbox/postings/{id} — skip a posting, or undo that."""
     import_status: Literal["pending", "dismissed"]
+
+
+class InboxPostingDetailOut(BaseModel):
+    """One posting with everything Add Job pre-fills — including the description,
+    which inbox lists never carry."""
+    id: UUID
+    company: str
+    role: str
+    link: Optional[str]
+    location: Optional[str] = None
+    remote: Optional[bool] = None
+    salary_min: Optional[int] = None
+    salary_max: Optional[int] = None
+    description: Optional[str] = None
+    import_status: ImportStatus
+    imported_review_id: Optional[UUID] = None
+    email_subject: str
+    email_category: EmailCategory
+
+    model_config = {"from_attributes": True}
+
+
+class InboxPostingImportedIn(BaseModel):
+    """The job the user saved from this posting (or the one they already had)."""
+    review_id: UUID
 
 
 class SeenElsewhereOut(BaseModel):
