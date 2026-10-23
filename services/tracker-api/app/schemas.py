@@ -137,6 +137,21 @@ class UserJobReviewUpdate(BaseModel):
     starred: Optional[bool] = None
     application_answers: Optional[dict] = None  # {str(template_idx): answer}
     interview_questions: Optional[list] = None  # [{id, category, question, coaching, story_refs, notes}]
+    # Why the status changed — goes into the timeline entry, never onto the review.
+    # Connected apps must give one when they expire or dismiss a job.
+    status_reason: Optional[str] = Field(None, max_length=300)
+
+
+class NoteAppendIn(BaseModel):
+    """Add to a job's notes without replacing them."""
+    text: str = Field(..., min_length=1, max_length=2000)
+
+
+class AssistantUsageOut(BaseModel):
+    """Today's connected-app actions against the daily limits (rolling 24 h)."""
+    research: dict
+    tailor: dict
+    remove: dict
 
 
 class JobAIUpdate(BaseModel):

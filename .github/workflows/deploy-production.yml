@@ -42,7 +42,7 @@ jobs:
         # The staging images were already built; we just retag them
         run: |
           set -euo pipefail   # a failed pull/tag/push for ANY service fails the deploy
-          for svc in tracker-api scraper ai-reviewer mcp-writer frontend; do
+          for svc in tracker-api scraper ai-reviewer mcp-writer mcp-connector frontend; do
             docker pull ${{ env.IMAGE_PREFIX }}-${svc}:staging
             docker tag  ${{ env.IMAGE_PREFIX }}-${svc}:staging \
                         ${{ env.IMAGE_PREFIX }}-${svc}:${{ github.ref_name }}
@@ -67,7 +67,7 @@ jobs:
       - name: Update image tags
         run: |
           set -euo pipefail
-          for svc in tracker-api ai-reviewer scraper mcp-writer frontend; do
+          for svc in tracker-api ai-reviewer scraper mcp-writer mcp-connector frontend; do
             kubectl set image deployment/jobradar-${svc} \
               ${svc}=${{ env.IMAGE_PREFIX }}-${svc}:${{ github.ref_name }} \
               -n jobradar-production
@@ -78,7 +78,7 @@ jobs:
         # image the retag step failed to push) now fails the deploy instead of hiding.
         run: |
           set -euo pipefail
-          for svc in tracker-api ai-reviewer scraper mcp-writer frontend; do
+          for svc in tracker-api ai-reviewer scraper mcp-writer mcp-connector frontend; do
             kubectl rollout status deployment/jobradar-${svc} \
               -n jobradar-production --timeout=180s
           done

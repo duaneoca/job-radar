@@ -415,6 +415,13 @@ export interface OAuthAuthorizeContext {
   scopes: { id: string; label: string }[];
 }
 
+/** What connected apps did in the last 24 h, against the daily limits. */
+export interface AssistantUsage {
+  research: { used: number; limit: number };
+  tailor: { used: number; limit: number };
+  remove: { used: number; limit: number };
+}
+
 /** An AI assistant the user has let into their account (Settings → Connected apps). */
 export interface ConnectedApp {
   id: string;

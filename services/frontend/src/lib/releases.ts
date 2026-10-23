@@ -44,7 +44,7 @@ export const RELEASES: Release[] = [
   {
     version: "v1.19.0",
     date: "2026-10-22",
-    headline: "Research and résumé tailoring no longer make you wait — plus inbox and status fixes",
+    headline: "Use Job Radar from your AI assistant — and research and tailoring no longer make you wait",
     notes: [
       {
         title: "Research and tailoring run in the background",
@@ -67,9 +67,9 @@ export const RELEASES: Release[] = [
           "Once an email is handled or dismissed, the row says Marked handled instead of still offering the button.",
       },
       {
-        title: "Connected apps",
+        title: "Use Job Radar from Claude, ChatGPT, Gemini or Grok",
         detail:
-          "Settings has a new Connected apps page: the AI assistants you've allowed to use your account, what each can do, and a Disconnect button. It's empty until an assistant can connect, which is coming in a later release.",
+          "Add Job Radar as a connector in your AI assistant (the address is on Settings → Connected apps) and ask it things like \"what are my top five reviewed jobs?\". It can star jobs, add notes, dismiss ones that aren't a fit, mark closed postings expired and start research or tailoring — never mark a job applied — and every action shows in the job's timeline. The Connected apps page lists what you've connected, today's usage against the daily limits, and a Disconnect button.",
       },
       {
         title: "Add a job straight from a recruiter email",

@@ -25,6 +25,10 @@ resources:
   - mcp-writer/deployment.yaml
   - mcp-writer/service.yaml
   - mcp-writer/configmap.yaml
+  # MCP connector (public at /mcp — Claude, ChatGPT, Gemini, Grok)
+  - mcp-connector/deployment.yaml
+  - mcp-connector/service.yaml
+  - mcp-connector/configmap.yaml
   # Cloud email agent (CronJob — multi-user; JR-5)
   - email-agent/configmap.yaml
   - email-agent/cronjob.yaml

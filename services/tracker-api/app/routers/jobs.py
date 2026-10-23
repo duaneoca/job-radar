@@ -15,11 +15,11 @@ from typing import Optional
 from uuid import UUID
 
 from celery import Celery
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import exists, func
 from sqlalchemy.orm import Session, joinedload
 
-from app import dedup, models, schemas
+from app import assistant, dedup, models, schemas
 from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user, require_internal_token
@@ -438,21 +438,63 @@ def get_job(
 def update_job(
     review_id: UUID,
     payload: schemas.UserJobReviewUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
     review = _get_review_or_404(review_id, current_user, db)
     update_data = payload.model_dump(exclude_unset=True)
+    reason = (update_data.pop("status_reason", None) or "").strip()
+    by_app = assistant.is_assistant(request)
+    if by_app:
+        # Connected apps: star / unstar, expire or dismiss with a reason — and
+        # nothing else, whatever the client sends (app/assistant.py).
+        assistant.guard_patch({**update_data, **({"status_reason": reason} if reason else {})})
 
     if "status" in update_data and update_data["status"] != review.status:
+        if by_app:
+            assistant.check(db, current_user.id, assistant.ACTION_REMOVE)
+            assistant.record(db, request, current_user.id, assistant.ACTION_REMOVE, review.id)
         old, new = review.status.value, update_data["status"].value
-        _add_timeline(db, review.id, "status_change", f"Status: {old} → {new}")
+        text = f"Status: {old} → {new}"
+        if by_app:
+            text += f" — by {assistant.who(request)}"
+        if reason:
+            text += f": {reason}"
+        _add_timeline(db, review.id, "status_change", text)
         if update_data["status"] == models.JobStatus.APPLIED and not review.date_applied:
             update_data["date_applied"] = datetime.now(timezone.utc)
+
+    if by_app and "starred" in update_data and bool(update_data["starred"]) != bool(review.starred):
+        _add_timeline(db, review.id, "note",
+                      f"{'Starred' if update_data['starred'] else 'Star removed'} by {assistant.who(request)}")
 
     for field, value in update_data.items():
         setattr(review, field, value)
 
+    db.commit()
+    db.refresh(review)
+    return schemas.UserJobReviewOut.from_review(review)
+
+
+@router.post("/{review_id}/notes", response_model=schemas.UserJobReviewOut)
+def append_note(
+    review_id: UUID,
+    payload: schemas.NoteAppendIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Add to a job's notes without replacing them — the only way a connected app
+    can write notes, so it can never wipe the user's own."""
+    review = _get_review_or_404(review_id, current_user, db)
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    by_app = assistant.is_assistant(request)
+    header = f"[{stamp}{' · ' + assistant.who(request) if by_app else ''}]"
+    entry = f"{header} {payload.text.strip()}"
+    review.notes = f"{review.notes.rstrip()}\n\n{entry}" if (review.notes or "").strip() else entry
+    if by_app:
+        _add_timeline(db, review.id, "note", f"Note added by {assistant.who(request)}")
     db.commit()
     db.refresh(review)
     return schemas.UserJobReviewOut.from_review(review)

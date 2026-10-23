@@ -32,6 +32,14 @@ patches:
     target:
       kind: ConfigMap
       name: tracker-api-config
+  # The connector's public URL (its OAuth resource) is the staging host there.
+  - patch: |-
+      - op: replace
+        path: /data/PUBLIC_BASE_URL
+        value: https://staging.job-radar.net
+    target:
+      kind: ConfigMap
+      name: mcp-connector-config
   # Override the namespace for all resources
   - patch: |-
       - op: replace

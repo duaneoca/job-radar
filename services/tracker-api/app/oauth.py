@@ -549,6 +549,7 @@ ROUTE_POLICY: list[tuple[str, re.Pattern, str]] = [
     ("GET",   re.compile(r"^/jobs/[0-9a-fA-F-]{36}/(timeline|tailor-resume|generation(/[0-9a-fA-F-]{36})?)$"),
                                                                                     models.OAUTH_SCOPE_JOBS_READ),
     ("PATCH", re.compile(r"^/jobs/[0-9a-fA-F-]{36}$"),                              models.OAUTH_SCOPE_JOBS_WRITE),
+    ("POST",  re.compile(r"^/jobs/[0-9a-fA-F-]{36}/notes$"),                        models.OAUTH_SCOPE_JOBS_WRITE),
     ("POST",  re.compile(r"^/jobs/[0-9a-fA-F-]{36}/(research|tailor-resume)$"),     models.OAUTH_SCOPE_GENERATE),
 ]
 
@@ -592,6 +593,7 @@ def user_from_bearer(authorization: str, request, db: Session) -> models.User:
         grant.last_used_at = now
         db.commit()
     request.state.oauth_vendor = grant.client.vendor
+    request.state.oauth_grant_id = grant.id
     return user
 
 
