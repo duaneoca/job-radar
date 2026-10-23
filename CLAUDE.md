@@ -188,6 +188,22 @@ a time (H6). The shared `AGENT_INTERNAL_TOKEN` must match in `tracker-api-secret
   `MEMORY_REPORT_EVERY` (500) requests one INFO line — `mem rss=… since_start=… top:
   ROUTE +XMi/Nreq max…`. Overlapping requests blur single deltas; the route that keeps
   topping the list is the one. `MEMORY_PROFILE=1` adds tracemalloc sites.
+- **Research and résumé tailoring run in the background, inside the API process.**
+  `POST /jobs/{id}/research` and `POST …/tailor-resume` record a `generation_jobs`
+  row and return **202** with it; the work runs as a FastAPI `BackgroundTasks` after
+  the response (`app/generation_jobs.py`), writes to the same review fields as
+  before, and leaves a timeline entry. Pages poll `GET /jobs/{id}/generation`
+  (`useGeneration` hook, 2 s while active). **Not a Celery worker, on purpose**: one
+  on the tracker-api image idles at ~220Mi per environment on a node that already
+  goes NotReady on deploys, for work the API process already has every library
+  loaded for. The cost is durability — a deploy mid-run kills the run — so
+  `terminationGracePeriodSeconds` is 180 (uvicorn finishes in-flight work on
+  SIGTERM) and a row still active past `STALE_AFTER` (5 min) is failed on the next
+  read with a message that says so. One active run per user per kind: the same job
+  re-attaches, a different job gets 409. Key/model are preflighted in the request
+  and looked up again at run time — never stored on the row. Refine, application
+  answers and interview prep are still foreground requests. `run(job_id)` is already
+  the task body if this ever moves to a worker.
 - Bookmarklet built inline in `src/pages/SettingsPage.tsx` — `buildBookmarklet()` function returns a `javascript:` URL. All JS inside is minified (newlines stripped at runtime). Escape backslashes twice in template literals (`\\s` → `\s` in output).
 
 ### ai-reviewer (Celery worker)

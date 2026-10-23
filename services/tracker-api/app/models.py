@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     Boolean, Column, Date, DateTime, Enum, Float, Integer,
     String, Text, ForeignKey, JSON, Uuid, UniqueConstraint,
+    Index, text,
 )
 from sqlalchemy.orm import relationship
 
@@ -195,6 +196,7 @@ class User(Base):
     email_credential  = relationship("EmailCredential", back_populates="user", cascade="all, delete-orphan", uselist=False)
     slack_connection  = relationship("SlackConnection", back_populates="user", cascade="all, delete-orphan", uselist=False)
     hitl_decisions    = relationship("HitlDecision", back_populates="user", cascade="all, delete-orphan")
+    generation_jobs   = relationship("GenerationJob", back_populates="user", cascade="all, delete-orphan")
     agent_runs        = relationship("AgentRun", back_populates="user", cascade="all, delete-orphan")
 
 
@@ -297,11 +299,69 @@ class UserJobReview(Base):
     user     = relationship("User", back_populates="reviews")
     job      = relationship("Job", back_populates="user_reviews")
     recruiter = relationship("Recruiter", back_populates="jobs")
+    generation_jobs = relationship(
+        "GenerationJob", back_populates="review", cascade="all, delete-orphan",
+    )
     timeline = relationship(
         "TimelineEvent", back_populates="review",
         cascade="all, delete-orphan",
         order_by="TimelineEvent.occurred_at",
     )
+
+
+# ── Background generation (research, résumé tailoring) ──────
+#
+# One row per request. The work runs in the API process after the response is
+# sent (app/generation_jobs.py); the row is how the page — or an MCP client —
+# finds out whether it finished. Plain strings, not native enums: see the enum
+# migration gotchas in CLAUDE.md.
+
+GENERATION_KIND_RESEARCH = "research"
+GENERATION_KIND_TAILOR = "tailor"
+GENERATION_KINDS = (GENERATION_KIND_RESEARCH, GENERATION_KIND_TAILOR)
+
+GENERATION_QUEUED = "queued"
+GENERATION_RUNNING = "running"
+GENERATION_DONE = "done"
+GENERATION_FAILED = "failed"
+GENERATION_ACTIVE = (GENERATION_QUEUED, GENERATION_RUNNING)
+
+GENERATION_SOURCE_WEB = "web"
+
+
+class GenerationJob(Base):
+    """A research or tailor run the user asked for, and how it went."""
+    __tablename__ = "generation_jobs"
+    __table_args__ = (
+        # "One active run per user per kind" is enforced HERE, not only by the
+        # check in generation_jobs.start(): two requests can both pass that check
+        # and both insert, and the second run would bill the user's key twice —
+        # easy to provoke once an MCP client retries. The partial unique index
+        # makes the database the arbiter; start() turns the loser's
+        # IntegrityError into "attach" or 409.
+        Index("uq_generation_jobs_active", "user_id", "kind", unique=True,
+              postgresql_where=text("status IN ('queued', 'running')"),
+              sqlite_where=text("status IN ('queued', 'running')")),
+    )
+
+    id        = Column(Uuid(), primary_key=True, default=uuid.uuid4)
+    user_id   = Column(Uuid(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    review_id = Column(Uuid(), ForeignKey("user_job_reviews.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind      = Column(String(20), nullable=False)      # GENERATION_KINDS
+    status    = Column(String(20), nullable=False, default=GENERATION_QUEUED)
+    # Who asked: "web" today; the MCP server will name itself, so the timeline
+    # can say so and caps can be reasoned about per source.
+    source    = Column(String(20), nullable=False, default=GENERATION_SOURCE_WEB)
+    # User-facing reason when status is failed — the same text the foreground
+    # request used to return as an HTTP error detail.
+    error     = Column(Text, nullable=True)
+
+    created_at  = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    started_at  = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+
+    user   = relationship("User", back_populates="generation_jobs")
+    review = relationship("UserJobReview", back_populates="generation_jobs")
 
 
 class TimelineEvent(Base):

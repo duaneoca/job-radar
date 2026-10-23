@@ -44,8 +44,18 @@ export const RELEASES: Release[] = [
   {
     version: "v1.19.0",
     date: "2026-10-22",
-    headline: "Inbox repeats are named, not dropped — and status is harder to change by accident",
+    headline: "Research and résumé tailoring no longer make you wait — plus inbox and status fixes",
     notes: [
+      {
+        title: "Research and tailoring run in the background",
+        detail:
+          "Click Generate or Tailor résumé and move on: the result appears on the job when it's done, usually within a minute, even if you've left the page. Before, you had to stay on the page, and a slow run could fail with \"Generation failed\" even though the work had finished.",
+      },
+      {
+        title: "One run at a time",
+        detail:
+          "Only one research run and one tailoring run go at once per account, so a stray click can't queue up a bill on your AI key. If one is still going for another job, you'll be asked to wait for it.",
+      },
       {
         title: "Alerts no longer look like they lost half their jobs",
         detail:

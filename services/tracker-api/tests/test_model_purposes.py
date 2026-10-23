@@ -119,7 +119,7 @@ def test_writing_routes_ask_for_the_writing_model():
     src = inspect.getsource(generate_mod)
     writing_routes = {"generate_application_answer", "refine_application",
                       "generate_interview_prep", "tailor_resume_endpoint",
-                      "refine_tailored_resume"}
+                      "run_tailor", "refine_tailored_resume"}
     for name, fn in inspect.getmembers(generate_mod, inspect.isfunction):
         if fn.__module__ != generate_mod.__name__:
             continue

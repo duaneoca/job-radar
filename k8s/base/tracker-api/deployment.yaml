@@ -16,6 +16,13 @@ spec:
       labels:
         app: tracker-api
     spec:
+      # Research and résumé tailoring run inside this process after the response
+      # (app/generation_jobs.py): a run is 30–75 s, parse + tailor up to ~150 s.
+      # uvicorn finishes in-flight work on SIGTERM, but the default 30 s grace
+      # would SIGKILL it first and the user's run would die with a deploy. The
+      # pod exits as soon as it is idle, so this costs nothing when nothing is
+      # running.
+      terminationGracePeriodSeconds: 180
       containers:
         - name: tracker-api
           # Image tag is overridden by CI via `kubectl set image` on every deploy.
