@@ -1,0 +1,54 @@
+# Job Radar's MCP connector — what Claude, ChatGPT, Gemini and Grok connect to
+# at https://<host>/mcp. Stateless: holds no data and no secrets, forwards the
+# user's own OAuth token to tracker-api, which enforces every rule
+# (tracker-api app/assistant.py). Reached only through the frontend nginx.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jobradar-mcp-connector
+  namespace: jobradar
+  labels:
+    app: mcp-connector
+    project: jobradar
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-connector
+  template:
+    metadata:
+      labels:
+        app: mcp-connector
+    spec:
+      containers:
+        - name: mcp-connector
+          # Image tag is overridden by CI via `kubectl set image` on every deploy.
+          image: ghcr.io/duaneoca/jobradar-mcp-connector:staging
+          ports:
+            - containerPort: 8002
+          envFrom:
+            - configMapRef:
+                name: mcp-connector-config
+          resources:
+            requests:
+              cpu: "25m"
+              memory: "64Mi"
+            limits:
+              cpu: "250m"
+              memory: "160Mi"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8002
+            initialDelaySeconds: 3
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8002
+            initialDelaySeconds: 10
+            periodSeconds: 30

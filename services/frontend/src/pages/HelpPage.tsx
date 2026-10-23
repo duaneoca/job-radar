@@ -362,10 +362,21 @@ function ApplicationToolsTab() {
         account, so you can ask it things like "which of my reviewed jobs are worth an
         application?" and have it star them or start research for you. When you connect one,
         Job Radar shows you exactly what it will be able to do and asks you to allow it.</P>
-      <P>A connected assistant can only ever see and update your jobs and start research or
-        tailoring. It can't see your API keys, change your settings, or delete anything, and
-        anything it starts bills your own AI key just as it does when you click the button.
-        You'll see what it did in the job's timeline.</P>
+      <P><strong>To connect Claude:</strong> Settings → Connectors → <em>Add custom connector</em>,
+        then paste the address shown on <strong>Settings → Connected apps</strong> (it ends in
+        <code>/mcp</code>). ChatGPT, Gemini and Grok have a similar setting. You'll be sent to Job
+        Radar to sign in and approve.</P>
+      <P>A connected assistant can list and read your jobs, star them, add notes (added under
+        yours, never replacing them), dismiss jobs that aren't a fit or mark jobs whose posting
+        has closed as expired — always with a reason — and start company research or résumé
+        tailoring. It can't mark a job applied or change any other status, see your API keys, or
+        change your settings. Tailored résumés still wait for you to accept each change.
+        Anything it starts bills your own AI key, just as when you click the button, and every
+        action shows in the job's timeline with the assistant's name.</P>
+      <P><strong>Daily limits</strong> (per account, assistants only — your own clicks are never
+        limited): 20 research runs, 10 tailoring runs, and 25 jobs dismissed or expired. Dismissed
+        and expired jobs are deleted after 14 days unless starred, which is why that one is
+        capped. The Connected apps page shows how much has been used.</P>
       <P><strong>Settings → Connected apps</strong> lists everything you've connected, what each
         can do and when it was last used, with a <em>Disconnect</em> button that cuts it off at
         once.</P>

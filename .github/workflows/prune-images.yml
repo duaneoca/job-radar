@@ -36,6 +36,7 @@ env:
     jobradar-scraper
     jobradar-ai-reviewer
     jobradar-mcp-writer
+    jobradar-mcp-connector
 
 jobs:
   prune:

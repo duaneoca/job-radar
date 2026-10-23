@@ -16,7 +16,8 @@ services/
   frontend/        React + Vite + shadcn/ui, served by nginx
   ai-reviewer/     Celery worker — scores jobs via LiteLLM
   scraper/         Celery worker + Beat scheduler — per-user scrape every 6 hours
-  mcp-writer/      FastMCP service wrapping the email-agent /agent/* endpoints
+  mcp-writer/      FastMCP service wrapping the email-agent /agent/* endpoints (in-cluster only)
+  mcp-connector/   Public MCP connector at /mcp — Claude, ChatGPT, Gemini, Grok (OAuth bearer)
 k8s/
   base/            Kustomize base manifests for all services
   overlays/
@@ -168,10 +169,23 @@ docs — verify against a live connector. **Rate-limit keys never come from
 is the caller's to choose — a chosen key is a bypassed limiter and, sprayed, a
 memory-growth primitive. Keys come from `CF-Connecting-IP` / `X-Real-IP`, the table is
 capped (`_MAX_KEYS`), and `/oauth/register` also has a global ceiling plus a nightly
-sweep of registrations that never led to a grant. A caller reaching the origin without
-Cloudflare could still forge `CF-Connecting-IP`; the fix for that is the EC2 security
-group (80/443 from Cloudflare's ranges only), not code. `nginx.conf` sends
+sweep of registrations that never led to a grant. The origin only accepts 80/443 from
+Cloudflare (EC2 security group `launch-wizard-1` → `cloudflare-ipv4` prefix list,
+us-east-1, done 2026-10-23), so `CF-Connecting-IP` can't be forged by going around it.
+Port 6443 stays open on purpose: GitHub-hosted runners deploy through it from ~5,500
+ranges, and it's client-cert authenticated. `nginx.conf` sends
 `frame-ancestors 'none'` so the consent page can't be clickjacked.
+
+**Connected assistants: what they may do is tracker-api's rule, not the connector's**
+(`app/assistant.py`). With an OAuth bearer, `PATCH /jobs/{id}` accepts only `starred` and
+`status` ∈ {expired, dismissed} **with a `status_reason`** — never applied/interviewing/…
+(a wrong "applied" is the mistake the user made twice by hand) and never `notes`; notes go
+through `POST /jobs/{id}/notes`, which only appends. Daily limits, rolling 24 h, assistant
+actions only (logged in `assistant_actions`): research 20, tailoring 10, expire + dismiss 25
+(those are deleted after 14 days unless starred). Re-attaching to a run already going for
+that job is not counted. Every action leaves a timeline entry naming the assistant;
+research/tailor runs carry it as `generation_jobs.source`. `GET /oauth/assistant-usage`
+feeds Settings → Connected apps.
 
 **Email agent auth — the invariant:** every **per-user operational** endpoint accepts
 **either** `X-Agent-Key` (local self-host → user from key) **or** `X-Internal-Token` +
@@ -186,6 +200,24 @@ behind the tracker-api NetworkPolicy. `/agent/cloud/users` (no secrets, enumerat
 from `/agent/cloud/config/{user_id}` (one user's creds) on purpose — runner holds one user at
 a time (H6). The shared `AGENT_INTERNAL_TOKEN` must match in `tracker-api-secrets` and
 `email-agent-secrets`.
+
+### mcp-connector (public MCP server)
+`https://<host>/mcp` — what users paste into Claude ("Add custom connector"), ChatGPT,
+Gemini or Grok. Stateless FastMCP (`mcp==1.29.0`, same pin as mcp-writer; it can't live in
+tracker-api because of the pydantic 2.10 pin). It holds no data and no secrets: a pure-ASGI
+gate answers any `/mcp` request without a live `jr_at_` token with **401 +
+`WWW-Authenticate: Bearer resource_metadata=…`** (a tool error inside a 200 would not
+start sign-in), checks liveness with `GET /auth/me` (cached 60 s per token hash), and puts
+the token in a ContextVar the tools forward to tracker-api — which applies every rule
+above. RFC 9728 metadata at `/.well-known/oauth-protected-resource[/mcp]`: `resource`
+must equal the pasted URL exactly, `authorization_servers` = Job Radar's issuer. nginx
+routes `/mcp` (unbuffered, 95 s) and the well-known path to it. **The SDK's DNS-rebinding
+guard only admits localhost by default** — `transport_security.allowed_hosts` must hold the
+public host or every request is refused; `PUBLIC_BASE_URL` sets it per environment (staging
+overlay patches it). One reused httpx client, keep-alive 2 s. The SDK's session manager runs
+once per process — tests share one app start per module. Tools: list/get jobs, star,
+dismiss, mark expired, add note, start research, start tailoring, run status; annotations
+mark the destructive ones so clients can ask first.
 
 ### frontend (React + Vite)
 - shadcn/ui components in `src/components/ui/`

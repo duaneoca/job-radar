@@ -77,6 +77,28 @@ jobs:
         working-directory: services/scraper
         run: pytest --tb=short -q
 
+  test-mcp-connector:
+    name: Test mcp-connector
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/mcp-connector/requirements.txt
+
+      - name: Install dependencies
+        working-directory: services/mcp-connector
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run tests
+        working-directory: services/mcp-connector
+        run: pytest --tb=short -q
+
   lint:
     name: Lint (ruff)
     runs-on: ubuntu-latest
@@ -107,6 +129,9 @@ jobs:
       - name: Lint mcp-writer
         run: ruff check services/mcp-writer/app
 
+      - name: Lint mcp-connector
+        run: ruff check services/mcp-connector/app services/mcp-connector/tests
+
   lint-frontend:
     name: Lint (frontend)
     runs-on: ubuntu-latest
@@ -134,7 +159,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [tracker-api, scraper, ai-reviewer, mcp-writer]
+        service: [tracker-api, scraper, ai-reviewer, mcp-writer, mcp-connector]
 
     steps:
       - uses: actions/checkout@v4

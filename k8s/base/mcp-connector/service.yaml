@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: jobradar-mcp-connector
+  namespace: jobradar
+  labels:
+    app: mcp-connector
+    project: jobradar
+spec:
+  selector:
+    app: mcp-connector
+  ports:
+    - port: 8002
+      targetPort: 8002

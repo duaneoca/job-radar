@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from sqlalchemy.orm.attributes import flag_modified
 
-from app import generation_jobs, models, oauth, resume_tailor, schemas
+from app import assistant, generation_jobs, models, oauth, resume_tailor, schemas
 from app.database import get_db
 from app.deps import get_current_user
 from app.llm import get_llm_provider, get_tavily_key, llm_complete
@@ -238,9 +238,15 @@ def generate_research(
     # Preflight what the user can fix now — no key, no model — so they hear it
     # from this request, not from a failed row a minute later.
     get_llm_provider(current_user.id, db)
+    by_app = assistant.is_assistant(request)
+    if by_app and not _attaching(db, current_user, review, models.GENERATION_KIND_RESEARCH):
+        assistant.check(db, current_user.id, assistant.ACTION_RESEARCH)
     job, created = generation_jobs.start(db, current_user, review, models.GENERATION_KIND_RESEARCH,
                                          source=oauth.actor(request))
     if created:
+        if by_app:                  # re-attaching to a running job costs nothing
+            assistant.record(db, request, current_user.id, assistant.ACTION_RESEARCH, review.id)
+            db.commit()
         background.add_task(generation_jobs.run, job.id)
     return job
 
@@ -636,6 +642,13 @@ def get_tailored_resume(
 _NO_RESUME_DETAIL = "Add your résumé (Settings → Résumé) before tailoring."
 
 
+def _attaching(db: Session, user: models.User, review: models.UserJobReview, kind: str) -> bool:
+    """True when this request will just re-attach to a run already going for this
+    job — it starts nothing, so a connected app's daily limit must not refuse it."""
+    active = generation_jobs.active_job(db, user.id, kind)
+    return active is not None and active.review_id == review.id
+
+
 def run_tailor(db: Session, user: models.User, review: models.UserJobReview) -> None:
     """Tailor the user's résumé to this job: parse the résumé if needed, run the
     tailor under the locked honesty core, compute the change diff, store the
@@ -675,9 +688,15 @@ def tailor_resume_endpoint(
     if not profile or not (profile.resume_text or "").strip():
         raise HTTPException(status_code=400, detail=_NO_RESUME_DETAIL)
     get_llm_provider(current_user.id, db, WRITING)     # preflight, see generate_research
+    by_app = assistant.is_assistant(request)
+    if by_app and not _attaching(db, current_user, review, models.GENERATION_KIND_TAILOR):
+        assistant.check(db, current_user.id, assistant.ACTION_TAILOR)
     job, created = generation_jobs.start(db, current_user, review, models.GENERATION_KIND_TAILOR,
                                          source=oauth.actor(request))
     if created:
+        if by_app:
+            assistant.record(db, request, current_user.id, assistant.ACTION_TAILOR, review.id)
+            db.commit()
         background.add_task(generation_jobs.run, job.id)
     return job
 

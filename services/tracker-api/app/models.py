@@ -455,6 +455,23 @@ class OAuthToken(Base):
     grant = relationship("OAuthGrant", back_populates="tokens")
 
 
+class AssistantAction(Base):
+    """One thing a connected AI assistant did to the user's account — the
+    counter behind the daily limits (app/assistant.py) and an audit trail.
+    The user's own clicks are never logged here or limited."""
+    __tablename__ = "assistant_actions"
+
+    id         = Column(Uuid(), primary_key=True, default=uuid.uuid4)
+    user_id    = Column(Uuid(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    grant_id   = Column(Uuid(), ForeignKey("oauth_grants.id", ondelete="SET NULL"), nullable=True)
+    vendor     = Column(String(20), nullable=False)
+    action     = Column(String(20), nullable=False)      # research | tailor | remove
+    review_id  = Column(Uuid(), ForeignKey("user_job_reviews.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    __table_args__ = (Index("ix_assistant_actions_user_action_time", "user_id", "action", "created_at"),)
+
+
 class TimelineEvent(Base):
     """An event in a user's job application journey."""
     __tablename__ = "timeline_events"

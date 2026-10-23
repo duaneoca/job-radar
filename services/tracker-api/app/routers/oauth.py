@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from app import models, oauth, ratelimit, schemas
+from app import assistant, models, oauth, ratelimit, schemas
 from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
@@ -201,6 +201,15 @@ def connected_apps(
                 .filter(models.OAuthGrant.user_id == current_user.id, models.OAuthGrant.revoked_at.is_(None))
                 .order_by(models.OAuthGrant.created_at.desc()).all())
     return [_app_out(g) for g in grants]
+
+
+@router.get("/oauth/assistant-usage", response_model=schemas.AssistantUsageOut)
+def assistant_usage(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """What connected apps have done in the last 24 h, against the limits."""
+    return assistant.usage(db, current_user.id)
 
 
 @router.delete("/oauth/connected-apps/{grant_id}", status_code=204)

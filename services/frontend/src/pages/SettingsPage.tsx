@@ -18,7 +18,7 @@ import { useConfirmLinks } from "../hooks/useConfirmLinks";
 import { formatDate } from "../lib/utils";
 import { AgentStatsView } from "../components/AgentStatsView";
 import { isWritingModelError } from "../lib/types";
-import type { APIKey, LLMProvider, AgentApiKey, AgentApiKeyCreated, AgentFolderConfig, EmailCredentialStatus, MailboxFolders, SlackStatus, SlackChannel, ConnectedApp } from "../lib/types";
+import type { APIKey, LLMProvider, AgentApiKey, AgentApiKeyCreated, AgentFolderConfig, EmailCredentialStatus, MailboxFolders, SlackStatus, SlackChannel, ConnectedApp, AssistantUsage } from "../lib/types";
 
 // ─── Account Details tab ──────────────────────────────────────────────────────
 
@@ -878,6 +878,20 @@ function ConnectedAppsTab() {
     queryFn: () => authApi.get("/oauth/connected-apps").then((r) => r.data),
   });
   const [busy, setBusy] = useState<string | null>(null);
+  const { data: usage } = useQuery<AssistantUsage>({
+    queryKey: ["assistant-usage"],
+    queryFn: () => authApi.get("/oauth/assistant-usage").then((r) => r.data),
+  });
+  const connectorUrl = `${window.location.origin}/mcp`;
+
+  async function copyUrl() {
+    try {
+      await navigator.clipboard.writeText(connectorUrl);
+      toast({ title: "Copied" });
+    } catch {
+      toast({ title: "Couldn't copy — select the address and copy it", variant: "destructive" });
+    }
+  }
 
   async function disconnect(app: ConnectedApp) {
     if (!confirm(`Disconnect ${app.vendor_label}? It will have to be connected again to use your account.`)) return;
@@ -899,10 +913,36 @@ function ConnectedAppsTab() {
         <h2 className="text-base font-semibold">Connected apps</h2>
         <p className="text-sm text-muted-foreground mt-1">
           AI assistants you've allowed to use your Job Radar account — Claude, ChatGPT, Gemini or
-          Grok. Each one can only do what you agreed to when you connected it; none can see your
-          API keys, change your settings, or delete anything. Disconnecting takes effect at once.
+          Grok. A connected assistant can read your jobs, star them, add notes, dismiss jobs or
+          mark them expired (with a reason, shown in the job's timeline), and start research or
+          tailoring. It can't mark a job applied, change any other status, see your API keys or
+          change your settings. Disconnecting takes effect at once.
         </p>
       </div>
+
+      <div className="rounded-lg border p-3 space-y-2">
+        <p className="text-sm font-medium">Connect an assistant</p>
+        <p className="text-xs text-muted-foreground">
+          In Claude: <strong>Settings → Connectors → Add custom connector</strong>, and paste this
+          address. ChatGPT, Gemini and Grok have a similar "add connector" or "connected apps"
+          setting. You'll be sent here to sign in and approve what it can do.
+        </p>
+        <div className="flex items-center gap-2">
+          <code className="text-xs rounded bg-muted px-2 py-1 select-all break-all">{connectorUrl}</code>
+          <Button variant="outline" size="sm" className="h-7 px-2" onClick={copyUrl}>
+            <Copy className="h-3.5 w-3.5 mr-1" /> Copy
+          </Button>
+        </div>
+      </div>
+
+      {usage && (
+        <p className="text-xs text-muted-foreground">
+          Last 24 hours, by connected apps: {usage.research.used}/{usage.research.limit} research
+          runs · {usage.tailor.used}/{usage.tailor.limit} tailoring runs · {usage.remove.used}/
+          {usage.remove.limit} jobs dismissed or expired. These limits protect your AI key and your
+          list; your own clicks are never limited.
+        </p>
+      )}
 
       {isLoading ? (
         <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>

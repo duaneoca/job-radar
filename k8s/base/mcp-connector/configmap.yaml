@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcp-connector-config
+  namespace: jobradar
+data:
+  TRACKER_API_URL: "http://jobradar-tracker-api"
+  # The URL users paste into their assistant is PUBLIC_BASE_URL + "/mcp", and it
+  # must match exactly — it's the OAuth resource. Staging patches it.
+  PUBLIC_BASE_URL: "https://job-radar.net"
