@@ -77,6 +77,11 @@ export const RELEASES: Release[] = [
           "Recruiter emails in the inbox now have an Add job button that opens Add Job already filled in: the role, the company (the recruiter's firm, marked agency, when the client isn't named), location, remote, pay and the email's text as the description. Hourly rates become a yearly salary at 40 hours a week. The job link is now optional, since recruiter emails rarely have one, and the inbox marks the posting imported once you save.",
       },
       {
+        title: "Signing in again takes you back where you were",
+        detail:
+          "When your session had expired, signing in used to drop you on the jobs list instead of the page you were on. It now returns you there — including the Allow page when you connect an AI assistant.",
+      },
+      {
         title: "A smaller target for changing status",
         detail:
           "In the jobs list, the status is now plain text with a small arrow beside it; only the arrow opens the status menu. Before, the whole status box was clickable and sat just under the Status column's filter, so it was easy to mark a job Applied when you meant to filter.",
