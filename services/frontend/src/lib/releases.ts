@@ -69,7 +69,7 @@ export const RELEASES: Release[] = [
       {
         title: "Use Job Radar from Claude, ChatGPT, Gemini or Grok",
         detail:
-          "Add Job Radar as a connector in your AI assistant (the address is on Settings → Connected apps) and ask it things like \"what are my top five reviewed jobs?\". It can star jobs, add notes, dismiss ones that aren't a fit, mark closed postings expired and start research or tailoring — never mark a job applied — and every action shows in the job's timeline. The Connected apps page lists what you've connected, today's usage against the daily limits, and a Disconnect button.",
+          "Add Job Radar as a connector in your AI assistant (the address is on Settings → Connected apps) and ask it things like \"what are my top five reviewed jobs?\". It can star jobs, add notes, dismiss ones that aren't a fit, mark closed postings expired and start research or tailoring — never mark a job applied — and every action shows in the job's timeline. Ask it to review or research a job and it uses Job Radar's own AI review and research, which stay saved on the job. The Connected apps page lists what you've connected, today's usage against the daily limits, and a Disconnect button.",
       },
       {
         title: "Add a job straight from a recruiter email",

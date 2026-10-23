@@ -373,6 +373,10 @@ function ApplicationToolsTab() {
         change your settings. Tailored résumés still wait for you to accept each change.
         Anything it starts bills your own AI key, just as when you click the button, and every
         action shows in the job's timeline with the assistant's name.</P>
+      <P>Ask it to <em>review</em> a job and it leads with Job Radar's own AI review — the score,
+        summary, pros and cons you see here — before adding its own view; ask it to
+        <em>research</em> a company and it runs Job Radar's research, so the result is saved on
+        the job. If a company has several jobs, it asks which one you mean.</P>
       <P><strong>Daily limits</strong> (per account, assistants only — your own clicks are never
         limited): 20 research runs, 10 tailoring runs, and 25 jobs dismissed or expired. Dismissed
         and expired jobs are deleted after 14 days unless starred, which is why that one is

@@ -28,8 +28,13 @@ from starlette.routing import Mount, Route
 from app import api
 from app.config import settings
 from app.context import bearer_var
+from app.logging_config import configure_logging
 from app.tools import mcp
 
+# The format every service shares — the hourly error digest parses it. After the
+# app.tools import on purpose: constructing FastMCP calls logging.basicConfig with
+# its own bare "%(message)s" format, and force=True here replaces it.
+configure_logging(settings.log_level)
 logger = logging.getLogger(__name__)
 
 SCOPES = ["jobs:read", "jobs:write", "generate"]
