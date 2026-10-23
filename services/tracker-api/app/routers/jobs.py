@@ -556,7 +556,8 @@ def _adopt_imported_link(review: models.UserJobReview, payload: schemas.JobCreat
     copy keeps its link: that is already the best one.
     """
     job = review.job
-    if job.source not in dedup.AGGREGATOR_SOURCES or job.url == payload.url:
+    if (not payload.url or job.source not in dedup.AGGREGATOR_SOURCES
+            or job.url == payload.url):
         return review
     mine = models.Job(**payload.model_dump(),
                       match_key=dedup.match_key(payload.company, payload.title, payload.location))

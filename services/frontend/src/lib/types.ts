@@ -87,6 +87,11 @@ export interface InboxPosting {
   company: string;
   role: string;
   link: string | null;
+  /** Job details — recruiter postings; salary is annual (hourly × 2,080). */
+  location?: string | null;
+  remote?: boolean | null;
+  salary_min?: number | null;
+  salary_max?: number | null;
   action_required: boolean;
   possible_duplicate: boolean;
   matched_review_id: string | null;
@@ -95,6 +100,24 @@ export interface InboxPosting {
   import_status: ImportStatus;
   imported_review_id: string | null;
   created_at: string;
+}
+
+/** One posting in full — what Add Job pre-fills from. Only this endpoint
+ *  carries the description (email text); inbox lists never do. */
+export interface InboxPostingDetail {
+  id: string;
+  company: string;
+  role: string;
+  link: string | null;
+  location: string | null;
+  remote: boolean | null;
+  salary_min: number | null;
+  salary_max: number | null;
+  description: string | null;
+  import_status: ImportStatus;
+  imported_review_id: string | null;
+  email_subject: string;
+  email_category: EmailCategory;
 }
 
 export interface InboxInteraction {

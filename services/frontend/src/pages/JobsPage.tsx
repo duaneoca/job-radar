@@ -621,14 +621,16 @@ function JobsTab() {
                     <span className="text-xs text-muted-foreground">{formatSource(job.source)}</span>
                   </td>
                   <td className="px-3 py-2.5 hidden sm:table-cell text-center" onClick={(e) => e.stopPropagation()}>
-                    <a
-                      href={job.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-muted-foreground hover:text-foreground"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
+                    {job.url && (   // a job added from a recruiter email may have no link
+                      <a
+                        href={job.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    )}
                   </td>
                 </tr>
               ))
@@ -766,12 +768,14 @@ function JobsTab() {
 
                 {/* Actions */}
                 <div className="flex gap-2 pt-2">
-                  <Button variant="outline" size="sm" asChild className="flex-1">
-                    <a href={selected.url} target="_blank" rel="noopener noreferrer">
-                      <ExternalLink className="h-4 w-4 mr-1" />
-                      Open posting
-                    </a>
-                  </Button>
+                  {selected.url && (
+                    <Button variant="outline" size="sm" asChild className="flex-1">
+                      <a href={selected.url} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="h-4 w-4 mr-1" />
+                        Open posting
+                      </a>
+                    </Button>
+                  )}
                   <Button size="sm" variant="secondary" className="flex-1" onClick={() => navigate(`/jobs/${selected.id}`)}>
                     Full details →
                   </Button>

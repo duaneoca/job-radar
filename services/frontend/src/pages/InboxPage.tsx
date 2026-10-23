@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Inbox as InboxIcon, ChevronRight, ChevronDown, ExternalLink, Check, EyeOff,
-  Trash2, AlertTriangle, Loader2, Building2, CircleDot, Undo2, Copy,
+  Trash2, AlertTriangle, Loader2, Building2, CircleDot, Undo2, Copy, Plus,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "../components/ui/button";
@@ -12,7 +12,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "../components/ui/dialog";
 import { agentApi } from "../lib/api";
-import { cn, safeHref } from "../lib/utils";
+import { cn, formatSalary, safeHref } from "../lib/utils";
 import { toast } from "../hooks/useToast";
 import { getConfirmLinks, setConfirmLinks } from "../hooks/useConfirmLinks";
 import { ExternalLinkConfirmDialog } from "../components/ExternalLinkConfirmDialog";
@@ -61,10 +61,16 @@ function StatusBadge({ status }: { status: EmailStatus }) {
 
 type PostingStatus = "pending" | "dismissed";
 
-function PostingRow({ p, onOpen, onStatus, busy }: {
+function PostingRow({ p, onOpen, onStatus, busy, canAdd }: {
   p: InboxPosting; onOpen: (url: string) => void;
   onStatus: (id: string, s: PostingStatus) => void; busy: boolean;
+  /** Recruiter postings: no page to run the bookmarklet on, so Add Job is
+   *  opened pre-filled from what the agent extracted. */
+  canAdd?: boolean;
 }) {
+  const details = [p.location, p.remote ? "Remote" : null,
+                   p.salary_min || p.salary_max ? formatSalary(p.salary_min, p.salary_max) : null]
+    .filter(Boolean).join(" · ");
   const skipped = p.import_status === "dismissed";
   const href = safeHref(p.link);   // [C2] only http/https becomes a link
   // The title is the click target: a link opening the source in a new tab when
@@ -110,9 +116,17 @@ function PostingRow({ p, onOpen, onStatus, busy }: {
             <Badge variant="outline" className="text-[10px] text-muted-foreground">skipped</Badge>
           )}
           {p.import_status === "imported" && (
-            <Badge variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-700 dark:text-emerald-400">
-              imported
-            </Badge>
+            p.imported_review_id ? (
+              <Link to={`/jobs/${p.imported_review_id}`}>
+                <Badge variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10">
+                  imported →
+                </Badge>
+              </Link>
+            ) : (
+              <Badge variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-700 dark:text-emerald-400">
+                imported
+              </Badge>
+            )
           )}
         </div>
         {p.matched_job && (
@@ -127,8 +141,16 @@ function PostingRow({ p, onOpen, onStatus, busy }: {
             </span>
           </div>
         )}
+        {details && <p className="text-xs text-muted-foreground mt-0.5">{details}</p>}
         {p.import_status === "pending" && (
           <div className="mt-1 flex gap-1.5">
+            {canAdd && (
+              <Button asChild size="sm" className="h-6 px-2 text-xs">
+                <Link to={`/jobs/add?from_posting=${p.id}`}>
+                  <Plus className="h-3 w-3 mr-1" /> Add job
+                </Link>
+              </Button>
+            )}
             <Button variant="outline" size="sm" className="h-6 px-2 text-xs" disabled={busy}
                     onClick={() => onStatus(p.id, "dismissed")}>
               <EyeOff className="h-3 w-3 mr-1" />
@@ -228,7 +250,10 @@ function EmailRow({
 
           {email.postings.length > 0 && (
             <div className="mb-1">
-              {email.postings.map((p) => <PostingRow key={p.id} p={p} onOpen={onOpen} onStatus={onPostingStatus} busy={busy} />)}
+              {email.postings.map((p) => (
+                <PostingRow key={p.id} p={p} onOpen={onOpen} onStatus={onPostingStatus} busy={busy}
+                            canAdd={email.category === "recruiter_outreach"} />
+              ))}
             </div>
           )}
           {email.interactions.map((i) => <InteractionRow key={i.id} i={i} />)}

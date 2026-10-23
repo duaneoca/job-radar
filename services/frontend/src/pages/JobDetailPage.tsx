@@ -469,12 +469,14 @@ export function JobDetailPage() {
             </p>
           </div>
           <div className="flex gap-2 shrink-0">
-            <Button variant="outline" size="sm" asChild>
-              <a href={job.url} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="h-4 w-4 mr-1" />
-                Apply
-              </a>
-            </Button>
+            {job.url && (
+              <Button variant="outline" size="sm" asChild>
+                <a href={job.url} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="h-4 w-4 mr-1" />
+                  Apply
+                </a>
+              </Button>
+            )}
           </div>
         </div>
 
@@ -653,14 +655,16 @@ export function JobDetailPage() {
           ) : (
             <p className="text-muted-foreground text-sm">No description available.</p>
           )}
-          <a
-            href={job.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-sm text-primary underline underline-offset-2 hover:opacity-80"
-          >
-            Open full job posting ↗
-          </a>
+          {job.url && (
+            <a
+              href={job.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-sm text-primary underline underline-offset-2 hover:opacity-80"
+            >
+              Open full job posting ↗
+            </a>
+          )}
         </TabsContent>
 
         {/* ── Research ── */}

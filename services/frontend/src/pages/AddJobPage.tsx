@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Copy, Loader2, Plus } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { Switch } from "../components/ui/switch";
-import { jobsApi } from "../lib/api";
+import { agentApi, jobsApi } from "../lib/api";
+import type { InboxPostingDetail } from "../lib/types";
 import { toast } from "../hooks/useToast";
 
 interface BookmarkletData {
@@ -60,6 +61,37 @@ export function AddJobPage() {
   const source = prefilled.source ?? "manual";
   const externalId = prefilled.external_id ?? "";
 
+  // Opened from an inbox posting (Add job on a recruiter email): pre-fill from
+  // what the agent extracted, and once saved, mark the posting imported.
+  const [searchParams] = useSearchParams();
+  const fromPosting = searchParams.get("from_posting");
+  const [posting, setPosting] = useState<InboxPostingDetail | null>(null);
+  useEffect(() => {
+    if (!fromPosting) return;
+    agentApi.get<InboxPostingDetail>(`/agent/inbox/postings/${fromPosting}`)
+      .then(({ data }) => {
+        setPosting(data);
+        setTitle(data.role);
+        setCompany(data.company);
+        setUrl(data.link ?? "");
+        setLocation(data.location ?? "");
+        setRemote(!!data.remote);
+        setSalaryMin(data.salary_min ? String(data.salary_min) : "");
+        setSalaryMax(data.salary_max ? String(data.salary_max) : "");
+        setDescription(data.description ?? "");
+      })
+      .catch(() => toast({ title: "Couldn't load that inbox posting", variant: "destructive" }));
+  }, [fromPosting]);
+
+  async function markImported(reviewId: string) {
+    if (!fromPosting) return;
+    try {
+      await agentApi.post(`/agent/inbox/postings/${fromPosting}/imported`, { review_id: reviewId });
+    } catch {
+      // The job is saved either way; the inbox just won't show "imported" yet.
+    }
+  }
+
   // Clear the hash once we've read it so it doesn't linger in history
   useEffect(() => {
     if (window.location.hash) {
@@ -69,8 +101,8 @@ export function AddJobPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!title.trim() || !company.trim() || !url.trim()) {
-      toast({ title: "Title, company and URL are required", variant: "destructive" });
+    if (!title.trim() || !company.trim()) {
+      toast({ title: "Title and company are required", variant: "destructive" });
       return;
     }
     await save(false);
@@ -97,8 +129,10 @@ export function AddJobPage() {
         // Same role from another listing — not added, not re-scored. Ask rather
         // than assume: it may be a genuinely separate opening.
         setSameRole({ id: review.id, title: review.title, status: review.status, url: review.url });
+        await markImported(review.id);     // the posting IS that job, unless they add separately
         return;
       }
+      await markImported(review.id);
       if (res.status === 200) {
         toast({ title: "Already in your list", description: "This job was already saved — not re-added." });
       } else {
@@ -127,11 +161,17 @@ export function AddJobPage() {
         </Button>
         <div>
           <h1 className="text-xl font-bold">
-            {fromLinkedIn ? "Add LinkedIn Job" : "Add Job Manually"}
+            {fromLinkedIn ? "Add LinkedIn Job" : fromPosting ? "Add job from recruiter email" : "Add Job Manually"}
           </h1>
           {fromLinkedIn && (
             <p className="text-sm text-muted-foreground mt-0.5">
               Review the details captured from LinkedIn, then save.
+            </p>
+          )}
+          {posting && (
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Filled in from “{posting.email_subject}”. Check it over, then save. An hourly rate
+              is shown as a yearly salary at 40 hours a week.
             </p>
           )}
         </div>
@@ -192,7 +232,7 @@ export function AddJobPage() {
         {/* URL */}
         <div className="space-y-1.5">
           <Label htmlFor="url">
-            Job posting URL <span className="text-destructive">*</span>
+            Job posting URL <span className="text-xs text-muted-foreground font-normal">(optional — recruiter emails often have none)</span>
           </Label>
           <Input
             id="url"
@@ -200,7 +240,6 @@ export function AddJobPage() {
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://www.linkedin.com/jobs/view/…"
-            required
           />
         </div>
 
