@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     # Job Radar's OAuth issuer. In production it IS public_base_url (same host,
     # tracker-api behind /api); separate only so a local run can point elsewhere.
     oauth_issuer: str = ""
+    log_level: str = "INFO"
 
     class Config:
         env_file = ".env"

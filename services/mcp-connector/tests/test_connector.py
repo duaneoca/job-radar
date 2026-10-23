@@ -162,3 +162,50 @@ def test_tracker_api_down_is_a_clear_error(client, monkeypatch):
     main._valid.clear()
     err, text = _tool(client, "get_run_status", {"job_id": JOB["id"]})
     assert err and "isn't responding" in text
+
+
+# ── tool-call logging and guidance ────────────────────────────
+
+def test_every_tool_call_is_logged_without_its_arguments(client, tracker, caplog):
+    import logging
+    tracker.reply[("POST", f"/jobs/{JOB['id']}/notes")] = (200, {**JOB, "notes": "x"})
+    with caplog.at_level(logging.INFO, logger="app.tools"):
+        _tool(client, "add_note", {"job_id": JOB["id"], "text": "SECRET-NOTE-TEXT about salary"})
+    lines = [r.getMessage() for r in caplog.records if r.name == "app.tools"]
+    assert any(line.startswith(f"tool=add_note job={JOB['id']} ok ") for line in lines), lines
+    assert not any("SECRET-NOTE-TEXT" in r.getMessage() for r in caplog.records)
+
+
+def test_a_refused_call_is_logged_at_info_not_error(client, tracker, caplog):
+    import logging
+    tracker.reply[("POST", f"/jobs/{JOB['id']}/research")] = (429, {"detail": "Daily limit reached: …"})
+    with caplog.at_level(logging.INFO, logger="app.tools"):
+        _tool(client, "start_company_research", {"job_id": JOB["id"]})
+    recs = [r for r in caplog.records if r.name == "app.tools"]
+    assert recs and all(r.levelno == logging.INFO for r in recs)       # never the operator's ERROR digest
+    assert "refused" in recs[-1].getMessage() and "Daily limit" in recs[-1].getMessage()
+
+
+def test_logs_use_the_shared_format_the_digest_parses():
+    """In a fresh interpreter, as the pod starts: importing the app must leave the
+    shared format on the root logger — not FastMCP's bare one (it calls
+    basicConfig when constructed). pytest manages root handlers in-process, so
+    this checks a subprocess."""
+    import subprocess
+    import sys
+    out = subprocess.run(
+        [sys.executable, "-c",
+         "import logging, app.main; logging.getLogger('app.tools').info('tool=list_jobs ok 1ms')"],
+        capture_output=True, text=True, check=True, cwd=str(__import__('pathlib').Path(__file__).parents[1]),
+    ).stderr.strip().splitlines()[-1]
+    import re
+    assert re.match(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d INFO app\.tools: tool=list_jobs ok 1ms$", out), out
+
+
+def test_instructions_steer_toward_job_radars_own_work(client):
+    r = _rpc(client, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                                    "clientInfo": {"name": "t", "version": "1"}})
+    text = r.json()["result"]["instructions"]
+    assert "lead with Job\n  Radar's AI review" in text or "lead with Job Radar's AI review" in text.replace("\n  ", " ")
+    assert "start_company_research" in text and "Don't search the web" in text
+    assert "ask which one" in text
