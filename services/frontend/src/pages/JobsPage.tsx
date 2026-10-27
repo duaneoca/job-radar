@@ -21,6 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Switch } from "../components/ui/switch";
 import { Label } from "../components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../components/ui/sheet";
+import { StarButton } from "../components/StarButton";
 import { Separator } from "../components/ui/separator";
 import { Textarea } from "../components/ui/textarea";
 import {
@@ -68,31 +69,6 @@ function loadFilters(): Filters {
     if (raw) return { ...DEFAULT_FILTERS, ...JSON.parse(raw) };
   } catch { /* corrupt value — fall back to defaults */ }
   return DEFAULT_FILTERS;
-}
-
-// ─── Star toggle ──────────────────────────────────────────────────────────────
-
-/** The user's own "come back to this" marker. Deliberately not the AI's
- *  recommendation, which is shown with sparkles instead. */
-function StarButton({ starred, onToggle, className }: {
-  starred: boolean; onToggle: () => void; className?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-pressed={starred}
-      aria-label={starred ? "Remove star" : "Star this job"}
-      title={starred ? "Remove star" : "Star this job"}
-      className={cn(
-        "inline-flex items-center justify-center rounded p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        starred ? "text-amber-500" : "text-muted-foreground/40 hover:text-amber-500",
-        className,
-      )}
-    >
-      <Star className={cn("h-4 w-4", starred && "fill-current")} />
-    </button>
-  );
 }
 
 // ─── Score breakdown dialog ───────────────────────────────────────────────────

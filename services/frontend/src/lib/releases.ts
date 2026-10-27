@@ -42,6 +42,23 @@ export interface Release {
 export const RELEASES: Release[] = [
   // Newest first. See the module comment before adding one.
   {
+    version: "v1.20.0",
+    date: "2026-10-27",
+    headline: "Star a job from its own page, and notifications you can always dismiss",
+    notes: [
+      {
+        title: "Star a job from its page",
+        detail:
+          "The star now sits next to the title on a job's full page, which is where you land after adding a job. Star it there and it's easy to find again in the list with the Starred filter.",
+      },
+      {
+        title: "Notifications' OK button works with the side panel open",
+        detail:
+          "If a notification was showing when you clicked a job in the list, its OK button stopped responding until you closed the side panel. It works now.",
+      },
+    ],
+  },
+  {
     version: "v1.19.0",
     date: "2026-10-22",
     headline: "Use Job Radar from your AI assistant — and research and tailoring no longer make you wait",
