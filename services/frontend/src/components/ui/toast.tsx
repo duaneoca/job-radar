@@ -22,13 +22,20 @@ ToastViewport.displayName = ToastPrimitive.Viewport.displayName;
 const Toast = React.forwardRef<
   React.ElementRef<typeof ToastPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof ToastPrimitive.Root> & { variant?: "default" | "destructive" }
->(({ className, variant = "default", ...props }, ref) => (
+>(({ className, variant = "default", style, ...props }, ref) => (
   <ToastPrimitive.Root
     ref={ref}
     // Never auto-close. Radix's default is 5s, which beat our own 8s removal and
     // was too fast to read a message, let alone screenshot one. Radix guards
     // `duration === Infinity` explicitly, so no timer is ever started.
     duration={Infinity}
+    // Always clickable. Each toast is a Radix dismissable layer, and a modal
+    // (the jobs table's side panel, any dialog) opened AFTER the toast sets an
+    // inline `pointer-events: none` on every layer beneath it — so a toast that
+    // was already showing couldn't be dismissed until the panel closed. The
+    // layer spreads our style after its own, so this wins. The viewport is a
+    // DismissableLayer.Branch, so clicking a toast still doesn't close the panel.
+    style={{ ...style, pointerEvents: "auto" }}
     className={cn(
       "group pointer-events-auto relative flex w-full items-start justify-between gap-3 overflow-hidden rounded-md border p-4 shadow-lg transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-bottom-full",
       variant === "destructive"

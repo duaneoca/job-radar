@@ -191,8 +191,9 @@ function JobPipelineTab() {
       <Separator />
 
       <H2>Starring jobs</H2>
-      <P>Click the <strong>star</strong> next to a job, in the list or at the top of its
-        details, to mark one you want to come back to: a role you're considering but aren't
+      <P>Click the <strong>star</strong> next to a job, in the list, at the top of its side
+        panel, or beside the title on its full page (where you land after adding a job), to
+        mark one you want to come back to: a role you're considering but aren't
         ready to apply for. Starring doesn't change the job's status. To see only your starred
         jobs, use the star at the top of that column to filter for <em>Starred</em>.</P>
       <P>A starred job is never expired for sitting untouched or for its age, and it's never

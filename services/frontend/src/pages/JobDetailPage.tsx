@@ -23,6 +23,7 @@ import type { JobReview, Criteria, ApplicationTemplate, InterviewQuestion, Linke
 import { useState } from "react";
 import { RefinementDrawer } from "../components/RefinementDrawer";
 import { InterviewPrepCard } from "../components/InterviewPrepCard";
+import { StarButton } from "../components/StarButton";
 import { isGenerating, useGeneration, useStartGeneration } from "../hooks/useGeneration";
 
 const DEFAULT_APP_TEMPLATES: ApplicationTemplate[] = [
@@ -298,6 +299,21 @@ export function JobDetailPage() {
     }
   }
 
+  // Here as well as in the table: this is the page you land on after adding a
+  // job, and a manually added job is hard to find again in the pile. Fills in at
+  // once and puts it back if the save fails, the same as the table's star.
+  async function toggleStar() {
+    if (!job) return;
+    const starred = !job.starred;
+    qc.setQueryData<JobReview>(["job", id], (old) => old && { ...old, starred });
+    try {
+      await updateReview.mutateAsync({ starred });
+    } catch {
+      qc.setQueryData<JobReview>(["job", id], (old) => old && { ...old, starred: !starred });
+      toast({ title: starred ? "Couldn't star the job" : "Couldn't remove the star", variant: "destructive" });
+    }
+  }
+
   async function changeStatus(status: string) {
     try {
       await updateReview.mutateAsync({ status: status as any });
@@ -462,7 +478,10 @@ export function JobDetailPage() {
       <div className="space-y-2">
         <div className="flex flex-wrap items-start gap-3">
           <div className="flex-1 min-w-0">
-            <h1 className="text-2xl font-bold leading-snug">{job.title}</h1>
+            <div className="flex items-start gap-2">
+              <StarButton starred={job.starred} onToggle={toggleStar} className="mt-1" iconClassName="h-6 w-6" />
+              <h1 className="text-2xl font-bold leading-snug">{job.title}</h1>
+            </div>
             <p className="flex items-center gap-1 text-muted-foreground mt-1">
               <Building2 className="h-4 w-4 shrink-0" />
               {job.company}
