@@ -42,6 +42,18 @@ export interface Release {
 export const RELEASES: Release[] = [
   // Newest first. See the module comment before adding one.
   {
+    version: "v1.22.0",
+    date: "2026-10-28",
+    headline: "Application answers and interview prep use your company research",
+    notes: [
+      {
+        title: "Answers draw on the company research",
+        detail:
+          "Until now, the company research on a job was only there for you to read. Application answers, the refinement chat and interview prep saw just the posting and your résumé. Now, once a job has research, they use it too, so answers like \"Why do you want to work here?\" can speak to what the company actually does. Run research first to get this. Jobs without research work as before.",
+      },
+    ],
+  },
+  {
     version: "v1.21.1",
     date: "2026-10-28",
     headline: "Job Radar fits an iPhone screen, and the job panel can be closed again",

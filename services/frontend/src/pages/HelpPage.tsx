@@ -328,6 +328,11 @@ function ApplicationToolsTab() {
         summary appears on the job when it's done, usually within a minute, even if you've
         left the page. One research run goes at a time per account, so if one is still going
         for another job you're asked to wait for it.</P>
+      <P>Once a job has research, your application answers, the refinement chat and
+        interview prep use it too, so "Why do you want to work here?" draws on what the
+        company actually does. They're told it may be out of date, so they use it for
+        background rather than quoting its figures or news. Run research before writing
+        answers to get this.</P>
       <P>You can customise the research prompt in <strong>Profile → AI Prompts →
         Company research prompt</strong>.</P>
 
