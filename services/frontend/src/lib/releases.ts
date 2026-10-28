@@ -44,8 +44,13 @@ export const RELEASES: Release[] = [
   {
     version: "v1.21.1",
     date: "2026-10-28",
-    headline: "The job panel can be closed on a phone again",
+    headline: "Job Radar fits an iPhone screen, and the job panel can be closed again",
     notes: [
+      {
+        title: "No more zooming in on iPhone",
+        detail:
+          "On an iPhone, tapping a text box with small text makes the browser zoom in. Signing in did that, and the zoom stayed on every screen afterwards, so the edges of the page were cut off until you pinched out. Text boxes now use a size the phone doesn't zoom for. This applies in Safari and in other iPhone browsers such as Brave or Chrome.",
+      },
       {
         title: "Closing the side panel on a phone",
         detail:
