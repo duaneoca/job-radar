@@ -110,6 +110,10 @@ function JobPipelineTab() {
       <H2>Bookmarklet — adding jobs manually</H2>
       <P>The bookmarklet lets you add a job to Job Radar in one click from the job's page,
         on job boards and on companies' own careers sites. No copy-pasting required.</P>
+      <P><strong>Add Job opens in its own tab</strong>, whether you come from the bookmarklet,
+        the <strong>Add job</strong> button on your jobs list, or a recruiter email in the inbox.
+        The page you came from stays as it was. When you're done, or if you decide not to add
+        the job, just close the tab: nothing is saved until you click <strong>Add job</strong>.</P>
 
       <H3>Setup (one time)</H3>
       <ol className="list-decimal list-inside space-y-1 ml-2">
@@ -565,7 +569,9 @@ function InboxRecruitersTab({ agentEnabled }: { agentEnabled: boolean }) {
             text as the description. An hourly rate is turned into a yearly salary at 40 hours a
             week (so $70/hr shows as $145,600), and the description's first line shows the rate as
             the recruiter quoted it. Recruiter emails rarely link to a posting, so the link is
-            optional. Once you save, the inbox marks the posting <em>imported</em> and links to the job.</P>
+            optional. Add Job opens in a new tab, so your inbox filters and the open email stay put;
+            close that tab to come back. Once you save, the inbox marks the posting <em>imported</em> and
+            links to the job.</P>
           <P>Job boards re-send the same jobs across alerts for days. The agent keeps each job under
             the <em>first</em> email that surfaced it, so a later alert carrying the same jobs
             shows fewer rows — and lists the rest as <em>already listed from an earlier email</em>.

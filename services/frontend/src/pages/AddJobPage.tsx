@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, ClipboardPaste, Copy, Loader2, Plus, Sparkles } from "lucide-react";
+import { ClipboardPaste, Copy, Loader2, Plus, Sparkles } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -237,11 +237,10 @@ export function AddJobPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      {/* Header */}
+      {/* Header. No back arrow or Cancel: Add Job always opens in its own tab
+          (bookmarklet, jobs list, inbox), so closing the tab is the way out and
+          the page that sent you here is left exactly as it was. */}
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/jobs")} aria-label="Back to jobs">
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
         <div>
           <h1 className="text-xl font-bold">
             {fromLinkedIn ? "Add LinkedIn Job" : fromPosting ? "Add job from recruiter email"
@@ -471,9 +470,6 @@ export function AddJobPage() {
 
         {/* Actions */}
         <div className="flex gap-3 pt-2">
-          <Button type="button" variant="outline" onClick={() => navigate("/jobs")}>
-            Cancel
-          </Button>
           <Button type="submit" disabled={saving} className="gap-1.5">
             {saving ? (
               <><Loader2 className="h-4 w-4 animate-spin" /> Saving…</>

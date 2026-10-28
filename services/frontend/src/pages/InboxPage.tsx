@@ -119,7 +119,7 @@ function PostingRow({ p, onOpen, onStatus, busy, canAdd }: {
           )}
           {p.import_status === "imported" && (
             p.imported_review_id ? (
-              <Link to={`/jobs/${p.imported_review_id}`}>
+              <Link to={`/jobs/${p.imported_review_id}`} target="_blank">
                 <Badge variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10">
                   imported →
                 </Badge>
@@ -136,7 +136,7 @@ function PostingRow({ p, onOpen, onStatus, busy, canAdd }: {
             <Copy className="h-3 w-3 shrink-0" />
             <span>
               Looks like a job you already have:{" "}
-              <Link to={`/jobs/${p.matched_job.review_id}`} className="underline underline-offset-2 hover:text-foreground">
+              <Link to={`/jobs/${p.matched_job.review_id}`} target="_blank" className="underline underline-offset-2 hover:text-foreground">
                 {p.matched_job.title}
               </Link>
               <span className="text-muted-foreground"> · {p.matched_job.status.replace(/_/g, " ")}</span>
@@ -148,7 +148,7 @@ function PostingRow({ p, onOpen, onStatus, busy, canAdd }: {
           <div className="mt-1 flex gap-1.5">
             {canAdd && (
               <Button asChild size="sm" className="h-6 px-2 text-xs">
-                <Link to={`/jobs/add?from_posting=${p.id}`}>
+                <Link to={`/jobs/add?from_posting=${p.id}`} target="_blank">
                   <Plus className="h-3 w-3 mr-1" /> Add job
                 </Link>
               </Button>
@@ -295,7 +295,7 @@ function EmailRow({
                       {" — "}
                       {s.received_at ? `listed ${fmtDateTime(s.received_at)}` : "the earlier copy is no longer in the inbox"}
                       {s.import_status === "imported" && s.imported_review_id && (
-                        <> · <Link to={`/jobs/${s.imported_review_id}`} className="underline underline-offset-2 hover:text-foreground">imported</Link></>
+                        <> · <Link to={`/jobs/${s.imported_review_id}`} target="_blank" className="underline underline-offset-2 hover:text-foreground">imported</Link></>
                       )}
                       {s.import_status === "dismissed" && " · skipped"}
                     </span>
@@ -382,6 +382,8 @@ export function InboxPage() {
   const { data, isLoading } = useQuery<PaginatedInbox>({
     queryKey: ["inbox", status, category, page],
     queryFn: () => agentApi.get("/agent/inbox", { params }).then((r) => r.data),
+    // Add job and job links open in their own tab; coming back shows what changed.
+    refetchOnWindowFocus: "always",
   });
 
   // Lightweight needs-review count for the header chip
