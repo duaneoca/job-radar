@@ -42,6 +42,18 @@ export interface Release {
 export const RELEASES: Release[] = [
   // Newest first. See the module comment before adding one.
   {
+    version: "v1.22.1",
+    date: "2026-10-28",
+    headline: "Add job opens in its own tab, so you never lose your place in the inbox",
+    notes: [
+      {
+        title: "Add job opens in a new tab",
+        detail:
+          "Clicking Add job on a recruiter email took you away from the inbox, and coming back reset your filters and closed the email you were reading. Add job now always opens in its own tab, from the inbox, from the jobs list and from the bookmarklet, so the page you came from stays exactly as it was. Read the job there, add it or just close the tab. Cancel and the back arrow are gone, since closing the tab does the same thing. Links to jobs from the inbox open in a new tab too, and the inbox and jobs list catch up as soon as you return to them.",
+      },
+    ],
+  },
+  {
     version: "v1.22.0",
     date: "2026-10-28",
     headline: "Application answers and interview prep use your company research, and the inbox is clearer",

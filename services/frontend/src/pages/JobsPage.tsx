@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Search, SlidersHorizontal, ExternalLink, RefreshCw, ChevronLeft, ChevronRight,
   MapPin, Building2, DollarSign, Star, Sparkles, Check, UserCheck, Loader2, Plus, Trash2, X, AlertTriangle,
@@ -186,6 +186,8 @@ function JobsTab() {
     // indexes:null → arrays serialize as `status=a&status=b` (FastAPI list[...] shape).
     queryFn: () => jobsApi.get("/jobs", { params, paramsSerializer: { indexes: null } }).then((r) => r.data),
     placeholderData: (prev) => prev,
+    // A job added in its own tab shows up as soon as you come back to this one.
+    refetchOnWindowFocus: "always",
   });
 
   const updateReview = useMutation({
@@ -291,12 +293,12 @@ function JobsTab() {
       {/* Actions. The <h1> lived here before tabs; the TabsList is the heading. */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex-1" />
-        <Button
-          size="sm"
-          onClick={() => navigate("/jobs/add")}
-        >
-          <Plus className="h-4 w-4 mr-1" />
-          Add job
+        {/* Add Job always opens in its own tab, like the bookmarklet's. */}
+        <Button asChild size="sm">
+          <Link to="/jobs/add" target="_blank">
+            <Plus className="h-4 w-4 mr-1" />
+            Add job
+          </Link>
         </Button>
         <Button
           variant="outline"
