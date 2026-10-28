@@ -9,6 +9,8 @@ import { Switch } from "../components/ui/switch";
 import { agentApi, jobsApi } from "../lib/api";
 import type { InboxPostingDetail } from "../lib/types";
 import { toast } from "../hooks/useToast";
+import { ReplaceJobBanner } from "../components/ReplaceJobBanner";
+import { clearPendingReplace, readPendingReplace, type PendingReplace } from "../lib/companySite";
 
 interface BookmarkletData {
   title?: string;
@@ -60,6 +62,13 @@ export function AddJobPage() {
   // Set when the import matched a role already in the list from another listing
   // (same company, title and city): offer to open it or add separately.
   const [sameRole, setSameRole] = useState<{ id: string; title: string; status: string; url: string } | null>(null);
+  // Arrived from "Find on company site": offer to update that job instead.
+  const [replace, setReplace] = useState<PendingReplace | null>(() => readPendingReplace());
+  const [replaceOn, setReplaceOn] = useState(true);
+  function dropReplace() {
+    clearPendingReplace();
+    setReplace(null);
+  }
 
   // Pre-fill from bookmarklet hash on first render
   const [prefilled] = useState<BookmarkletData>(() => decodeHash());
@@ -180,8 +189,19 @@ export function AddJobPage() {
         description: description.trim() || null,
         external_id: externalId || null,
       };
-      const res = await jobsApi.post("/jobs/manual" + (separate ? "?separate=true" : ""), payload);
+      const replacing = replace && replaceOn && !fromPosting ? replace : null;
+      const query = replacing ? `?replaces=${replacing.reviewId}` : separate ? "?separate=true" : "";
+      const res = await jobsApi.post("/jobs/manual" + query, payload);
       const review = res.data;
+      if (replacing) {
+        dropReplace();
+        toast(review.already_had === "replaced"
+          ? { title: "Job updated", description: "It now has the company's link and posting, and is being scored again." }
+          : { title: "You already have this page's job", description: "Nothing was changed." });
+        navigate(`/jobs/${review.id}`);
+        return;
+      }
+      if (replace) dropReplace();     // they chose "not an update": don't ask again next time
       if (review.already_had === "same_role") {
         // Same role from another listing — not added, not re-scored. Ask rather
         // than assume: it may be a genuinely separate opening.
@@ -197,6 +217,12 @@ export function AddJobPage() {
       }
       navigate(`/jobs/${review.id}`);
     } catch (err: any) {
+      if (replace && replaceOn && err?.response?.status === 404) {
+        // That job was deleted since: nothing to update. Saving again adds it.
+        dropReplace();
+        toast({ title: "That job is no longer in your list", description: "Save again to add this one as a new job." });
+        return;
+      }
       toast({
         title: "Failed to add job",
         description: err?.response?.data?.detail ?? "Unknown error",
@@ -239,6 +265,10 @@ export function AddJobPage() {
           )}
         </div>
       </div>
+
+      {replace && !fromPosting && (
+        <ReplaceJobBanner pending={replace} enabled={replaceOn} onChange={setReplaceOn} onDismiss={dropReplace} />
+      )}
 
       {sameRole && (
         <div className="rounded-lg border border-amber-400/50 bg-amber-50/60 dark:bg-amber-950/20 p-4 space-y-3">

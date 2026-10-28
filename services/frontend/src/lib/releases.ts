@@ -44,7 +44,7 @@ export const RELEASES: Release[] = [
   {
     version: "v1.21.0",
     date: "2026-10-27",
-    headline: "Add a job from any careers page, or paste it in",
+    headline: "Add a job from any careers page, and rescue jobs whose Adzuna link has died",
     notes: [
       {
         title: "The bookmarklet works on company careers sites",
@@ -55,6 +55,11 @@ export const RELEASES: Release[] = [
         title: "Paste the posting",
         detail:
           "Add job has a Paste the posting box: paste a whole job page and your AI model fills in the form. Handy where the bookmarklet can't go, such as on your phone.",
+      },
+      {
+        title: "Find on company site",
+        detail:
+          "Adzuna re-posts its ads every few days, so its links often lead to \"no longer available\" while the job is still open on the company's site. Jobs from Adzuna and the other job aggregators now have a Find on company site button that searches for the posting. Import it from the company's page and Job Radar offers to update the job you started from instead of adding a second copy: it takes the company's link and full posting, is scored again against the full description, and comes back to your list if it had expired.",
       },
     ],
   },

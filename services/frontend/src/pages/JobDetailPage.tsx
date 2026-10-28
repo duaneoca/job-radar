@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, ExternalLink, Building2, MapPin, DollarSign,
   UserCheck, Users, Loader2, Calendar, Sparkles, MessageSquarePlus, Plus, AlertTriangle,
-  Send, Trash2, Wand2, FileText,
+  Send, Trash2, Wand2, FileText, Search,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -24,6 +24,7 @@ import { useState } from "react";
 import { RefinementDrawer } from "../components/RefinementDrawer";
 import { InterviewPrepCard } from "../components/InterviewPrepCard";
 import { StarButton } from "../components/StarButton";
+import { AGGREGATOR_SOURCES, findOnCompanySite } from "../lib/companySite";
 import { isGenerating, useGeneration, useStartGeneration } from "../hooks/useGeneration";
 
 const DEFAULT_APP_TEMPLATES: ApplicationTemplate[] = [
@@ -495,6 +496,17 @@ export function JobDetailPage() {
                   <ExternalLink className="h-4 w-4 mr-1" />
                   Apply
                 </a>
+              </Button>
+            )}
+            {AGGREGATOR_SOURCES.has(job.source) && (
+              <Button
+                variant="outline"
+                size="sm"
+                title="Search for this job on the company's own careers site. Import it from there and Job Radar offers to update this job."
+                onClick={() => findOnCompanySite(job)}
+              >
+                <Search className="h-4 w-4 mr-1" />
+                Find on company site
               </Button>
             )}
           </div>
