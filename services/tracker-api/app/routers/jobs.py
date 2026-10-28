@@ -770,14 +770,23 @@ def get_job_contacts(
     )
 
 
-@router.post("/{review_id}/notes")
-def add_note(
+@router.post("/{review_id}/timeline/note", response_model=schemas.TimelineEventOut,
+             status_code=status.HTTP_201_CREATED)
+def add_timeline_note(
     review_id: UUID,
-    note: str = Query(...),
+    payload: schemas.TimelineNoteIn,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    """The Timeline tab's "Add a note". Its own path, with the note in a JSON body:
+    it was a `?note=` query param on POST /{id}/notes, which the frontend never
+    called (it posted here, and got 404 from the day the tab shipped), which put
+    the user's words in access logs, and which v1.19.0's append-to-notes route —
+    same path, registered first — then shadowed outright. Not in oauth.ROUTE_POLICY,
+    so a connected assistant can't write here; it has POST /{id}/notes."""
     review = _get_review_or_404(review_id, current_user, db)
-    _add_timeline(db, review.id, "note", note)
+    event = models.TimelineEvent(review_id=review.id, event_type="note", description=payload.note.strip())
+    db.add(event)
     db.commit()
-    return {"message": "Note added"}
+    db.refresh(event)
+    return event

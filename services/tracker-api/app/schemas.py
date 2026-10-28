@@ -142,6 +142,11 @@ class UserJobReviewUpdate(BaseModel):
     status_reason: Optional[str] = Field(None, max_length=300)
 
 
+class TimelineNoteIn(BaseModel):
+    """A note the user adds to a job's timeline ("Phone screen scheduled")."""
+    note: str = Field(..., min_length=1, max_length=2000)
+
+
 class NoteAppendIn(BaseModel):
     """Add to a job's notes without replacing them."""
     text: str = Field(..., min_length=1, max_length=2000)

@@ -44,7 +44,7 @@ export const RELEASES: Release[] = [
   {
     version: "v1.20.0",
     date: "2026-10-27",
-    headline: "Star a job from its own page, and notifications you can always dismiss",
+    headline: "Star a job from its own page, timeline notes that save, and notifications you can always dismiss",
     notes: [
       {
         title: "Star a job from its page",
@@ -55,6 +55,11 @@ export const RELEASES: Release[] = [
         title: "Notifications' OK button works with the side panel open",
         detail:
           "If a notification was showing when you clicked a job in the list, its OK button stopped responding until you closed the side panel. It works now.",
+      },
+      {
+        title: "Notes on a job's Timeline tab now save",
+        detail:
+          "Adding a note on the Timeline tab always failed with \"Failed to save note\", and nothing was saved. It saves now and appears in the timeline straight away. Notes in the Notes box were never affected.",
       },
     ],
   },

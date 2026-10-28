@@ -58,7 +58,7 @@ function TimelineTab({ reviewId, events }: { reviewId: string; events: import(".
     if (!note.trim()) return;
     setSaving(true);
     try {
-      await jobsApi.post(`/jobs/${reviewId}/timeline/note`, null, { params: { note: note.trim() } });
+      await jobsApi.post(`/jobs/${reviewId}/timeline/note`, { note: note.trim() });
       qc.invalidateQueries({ queryKey: ["job", reviewId] });
       setNote("");
     } catch {
@@ -107,6 +107,7 @@ function TimelineTab({ reviewId, events }: { reviewId: string; events: import(".
         <div className="flex gap-2">
           <input
             className="flex-1 rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            maxLength={2000}
             placeholder="Phone screen scheduled, follow-up sent…"
             value={note}
             onChange={(e) => setNote(e.target.value)}
