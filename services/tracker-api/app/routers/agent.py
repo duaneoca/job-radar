@@ -1373,6 +1373,7 @@ def _attach_seen_elsewhere(items, out, user_id, db: Session) -> None:
             p, e = (earlier or copies or [(None, None)])[0]
             email_out.seen_elsewhere.append(schemas.SeenElsewhereOut(
                 company=company, role=role,
+                link=p.link if p else None,
                 inbox_email_id=e.id if e else None,
                 email_subject=e.subject if e else None,
                 received_at=e.received_at if e else None,

@@ -1180,9 +1180,12 @@ class SeenElsewhereOut(BaseModel):
     window is 30 days). Without this the later email shows a shorter list and
     looks as if half its jobs were lost. `inbox_email_id` is the email that has
     the stored copy; null when that copy is gone (deleted, or older than what
-    we keep)."""
+    we keep). `link` is that copy's link, so the job can be opened from here
+    without finding the earlier email; agent-supplied, so the page renders it
+    only when it is http(s)."""
     company: str
     role: str
+    link: Optional[str] = None
     inbox_email_id: Optional[UUID] = None
     email_subject: Optional[str] = None
     received_at: Optional[datetime] = None

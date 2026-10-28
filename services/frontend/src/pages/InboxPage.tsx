@@ -266,13 +266,27 @@ function EmailRow({
                 {email.seen_elsewhere.length === 1 ? "1 posting" : `${email.seen_elsewhere.length} postings`} in this
                 email {email.seen_elsewhere.length === 1 ? "was" : "were"} already listed from an earlier email:
               </p>
-              {email.seen_elsewhere.map((s, idx) => (
-                <div key={idx} className="flex items-start gap-2 py-1 text-sm opacity-70">
-                  <Copy className="h-3.5 w-3.5 shrink-0 mt-1 text-muted-foreground" />
-                  <span className="min-w-0">
+              {email.seen_elsewhere.map((s, idx) => {
+                const href = safeHref(s.link);   // [C2] only http/https becomes a link
+                const name = (
+                  <>
                     <span className="font-medium">{s.company}</span>
                     <span className="text-muted-foreground"> · </span>
                     <span>{s.role}</span>
+                    {href && <ExternalLink className="inline h-3 w-3 ml-1 text-muted-foreground" />}
+                  </>
+                );
+                return (
+                <div key={idx} className="flex items-start gap-2 py-1 text-sm">
+                  <Copy className="h-3.5 w-3.5 shrink-0 mt-1 text-muted-foreground" />
+                  <span className="min-w-0">
+                    {/* Same click path as a posting row: the confirmation guard, then a new tab. */}
+                    {href ? (
+                      <a href={href} onClick={(e) => { e.preventDefault(); onOpen(href); }}
+                         className="cursor-pointer hover:underline decoration-primary/60 underline-offset-2">
+                        {name}
+                      </a>
+                    ) : <span className="opacity-70">{name}</span>}
                     <span className="text-xs text-muted-foreground">
                       {" — "}
                       {s.received_at ? `listed ${fmtDateTime(s.received_at)}` : "the earlier copy is no longer in the inbox"}
@@ -283,7 +297,8 @@ function EmailRow({
                     </span>
                   </span>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
           {email.postings.length === 0 && email.interactions.length === 0 && (email.seen_elsewhere ?? []).length === 0 && (
