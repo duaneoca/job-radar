@@ -143,7 +143,9 @@ function JobPipelineTab() {
       <H3>Company career sites and other job pages</H3>
       <P>On a site not listed above, the bookmarklet first looks for the job details the page
         publishes for search engines. Most company careers sites have them, including those run
-        on Workday, Lever, iCIMS and SmartRecruiters. These are exact and cost nothing.</P>
+        on Workday, Lever, iCIMS and SmartRecruiters. These are exact and cost nothing. When
+        they leave out the pay, it's read from the description, and hourly or monthly pay is
+        shown as a yearly salary at 40 hours a week.</P>
       <P>If the page has none, the bookmarklet sends the page's text to Job Radar, and your AI
         model picks out the title, company, location, pay and description. That's one call on
         your key. The description is copied from the page word for word, never rewritten.

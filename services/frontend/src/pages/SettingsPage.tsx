@@ -672,6 +672,9 @@ function KeysTab() {
 //   1. The page's schema.org JobPosting data (what Google for Jobs reads):
 //      exact, free, no AI. Workday, Lever, Ashby and many Greenhouse pages
 //      carry it.
+//      Its salary is often missing or a 0 placeholder (Mercy's careers site):
+//      then the pay is read from the description text (payFrom: $X/hr,
+//      per hour, per year, $120K…; hourly ×2080, monthly ×12, as everywhere).
 //   2. A posting shown inside a frame from an ATS (iCIMS, Greenhouse embeds…)
 //      can't be read from the outer page: offer to open the frame's own page.
 //   3. Otherwise send the page's text, or the part the user has highlighted,
@@ -688,6 +691,7 @@ function walk(o,d){if(jp||!o||typeof o!=='object'||d>6)return;if(Array.isArray(o
 var lds=document.querySelectorAll('script[type="application/ld+json"]');
 for(var li=0;li<lds.length&&!jp;li++){try{walk(JSON.parse(lds[li].textContent),0);}catch(x){}}
 function htx(h){if(typeof h!=='string')return '';for(var n=0;n<2&&/<\/?[a-z][^>]*>|&lt;|&amp;|&#/i.test(h);n++){var s=h.replace(/<li[^>]*>/gi,'\n\u2022 ').replace(/<(br|\/p|\/li|\/h[1-6]|\/div|\/ul|\/ol|\/tr)[^>]*>/gi,'$&\n');h=new DOMParser().parseFromString(s,'text/html').body.textContent||'';}return h.replace(/[ \t\u00a0]+/g,' ').replace(/ *\n */g,'\n').replace(/\n{3,}/g,'\n\n').trim();}
+function payFrom(t){var rx=/\$\s?(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s*(k\b)?([^$]{0,40})/gi;var got=[],m;while((m=rx.exec(t))&&got.length<2){var tail=m[4]||'';if(/^\s*(million|billion|[mb]\b)|^[^.]{0,25}(bonus|sign-?on|relocation|stipend|reimburse|tuition|referral)/i.test(tail))continue;if(got.length&&m.index-got[0].at>160)break;var v=parseFloat(m[1].replace(/,/g,'')+(m[2]||''));if(m[3])v*=1000;var u=/^\s*(\/\s*h(ou)?r\b|per\s+hour|an\s+hour|hourly)/i.test(tail)?2080:/^\s*(\/\s*mo(nth)?\b|per\s+month|a\s+month|monthly)/i.test(tail)?12:/^\s*(\/\s*y(ea)?r\b|per\s+year|a\s+year|per\s+annum|annual|yearly)/i.test(tail)?1:0;got.push({v:v,u:u,at:m.index});}if(!got.length)return [null,null];var unit=(got[1]&&got[1].u)||got[0].u||(got[0].v<500?2080:1);var amts=got.map(function(g){var x=Math.round(g.v*unit);return x>=10000&&x<=2000000?x:null;}).filter(function(x){return x;});if(!amts.length)return [null,null];var lo=Math.min.apply(null,amts),hi=Math.max.apply(null,amts);return [lo,hi];}
 var pu='';try{var uo=new URL(location.href);uo.hash='';Array.from(uo.searchParams.keys()).forEach(function(k){if(/^(utm_|gclid$|fbclid$|mc_)/i.test(k))uo.searchParams.delete(k);});pu=uo.toString();}catch(x){pu=location.href.split('#')[0];}
 if(jp){
 var gt=htx(jp.title||jp.name||'');
@@ -700,7 +704,9 @@ if(bs){var bv=bs.value!==undefined?bs.value:bs;var unit=String((bv&&bv.unitText)
 function amt(v){var x=parseFloat(String(v).replace(/[^0-9.]/g,''));if(!mul||!isFinite(x))return null;x=Math.round(x*mul);return x>=10000&&x<=2000000?x:null;}
 if(typeof bv==='number'||typeof bv==='string'){gmin=gmax=amt(bv);}else if(bv){gmin=amt(bv.minValue!==undefined?bv.minValue:bv.value);gmax=amt(bv.maxValue!==undefined?bv.maxValue:bv.value);}
 gmin=gmin||gmax;gmax=gmax||gmin;}
-if(gt&&gco){data={title:gt,company:gco,location:glo,description:htx(jp.description||''),url:pu,remote:gre,source:'manual',salary_min:gmin,salary_max:gmax,via:'listing'};}
+var gde=htx(jp.description||'');
+if(!gmin){var gp=payFrom(gde);gmin=gp[0];gmax=gp[1];}
+if(gt&&gco){data={title:gt,company:gco,location:glo,description:gde,url:pu,remote:gre,source:'manual',salary_min:gmin,salary_max:gmax,via:'listing'};}
 }
 if(!data){
 var ats=/greenhouse|icims|myworkdayjobs|lever\.co|smartrecruiters|jobvite|ashbyhq|bamboohr|workable|recruitee|paylocity|ultipro|ukg|dayforce|successfactors|taleo|oraclecloud|breezy|jazzhr|applytojob|adp\.com/i;
