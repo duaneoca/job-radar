@@ -57,3 +57,17 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* iPhone browsers (Safari, and Brave/Chrome/Firefox, which run on its engine)
+   zoom the page in when you tap a field whose text is under 16px, and the zoom
+   outlives the field: the login form's 14px boxes left every later screen
+   zoomed in, its edges off the screen. Touch screens get 16px in every typed-in
+   field; desktop keeps the smaller text. Unlayered and !important so it beats
+   the text-sm/text-xs utilities on any field. */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  textarea,
+  select {
+    font-size: max(16px, 1em) !important;
+  }
+}

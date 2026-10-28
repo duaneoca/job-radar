@@ -650,9 +650,10 @@ function JobsTab() {
 
       {/* Quick-view drawer */}
       <Sheet open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
-        <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetContent side="right" className="w-full sm:max-w-lg p-0">
+          {/* Only the inside scrolls, so the close button stays on screen. */}
           {selected && (
-            <>
+            <div className="h-full overflow-y-auto p-6">
               <SheetHeader className="pr-6">
                 <div className="flex items-start gap-2">
                   <StarButton starred={selected.starred} onToggle={() => toggleStar(selected)} className="mt-0.5" />
@@ -778,7 +779,7 @@ function JobsTab() {
                   </button>
                 )}
               </div>
-            </>
+            </div>
           )}
         </SheetContent>
       </Sheet>

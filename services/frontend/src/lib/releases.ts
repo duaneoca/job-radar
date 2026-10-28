@@ -42,6 +42,23 @@ export interface Release {
 export const RELEASES: Release[] = [
   // Newest first. See the module comment before adding one.
   {
+    version: "v1.21.1",
+    date: "2026-10-28",
+    headline: "Job Radar fits an iPhone screen, and the job panel can be closed again",
+    notes: [
+      {
+        title: "No more zooming in on iPhone",
+        detail:
+          "On an iPhone, tapping a text box with small text makes the browser zoom in. Signing in did that, and the zoom stayed on every screen afterwards, so the edges of the page were cut off until you pinched out. Text boxes now use a size the phone doesn't zoom for. This applies in Safari and in other iPhone browsers such as Brave or Chrome.",
+      },
+      {
+        title: "Closing the side panel on a phone",
+        detail:
+          "On a phone, the panel that opens when you tap a job fills the screen, and its close button scrolled away as soon as you read down. The only way out was the browser's back button. The close button now stays in the top corner and is easier to tap. The recruiter panel had the same problem and is fixed too.",
+      },
+    ],
+  },
+  {
     version: "v1.21.0",
     date: "2026-10-27",
     headline: "Add a job from any careers page, and rescue jobs whose Adzuna link has died",

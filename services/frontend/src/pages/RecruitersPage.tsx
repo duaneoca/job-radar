@@ -207,7 +207,9 @@ function RecruiterSheet({
 
   return (
     <Sheet open onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
+      <SheetContent side="right" className="w-full sm:max-w-lg p-0">
+        {/* Only the inside scrolls, so the close button stays on screen. */}
+        <div className="h-full overflow-y-auto p-6">
         <SheetHeader className="pr-6">
           <SheetTitle>{isEdit ? "Edit recruiter" : "Add recruiter"}</SheetTitle>
         </SheetHeader>
@@ -327,6 +329,7 @@ function RecruiterSheet({
           {!isEdit && (
             <p className="text-xs text-muted-foreground">Save first, then reopen to link jobs.</p>
           )}
+        </div>
         </div>
       </SheetContent>
     </Sheet>
