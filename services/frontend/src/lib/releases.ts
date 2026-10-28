@@ -49,7 +49,7 @@ export const RELEASES: Release[] = [
       {
         title: "The bookmarklet works on company careers sites",
         detail:
-          "Before, it only knew eight job sites and said \"not yet supported\" everywhere else, so a job found on a company's own site meant copying and pasting each field. Now it reads the job details most careers sites publish, including those on Workday, Lever, iCIMS and SmartRecruiters. On a page without them, your AI model reads the page and fills in the form for you to check. That's one call on your key, and the description is copied word for word. Drag the button from Settings → Bookmarklet to your bar again to get the new version.",
+          "Before, it only knew eight job sites and said \"not yet supported\" everywhere else, so a job found on a company's own site meant copying and pasting each field. Now it reads the job details most careers sites publish, including those on Workday, Lever, iCIMS and SmartRecruiters, and turns hourly or monthly pay into a yearly salary at 40 hours a week. On a page without them, your AI model reads the page and fills in the form for you to check. That's one call on your key, and the description is copied word for word. Drag the button from Settings → Bookmarklet to your bar again to get the new version.",
       },
       {
         title: "Paste the posting",
