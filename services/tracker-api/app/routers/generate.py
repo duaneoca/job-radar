@@ -179,6 +179,32 @@ Description:
 {job.description or 'Not provided'}"""
 
 
+# Research is the model's own earlier write-up, sized by GENERATION_MAX_TOKENS
+# (~16k characters); the cap only guards against a pathological row.
+MAX_RESEARCH_CONTEXT = 20_000
+
+
+def _research_block(review: models.UserJobReview) -> str:
+    """The job's company research as background, or '' when none has been run.
+
+    Fed to the employer-facing generators (application answers, refine,
+    interview prep) so "why this company" is answered from something better than
+    the posting. It was written by a model from web search, so the framing asks
+    for its substance, not its specific figures or news, which may be stale."""
+    summary = (review.research_summary or "").strip()
+    if not summary:
+        return ""
+    if len(summary) > MAX_RESEARCH_CONTEXT:
+        summary = summary[:MAX_RESEARCH_CONTEXT].rstrip() + "\n…(truncated)"
+    return (
+        "\n\n## Company Research (background)\n"
+        "Written earlier by an AI from web searches. Use it to connect the candidate to the "
+        "company's mission, products and direction. It may be out of date or wrong, so don't "
+        "state its specific figures, dates or news as facts.\n\n"
+        f"{summary}"
+    )
+
+
 def run_research(db: Session, user: models.User, review: models.UserJobReview) -> None:
     """Generate the company research summary and store it on the review.
     Runs in the background (app/generation_jobs.py); raises HTTPException with a
@@ -282,7 +308,7 @@ def generate_application_answer(
 
     answer = llm_complete(
         system=system_prompt,
-        messages=[{"role": "user", "content": f"{_job_block(job)}{_resume_block(profile)}\n\n## Task: {template['label']}\n{template['prompt']}"}],
+        messages=[{"role": "user", "content": f"{_job_block(job)}{_research_block(review)}{_resume_block(profile)}\n\n## Task: {template['label']}\n{template['prompt']}"}],
         api_key=api_key,
         model=model,
         max_tokens=GENERATION_MAX_TOKENS,
@@ -346,7 +372,7 @@ def refine_application(
         f"Help the candidate improve it based on their feedback. "
         f"When they ask for a revision, output the complete revised text so they can copy it directly. "
         f"Be specific, draw from the resume, and write in first person as the candidate.\n\n"
-        f"{_job_block(job)}{_resume_block(profile)}\n\n"
+        f"{_job_block(job)}{_research_block(review)}{_resume_block(profile)}\n\n"
         f"## Template: {template['label']}\n{template['prompt']}"
         f"{draft_section}"
         f"{voice_section}"
@@ -492,7 +518,7 @@ def generate_interview_prep(
                 lines.append(f"### {title}\n{content}")
             stories_block = "\n\n## Candidate's Career Stories\n" + "\n\n".join(lines)
 
-    user_content = f"{_job_block(job)}{_resume_block(profile)}{stories_block}\n\n{prep_prompt}"
+    user_content = f"{_job_block(job)}{_research_block(review)}{_resume_block(profile)}{stories_block}\n\n{prep_prompt}"
 
     raw = llm_complete(
         system=("You are an expert interview coach and hiring manager. Always respond with valid JSON only."
