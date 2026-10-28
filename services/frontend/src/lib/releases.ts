@@ -42,6 +42,23 @@ export interface Release {
 export const RELEASES: Release[] = [
   // Newest first. See the module comment before adding one.
   {
+    version: "v1.21.0",
+    date: "2026-10-27",
+    headline: "Add a job from any careers page, or paste it in",
+    notes: [
+      {
+        title: "The bookmarklet works on company careers sites",
+        detail:
+          "Before, it only knew eight job sites and said \"not yet supported\" everywhere else, so a job found on a company's own site meant copying and pasting each field. Now it reads the job details most careers sites publish, including those on Workday, Lever, iCIMS and SmartRecruiters. On a page without them, your AI model reads the page and fills in the form for you to check. That's one call on your key, and the description is copied word for word. Drag the button from Settings → Bookmarklet to your bar again to get the new version.",
+      },
+      {
+        title: "Paste the posting",
+        detail:
+          "Add job has a Paste the posting box: paste a whole job page and your AI model fills in the form. Handy where the bookmarklet can't go, such as on your phone.",
+      },
+    ],
+  },
+  {
     version: "v1.20.0",
     date: "2026-10-27",
     headline: "Star a job from its own page, timeline notes that save, and notifications you can always dismiss",

@@ -142,6 +142,24 @@ class UserJobReviewUpdate(BaseModel):
     status_reason: Optional[str] = Field(None, max_length=300)
 
 
+class PostingExtractIn(BaseModel):
+    """A page's text (from the bookmarklet) or a pasted posting, to fill Add Job."""
+    text: str = Field(..., min_length=1, max_length=200_000)
+    page_title: Optional[str] = Field(None, max_length=1000)
+
+
+class PostingExtractOut(BaseModel):
+    title: Optional[str] = None
+    company: Optional[str] = None
+    location: Optional[str] = None
+    remote: bool = False
+    salary_min: Optional[int] = None
+    salary_max: Optional[int] = None
+    description: str
+    # False: the description's start couldn't be found, so this is the whole text.
+    description_found: bool
+
+
 class TimelineNoteIn(BaseModel):
     """A note the user adds to a job's timeline ("Phone screen scheduled")."""
     note: str = Field(..., min_length=1, max_length=2000)
