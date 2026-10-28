@@ -687,7 +687,7 @@ function jt(t){return t==='JobPosting'||(Array.isArray(t)&&t.indexOf('JobPosting
 function walk(o,d){if(jp||!o||typeof o!=='object'||d>6)return;if(Array.isArray(o)){for(var i=0;i<o.length;i++)walk(o[i],d+1);return;}if(jt(o['@type'])){jp=o;return;}if(o['@graph'])walk(o['@graph'],d+1);}
 var lds=document.querySelectorAll('script[type="application/ld+json"]');
 for(var li=0;li<lds.length&&!jp;li++){try{walk(JSON.parse(lds[li].textContent),0);}catch(x){}}
-function htx(h){if(typeof h!=='string')return '';for(var n=0;n<2&&/<\/?[a-z][^>]*>|&lt;|&amp;|&#/i.test(h);n++){var s=h.replace(/<li[^>]*>/gi,'\n• ').replace(/<(br|\/p|\/li|\/h[1-6]|\/div|\/ul|\/ol|\/tr)[^>]*>/gi,'$&\n');h=new DOMParser().parseFromString(s,'text/html').body.textContent||'';}return h.replace(/[ \t ]+/g,' ').replace(/ *\n */g,'\n').replace(/\n{3,}/g,'\n\n').trim();}
+function htx(h){if(typeof h!=='string')return '';for(var n=0;n<2&&/<\/?[a-z][^>]*>|&lt;|&amp;|&#/i.test(h);n++){var s=h.replace(/<li[^>]*>/gi,'\n\u2022 ').replace(/<(br|\/p|\/li|\/h[1-6]|\/div|\/ul|\/ol|\/tr)[^>]*>/gi,'$&\n');h=new DOMParser().parseFromString(s,'text/html').body.textContent||'';}return h.replace(/[ \t\u00a0]+/g,' ').replace(/ *\n */g,'\n').replace(/\n{3,}/g,'\n\n').trim();}
 var pu='';try{var uo=new URL(location.href);uo.hash='';Array.from(uo.searchParams.keys()).forEach(function(k){if(/^(utm_|gclid$|fbclid$|mc_)/i.test(k))uo.searchParams.delete(k);});pu=uo.toString();}catch(x){pu=location.href.split('#')[0];}
 if(jp){
 var gt=htx(jp.title||jp.name||'');
