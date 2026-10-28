@@ -545,9 +545,16 @@ function InboxRecruitersTab({ agentEnabled }: { agentEnabled: boolean }) {
             logging the update on that job's timeline automatically.</P>
           <P>A posting marked as a <strong>possible duplicate</strong> shows which of your
             jobs it looks like, with a link to it. If it's the same job, choose
-            <em>Same job — skip</em>; if not, open the link and import it as usual (if it turns
+            <em>Already have it</em>; if not, open the link and import it as usual (if it turns
             out you have it after all, the import takes you to it rather than adding a copy).
-            Any posting can be skipped, and <em>Undo</em> brings it back.</P>
+            Any other posting can be set aside with <em>Not interested</em>. Either one only
+            greys the posting out in the inbox so you know you've seen it; your jobs list isn't
+            changed, and <em>Undo</em> brings it back.</P>
+          <P>Each email has a status badge. The agent marks most emails <strong>Processed</strong>
+            itself. For an email that's <strong>Pending</strong> or <strong>Needs review</strong>,
+            <em>Mark handled</em> says you've dealt with it and moves it to Processed.
+            <em>Dismiss</em> marks any email as not relevant: it stays in the list as
+            <strong>Discarded</strong>, and <em>Restore</em> undoes that.</P>
           <P>The email agent is an optional feature the administrator can turn on or off
             globally. When it's off, the Inbox tab and the Email Agent settings are hidden —
             the Recruiters contact list below stays available either way.</P>
@@ -561,8 +568,9 @@ function InboxRecruitersTab({ agentEnabled }: { agentEnabled: boolean }) {
             optional. Once you save, the inbox marks the posting <em>imported</em> and links to the job.</P>
           <P>Job boards re-send the same jobs across alerts for days. The agent keeps each job under
             the <em>first</em> email that surfaced it, so a later alert carrying the same jobs
-            shows fewer rows — and lists the rest as <em>already listed from an earlier email</em>,
-            with a link to the job if you imported it. Nothing is dropped. (Before, those just
+            shows fewer rows — and lists the rest as <em>already listed from an earlier email</em>.
+            Each one opens the posting directly, and links to the job if you imported it, so you
+            never have to find the earlier email. Nothing is dropped. (Before, those just
             went missing from the later email, which looked like half the jobs had been lost.)</P>
           <P>Anything it isn't sure about is escalated to <strong>needs review</strong>: the
             amber badge on the <strong>Inbox</strong> tab of the Jobs page shows how many items are waiting for

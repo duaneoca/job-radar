@@ -51,6 +51,8 @@ def test_repeats_are_named_with_the_email_that_has_them(client, db):
     assert all(s["inbox_email_id"] == str(first.id) for s in seen.values())
     assert all(s["email_subject"] == "forward deployed engineer alert" for s in seen.values())
     assert seen[("OpenAI", "Deployment Lead")]["import_status"] == "pending"
+    # The earlier copy's link, so the job opens without finding that email.
+    assert all(s["link"] == "https://www.linkedin.com/jobs/view/1" for s in seen.values())
     assert _by_id(client, first.id)["seen_elsewhere"] == []
 
 
@@ -83,7 +85,7 @@ def test_matching_is_case_and_space_insensitive(client, db):
 def test_a_copy_that_is_gone_is_still_named(client, db):
     later = _email(db, "later", datetime.now(timezone.utc), verified=[("Acme", "Eng")], stored=[])
     (s,) = _by_id(client, later.id)["seen_elsewhere"]
-    assert s["company"] == "Acme" and s["inbox_email_id"] is None
+    assert s["company"] == "Acme" and s["inbox_email_id"] is None and s["link"] is None
 
 
 def test_other_users_copies_are_never_shown(client, db):

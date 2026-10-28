@@ -113,7 +113,9 @@ function PostingRow({ p, onOpen, onStatus, busy, canAdd }: {
             </Badge>
           )}
           {skipped && (
-            <Badge variant="outline" className="text-[10px] text-muted-foreground">skipped</Badge>
+            <Badge variant="outline" className="text-[10px] text-muted-foreground">
+              {p.matched_job ? "already have it" : "not interested"}
+            </Badge>
           )}
           {p.import_status === "imported" && (
             p.imported_review_id ? (
@@ -151,10 +153,12 @@ function PostingRow({ p, onOpen, onStatus, busy, canAdd }: {
                 </Link>
               </Button>
             )}
+            {/* Only marks this one posting as dealt with here: your jobs list is untouched. */}
             <Button variant="outline" size="sm" className="h-6 px-2 text-xs" disabled={busy}
+                    title="Greys this job out here so you know you've seen it. Your jobs list isn't changed, and Undo brings it back."
                     onClick={() => onStatus(p.id, "dismissed")}>
               <EyeOff className="h-3 w-3 mr-1" />
-              {p.matched_job ? "Same job — skip" : "Skip"}
+              {p.matched_job ? "Already have it" : "Not interested"}
             </Button>
           </div>
         )}
@@ -266,13 +270,27 @@ function EmailRow({
                 {email.seen_elsewhere.length === 1 ? "1 posting" : `${email.seen_elsewhere.length} postings`} in this
                 email {email.seen_elsewhere.length === 1 ? "was" : "were"} already listed from an earlier email:
               </p>
-              {email.seen_elsewhere.map((s, idx) => (
-                <div key={idx} className="flex items-start gap-2 py-1 text-sm opacity-70">
-                  <Copy className="h-3.5 w-3.5 shrink-0 mt-1 text-muted-foreground" />
-                  <span className="min-w-0">
+              {email.seen_elsewhere.map((s, idx) => {
+                const href = safeHref(s.link);   // [C2] only http/https becomes a link
+                const name = (
+                  <>
                     <span className="font-medium">{s.company}</span>
                     <span className="text-muted-foreground"> · </span>
                     <span>{s.role}</span>
+                    {href && <ExternalLink className="inline h-3 w-3 ml-1 text-muted-foreground" />}
+                  </>
+                );
+                return (
+                <div key={idx} className="flex items-start gap-2 py-1 text-sm">
+                  <Copy className="h-3.5 w-3.5 shrink-0 mt-1 text-muted-foreground" />
+                  <span className="min-w-0">
+                    {/* Same click path as a posting row: the confirmation guard, then a new tab. */}
+                    {href ? (
+                      <a href={href} onClick={(e) => { e.preventDefault(); onOpen(href); }}
+                         className="cursor-pointer hover:underline decoration-primary/60 underline-offset-2">
+                        {name}
+                      </a>
+                    ) : <span className="opacity-70">{name}</span>}
                     <span className="text-xs text-muted-foreground">
                       {" — "}
                       {s.received_at ? `listed ${fmtDateTime(s.received_at)}` : "the earlier copy is no longer in the inbox"}
@@ -283,7 +301,8 @@ function EmailRow({
                     </span>
                   </span>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
           {email.postings.length === 0 && email.interactions.length === 0 && (email.seen_elsewhere ?? []).length === 0 && (
@@ -291,20 +310,31 @@ function EmailRow({
           )}
 
           <div className="flex items-center gap-2 mt-3 pt-2 border-t">
-            {/* Once the email is handled or dismissed there is nothing left to
-                mark: say so in the past tense rather than keep offering the
-                button (a dismissed email was still showing "Mark handled"). */}
-            {email.status === "processed" || email.status === "discarded" ? (
-              <span className="inline-flex items-center text-xs text-muted-foreground px-1">
-                <Check className="h-3.5 w-3.5 mr-1" /> Marked handled
-              </span>
-            ) : (
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => onPatch("processed")}>
+            {/* The status badge in the header already says Processed / Discarded,
+                so the footer only offers what can still be done. ("Marked handled"
+                used to show here for every email the agent processed on its own,
+                and for dismissed ones, which read as something the user had done.)
+                Restore can't know the status before Dismiss, so it returns the
+                email to Processed: the user has looked at it by then. */}
+            {(email.status === "pending" || email.status === "needs_review") && (
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => onPatch("processed")}
+                      title="You've dealt with this email. It leaves Needs review and shows as Processed.">
                 <Check className="h-3.5 w-3.5 mr-1" /> Mark handled
               </Button>
             )}
-            {email.status !== "discarded" && (
-              <Button size="sm" variant="ghost" disabled={busy} onClick={() => onPatch("discarded")}>
+            {email.status === "discarded" ? (
+              <>
+                <span className="inline-flex items-center text-xs text-muted-foreground px-1">
+                  <EyeOff className="h-3.5 w-3.5 mr-1" /> Dismissed
+                </span>
+                <Button size="sm" variant="ghost" disabled={busy} onClick={() => onPatch("processed")}
+                        title="Undo the dismissal. The email shows as Processed again.">
+                  <Undo2 className="h-3.5 w-3.5 mr-1" /> Restore
+                </Button>
+              </>
+            ) : (
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => onPatch("discarded")}
+                      title="This email isn't relevant. It stays in the list as Discarded, and you can restore it.">
                 <EyeOff className="h-3.5 w-3.5 mr-1" /> Dismiss
               </Button>
             )}

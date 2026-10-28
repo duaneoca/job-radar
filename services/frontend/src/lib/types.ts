@@ -151,6 +151,8 @@ export interface InboxEmail {
 export interface SeenElsewhere {
   company: string;
   role: string;
+  /** The earlier copy's link. Agent-supplied: render only through safeHref. */
+  link: string | null;
   inbox_email_id: string | null;
   email_subject: string | null;
   received_at: string | null;

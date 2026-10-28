@@ -44,12 +44,22 @@ export const RELEASES: Release[] = [
   {
     version: "v1.22.0",
     date: "2026-10-28",
-    headline: "Application answers and interview prep use your company research",
+    headline: "Application answers and interview prep use your company research, and the inbox is clearer",
     notes: [
       {
         title: "Answers draw on the company research",
         detail:
           "Until now, the company research on a job was only there for you to read. Application answers, the refinement chat and interview prep saw just the posting and your résumé. Now, once a job has research, they use it too, so answers like \"Why do you want to work here?\" can speak to what the company actually does. Run research first to get this. Jobs without research work as before.",
+      },
+      {
+        title: "Repeat jobs in the inbox open directly",
+        detail:
+          "When an alert repeats jobs from an earlier email, the inbox lists them as already listed from an earlier email. Until now they were plain text, so opening one meant finding that earlier email. Now each one opens the posting, the same as any other job in the inbox.",
+      },
+      {
+        title: "Clearer inbox buttons",
+        detail:
+          "Skip is now Not interested, or Already have it for a job that matches one you have. It still only greys the posting out in the inbox. An email also showed \"Marked handled\" when you hadn't marked it, because the agent marks most emails processed itself, and after you dismissed it. That label is gone, since the status badge already says Processed or Discarded. A dismissed email now says Dismissed, with a Restore button.",
       },
     ],
   },
