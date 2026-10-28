@@ -172,3 +172,37 @@ def test_usage_endpoint_for_the_connected_apps_page(web, api, app_h):  # noqa: F
     assert u["remove"] == {"used": 1, "limit": 25}
     assert u["research"]["limit"] == 20 and u["tailor"]["limit"] == 10
     assert api.get("/oauth/assistant-usage", headers=app_h).status_code == 403   # cookie only
+
+
+# ── the Timeline tab's own notes ──────────────────────────────
+# Its "Add a note" posted to a path that didn't exist (404 → "Failed to save
+# note") from the day the tab shipped; v1.19.0's append route then took the
+# path the backend handler was on. Pin the path the frontend calls.
+
+def test_the_user_can_add_a_timeline_note(web):  # noqa: F811
+    _job(web)
+    rid = web.get("/jobs").json()["items"][0]["id"]
+    r = web.post(f"/jobs/{rid}/timeline/note", json={"note": "  Phone screen Tuesday  "})
+    assert r.status_code == 201 and r.json()["event_type"] == "note"
+    assert r.json()["description"] == "Phone screen Tuesday"
+    assert "Phone screen Tuesday" in [e["description"] for e in web.get(f"/jobs/{rid}/timeline").json()]
+    assert web.get(f"/jobs/{rid}").json()["notes"] is None      # the timeline, not the Notes field
+
+
+@pytest.mark.parametrize("body", [{"note": ""}, {"note": "x" * 2001}, {}])
+def test_a_timeline_note_needs_text(web, body):  # noqa: F811
+    _job(web)
+    rid = web.get("/jobs").json()["items"][0]["id"]
+    assert web.post(f"/jobs/{rid}/timeline/note", json=body).status_code == 422
+
+
+def test_an_assistant_cannot_write_timeline_notes(api, app_h):  # noqa: F811
+    _job(api)
+    rid = _rid(api, app_h)
+    assert api.post(f"/jobs/{rid}/timeline/note", headers=app_h, json={"note": "hi"}).status_code == 403
+
+
+def test_the_assistant_append_route_still_owns_notes(web, api, app_h):  # noqa: F811
+    _job(web)
+    rid = web.get("/jobs").json()["items"][0]["id"]
+    assert api.post(f"/jobs/{rid}/notes", headers=app_h, json={"text": "via app"}).status_code == 200
