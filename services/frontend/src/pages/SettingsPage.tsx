@@ -666,6 +666,54 @@ function KeysTab() {
 
 // ─── Bookmarklet tab ──────────────────────────────────────────────────────────
 
+// ─── Generic reader: any other job page ──────────────────────────────────────
+//
+// Runs on every site without a reader above. Three steps, best first:
+//   1. The page's schema.org JobPosting data (what Google for Jobs reads):
+//      exact, free, no AI. Workday, Lever, Ashby and many Greenhouse pages
+//      carry it.
+//   2. A posting shown inside a frame from an ATS (iCIMS, Greenhouse embeds…)
+//      can't be read from the outer page: offer to open the frame's own page.
+//   3. Otherwise send the page's text, or the part the user has highlighted,
+//      to Add Job, which asks the user's AI model to pick out the fields
+//      (POST /jobs/extract-posting) and shows them for checking.
+//
+// String.raw keeps backslashes as written. buildBookmarklet strips newlines, so
+// no // comments inside, every statement ends with ";", and no backticks or
+// dollar-brace sequences (this is spliced into a template literal).
+const GENERIC_READER = String.raw`
+var jp=null;
+function jt(t){return t==='JobPosting'||(Array.isArray(t)&&t.indexOf('JobPosting')>-1);}
+function walk(o,d){if(jp||!o||typeof o!=='object'||d>6)return;if(Array.isArray(o)){for(var i=0;i<o.length;i++)walk(o[i],d+1);return;}if(jt(o['@type'])){jp=o;return;}if(o['@graph'])walk(o['@graph'],d+1);}
+var lds=document.querySelectorAll('script[type="application/ld+json"]');
+for(var li=0;li<lds.length&&!jp;li++){try{walk(JSON.parse(lds[li].textContent),0);}catch(x){}}
+function htx(h){if(typeof h!=='string')return '';for(var n=0;n<2&&/<\/?[a-z][^>]*>|&lt;|&amp;|&#/i.test(h);n++){var s=h.replace(/<li[^>]*>/gi,'\n\u2022 ').replace(/<(br|\/p|\/li|\/h[1-6]|\/div|\/ul|\/ol|\/tr)[^>]*>/gi,'$&\n');h=new DOMParser().parseFromString(s,'text/html').body.textContent||'';}return h.replace(/[ \t\u00a0]+/g,' ').replace(/ *\n */g,'\n').replace(/\n{3,}/g,'\n\n').trim();}
+var pu='';try{var uo=new URL(location.href);uo.hash='';Array.from(uo.searchParams.keys()).forEach(function(k){if(/^(utm_|gclid$|fbclid$|mc_)/i.test(k))uo.searchParams.delete(k);});pu=uo.toString();}catch(x){pu=location.href.split('#')[0];}
+if(jp){
+var gt=htx(jp.title||jp.name||'');
+var org=jp.hiringOrganization;var gco=htx(typeof org==='string'?org:(org&&org.name)||'');
+var jl=jp.jobLocation;if(Array.isArray(jl))jl=jl[0];var ad=jl&&jl.address;var glo='';
+if(typeof ad==='string')glo=ad;else if(ad){glo=[ad.addressLocality,ad.addressRegion].filter(function(v){return typeof v==='string'&&v;}).join(', ')||(typeof ad.addressCountry==='string'?ad.addressCountry:'');}
+var jlt=jp.jobLocationType;var gre=jlt==='TELECOMMUTE'||(Array.isArray(jlt)&&jlt.indexOf('TELECOMMUTE')>-1);
+var bs=jp.baseSalary||jp.estimatedSalary;if(Array.isArray(bs))bs=bs[0];var gmin=null,gmax=null;
+if(bs){var bv=bs.value!==undefined?bs.value:bs;var unit=String((bv&&bv.unitText)||bs.unitText||'YEAR').toUpperCase();var mul={HOUR:2080,DAY:260,WEEK:52,MONTH:12,YEAR:1}[unit]||0;
+function amt(v){var x=parseFloat(String(v).replace(/[^0-9.]/g,''));if(!mul||!isFinite(x))return null;x=Math.round(x*mul);return x>=10000&&x<=2000000?x:null;}
+if(typeof bv==='number'||typeof bv==='string'){gmin=gmax=amt(bv);}else if(bv){gmin=amt(bv.minValue!==undefined?bv.minValue:bv.value);gmax=amt(bv.maxValue!==undefined?bv.maxValue:bv.value);}
+gmin=gmin||gmax;gmax=gmax||gmin;}
+if(gt&&gco){data={title:gt,company:gco,location:glo,description:htx(jp.description||''),url:pu,remote:gre,source:'manual',salary_min:gmin,salary_max:gmax,via:'listing'};}
+}
+if(!data){
+var ats=/greenhouse|icims|myworkdayjobs|lever\.co|smartrecruiters|jobvite|ashbyhq|bamboohr|workable|recruitee|paylocity|ultipro|ukg|dayforce|successfactors|taleo|oraclecloud|breezy|jazzhr|applytojob|adp\.com/i;
+var frs=document.querySelectorAll('iframe[src]');
+for(var fi=0;fi<frs.length;fi++){var fs='';try{var fu=new URL(frs[fi].getAttribute('src'),location.href);if(fu.origin!==location.origin&&ats.test(fu.hostname))fs=fu.toString();}catch(x){}
+if(fs){if(confirm('Job Radar: This job is shown inside a frame from '+new URL(fs).hostname+', which the bookmarklet can\'t read from here.\n\nOpen it on its own page? Then click the bookmarklet again.')){location.href=fs;return;}break;}}
+var sel=String(window.getSelection?window.getSelection():'');
+var tx=(sel.trim().length>300?sel:(document.body.innerText||'')).replace(/\n{3,}/g,'\n\n').substring(0,50000);
+if(tx.trim().length<200){alert('Job Radar: There is almost no text on this page. Open the job posting itself and try again.');return;}
+data={page_text:tx,page_title:document.title,url:pu,via:'page'};
+}
+`;
+
 function buildBookmarklet(appOrigin: string): string {
   const js = `(function(){
 function tc(s){try{var e=document.querySelector(s);return e?(e.textContent||'').replace(/\\s+/g,' ').trim():''}catch(x){return '';}}
@@ -836,8 +884,7 @@ var ghUrl=window.location.href.split('?')[0];
 if(!ti){alert('Job Radar: Could not read this Greenhouse page.\\nOpen a specific job posting (some company links redirect to a generic careers page).');return;}
 data={title:ti,company:co,location:lo,description:de,url:ghUrl,external_id:id,remote:re,source:'greenhouse',salary_min:salMin,salary_max:salMax};
 }else{
-alert('Job Radar: This site is not yet supported.\\nSupported: LinkedIn, Dice, BuiltIn, Monster, ZipRecruiter, Indeed, Ashby, Greenhouse.');
-return;
+${GENERIC_READER}
 }
 window.open('${appOrigin}/jobs/add#'+btoa(unescape(encodeURIComponent(JSON.stringify(data)))),'_blank');
 })();`;
@@ -1004,12 +1051,15 @@ function BookmarkletTab() {
       <div className="space-y-2">
         <h3 className="font-medium">Job Radar Bookmarklet</h3>
         <p className="text-sm text-muted-foreground">
-          Capture a job posting in one click while browsing a supported job site. Drag the
-          button below to your browser's bookmarks bar, then click it on any supported job
-          page to add it to Job Radar instantly.
+          Capture a job posting in one click. Drag the button below to your browser's
+          bookmarks bar, then click it on a job's page, on a job board or a company's own
+          careers site.
         </p>
         <p className="text-sm text-muted-foreground">
-          <strong>Supported:</strong> LinkedIn, Dice, BuiltIn, Monster, ZipRecruiter, Indeed, Ashby, Greenhouse
+          <strong>Read directly:</strong> LinkedIn, Dice, BuiltIn, Monster, ZipRecruiter, Indeed, Ashby,
+          Greenhouse, and any careers page that publishes its job details for search engines
+          (most Workday, Lever, iCIMS and SmartRecruiters pages do). On any other page your AI
+          model reads the page instead: one call on your key, and you check the result.
         </p>
       </div>
 
@@ -1026,7 +1076,7 @@ function BookmarkletTab() {
           onClick={(e) => {
             // Allow drag; prevent accidental navigation on click
             e.preventDefault();
-            alert("Drag this button to your bookmarks bar, then click it on any supported job page (LinkedIn, Dice).");
+            alert("Drag this button to your bookmarks bar, then click it on a job's page.");
           }}
         >
           <BookmarkIcon className="h-4 w-4" />
@@ -1052,7 +1102,7 @@ function BookmarkletTab() {
             <ol className="list-decimal list-inside space-y-0.5 text-muted-foreground text-xs leading-relaxed ml-5">
               <li>Make sure the bookmarks bar is visible — <kbd className="bg-muted px-1 rounded text-foreground">Ctrl/Cmd + Shift + B</kbd></li>
               <li>Drag the "Add to Job Radar" button to the bookmarks bar</li>
-              <li>Done! Navigate to any LinkedIn job and click the bookmark</li>
+              <li>Done! Open any job posting and click the bookmark</li>
             </ol>
           </div>
 

@@ -108,8 +108,8 @@ function JobPipelineTab() {
       <Separator />
 
       <H2>Bookmarklet — adding jobs manually</H2>
-      <P>The bookmarklet lets you add a job to Job Radar in one click while browsing
-        any supported job site. No copy-pasting required.</P>
+      <P>The bookmarklet lets you add a job to Job Radar in one click from the job's page,
+        on job boards and on companies' own careers sites. No copy-pasting required.</P>
 
       <H3>Setup (one time)</H3>
       <ol className="list-decimal list-inside space-y-1 ml-2">
@@ -121,7 +121,7 @@ function JobPipelineTab() {
       <H3>Using it</H3>
       <ol className="list-decimal list-inside space-y-1 ml-2">
         <Li><strong>Keep Job Radar open</strong> in another tab or window — the bookmarklet opens a new tab in Job Radar to complete the import</Li>
-        <Li>Navigate to a job posting on a supported site</Li>
+        <Li>Open the job posting itself (not a list of search results)</Li>
         <Li>Click <strong>"Add to Job Radar"</strong> in your bookmarks bar</Li>
         <Li>A new Job Radar tab opens with the job details pre-filled — review and save</Li>
         <Li>The job is added to your list and queued for AI scoring automatically</Li>
@@ -137,7 +137,27 @@ function JobPipelineTab() {
         <Li><strong>Indeed</strong> — fully supported</Li>
         <Li><strong>Ashby</strong> (jobs.ashbyhq.com) — fully supported</Li>
         <Li><strong>Greenhouse</strong> (job&#8288;-&#8288;boards.greenhouse.io) — fully supported</Li>
+        <Li><strong>Any other site</strong> — see below</Li>
       </ul>
+
+      <H3>Company career sites and other job pages</H3>
+      <P>On a site not listed above, the bookmarklet first looks for the job details the page
+        publishes for search engines. Most company careers sites have them, including those run
+        on Workday, Lever, iCIMS and SmartRecruiters. These are exact and cost nothing.</P>
+      <P>If the page has none, the bookmarklet sends the page's text to Job Radar, and your AI
+        model picks out the title, company, location, pay and description. That's one call on
+        your key. The description is copied from the page word for word, never rewritten.
+        Check the form before saving. If the page has a lot besides the job, highlight the
+        posting before clicking the bookmarklet and only that part is sent.</P>
+      <P>Some sites show the job inside a frame from another site. The bookmarklet can't read
+        those, so it offers to open the job on its own page; click the bookmarklet again there.</P>
+      <P><strong>Updated the bookmarklet?</strong> Your browser keeps its own copy, so after a
+        release that changes it, drag the button from Settings → Bookmarklet to your bar again.</P>
+
+      <H3>Paste the posting</H3>
+      <P>Where the bookmarklet can't help, such as on your phone, open <strong>Add job</strong>,
+        choose <strong>Paste the posting</strong>, and paste the whole job page (select all,
+        copy, paste). Your AI model fills in the form the same way.</P>
 
       <Separator />
 

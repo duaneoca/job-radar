@@ -19,10 +19,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from sqlalchemy import exists, func
 from sqlalchemy.orm import Session, joinedload
 
-from app import assistant, dedup, models, schemas
+from app import assistant, dedup, models, posting_extract, schemas
 from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user, require_internal_token
+from app.llm import get_llm_provider
 
 logger = logging.getLogger(__name__)
 
@@ -614,6 +615,20 @@ def _adopt_imported_link(review: models.UserJobReview, payload: schemas.JobCreat
         .filter(models.UserJobReview.id == review.id)
         .first()
     )
+
+
+@router.post("/extract-posting", response_model=schemas.PostingExtractOut)
+def extract_posting(
+    payload: schemas.PostingExtractIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Fill the Add Job form from a whole page of text, with the user's analysis
+    model. Nothing is saved — the user checks the form and saves it. Not in
+    oauth.ROUTE_POLICY: connected assistants can't spend the key this way."""
+    api_key, model = get_llm_provider(current_user.id, db)
+    return posting_extract.extract(payload.text, payload.page_title, api_key, model,
+                                   db=db, user_id=current_user.id)
 
 
 @router.post("/manual", response_model=schemas.UserJobReviewOut, status_code=status.HTTP_201_CREATED)

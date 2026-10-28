@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Copy, Loader2, Plus } from "lucide-react";
+import { ArrowLeft, ClipboardPaste, Copy, Loader2, Plus, Sparkles } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -21,7 +21,21 @@ interface BookmarkletData {
   source?: string;
   salary_min?: number;
   salary_max?: number;
+  /** "listing": read from the page's own job data. "page": the bookmarklet had no
+   *  reader for the site, so it sent the page's text for the AI to read. */
+  via?: "listing" | "page";
+  page_text?: string;
+  page_title?: string;
 }
+
+interface Extracted {
+  title: string | null; company: string | null; location: string | null; remote: boolean;
+  salary_min: number | null; salary_max: number | null;
+  description: string; description_found: boolean;
+}
+
+/** Below this there's nothing to find a posting in; the server says the same. */
+const MIN_PASTE = 200;
 
 function decodeHash(): BookmarkletData {
   try {
@@ -59,6 +73,49 @@ export function AddJobPage() {
   const [salaryMax, setSalaryMax] = useState(prefilled.salary_max ? String(prefilled.salary_max) : "");
   const [description, setDescription] = useState(prefilled.description ?? "");
   const source = prefilled.source ?? "manual";
+
+  // "Paste the posting" box, and the bookmarklet's page-text hand-off, both fill
+  // the form through POST /jobs/extract-posting (the user's analysis model).
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState(prefilled.page_text ?? "");
+  const [extracting, setExtracting] = useState(false);
+  const [aiFilled, setAiFilled] = useState<{ descriptionFound: boolean } | null>(null);
+
+  async function fillFromText(text: string, pageTitle?: string) {
+    setExtracting(true);
+    try {
+      const { data } = await jobsApi.post<Extracted>("/jobs/extract-posting", { text, page_title: pageTitle ?? null });
+      if (data.title) setTitle(data.title);
+      if (data.company) setCompany(data.company);
+      if (data.location) setLocation(data.location);
+      setRemote(data.remote);
+      if (data.salary_min) setSalaryMin(String(data.salary_min));
+      if (data.salary_max) setSalaryMax(String(data.salary_max));
+      setDescription(data.description);
+      setAiFilled({ descriptionFound: data.description_found });
+      setPasteOpen(false);
+    } catch (err: any) {
+      // Leave the text in the box so they can trim it and try again, or copy from it.
+      setPasteOpen(true);
+      toast({
+        title: "Couldn't fill in the form",
+        description: err?.response?.data?.detail ?? "Something went wrong. You can still fill it in by hand.",
+        variant: "destructive",
+      });
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  // The bookmarklet sent a page it has no reader for: read it once, on arrival.
+  // Once only: StrictMode runs mount effects twice, and each run is a paid call.
+  const readPage = useRef(false);
+  useEffect(() => {
+    if (readPage.current) return;
+    readPage.current = true;
+    if (prefilled.via === "page" && prefilled.page_text) fillFromText(prefilled.page_text, prefilled.page_title);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const externalId = prefilled.external_id ?? "";
 
   // Opened from an inbox posting (Add job on a recruiter email): pre-fill from
@@ -161,11 +218,17 @@ export function AddJobPage() {
         </Button>
         <div>
           <h1 className="text-xl font-bold">
-            {fromLinkedIn ? "Add LinkedIn Job" : fromPosting ? "Add job from recruiter email" : "Add Job Manually"}
+            {fromLinkedIn ? "Add LinkedIn Job" : fromPosting ? "Add job from recruiter email"
+              : prefilled.via ? "Add job from this page" : "Add Job Manually"}
           </h1>
           {fromLinkedIn && (
             <p className="text-sm text-muted-foreground mt-0.5">
               Review the details captured from LinkedIn, then save.
+            </p>
+          )}
+          {prefilled.via === "listing" && (
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Read from the job listing data on the page. Check it over, then save.
             </p>
           )}
           {posting && (
@@ -197,6 +260,71 @@ export function AddJobPage() {
               Add as a separate job anyway
             </Button>
           </div>
+        </div>
+      )}
+
+      {extracting && (
+        <div className="flex items-center gap-2 rounded-lg border bg-muted/40 p-3 text-sm">
+          <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+          Your AI model is reading the posting…
+        </div>
+      )}
+
+      {aiFilled && !extracting && (
+        <div className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+          <Sparkles className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+          <p>
+            Filled in by your AI model from the posting. Check each field before saving.
+            {!aiFilled.descriptionFound &&
+              " It couldn't tell where the job description starts, so the description below is the whole page: trim it to the posting."}
+          </p>
+        </div>
+      )}
+
+      {!fromPosting && (
+        <div className="rounded-lg border">
+          {!pasteOpen ? (
+            <button
+              type="button"
+              onClick={() => setPasteOpen(true)}
+              className="flex w-full items-center gap-2 p-3 text-left text-sm hover:bg-muted/50"
+            >
+              <ClipboardPaste className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span>
+                <span className="font-medium">Paste the posting</span>
+                <span className="text-muted-foreground"> and let your AI model fill in the form</span>
+              </span>
+            </button>
+          ) : (
+            <div className="space-y-2 p-3">
+              <Label htmlFor="paste">Paste the posting</Label>
+              <p className="text-xs text-muted-foreground">
+                On the job's page, select everything (Ctrl/Cmd + A), copy, and paste it here. Extra text
+                around the posting is fine. Uses one call to your AI model.
+              </p>
+              <Textarea
+                id="paste"
+                rows={8}
+                value={pasteText}
+                onChange={(e) => setPasteText(e.target.value)}
+                placeholder="Paste the whole job page here…"
+                className="text-xs"
+              />
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={extracting || pasteText.trim().length < MIN_PASTE}
+                  onClick={() => fillFromText(pasteText)}
+                  className="gap-1.5"
+                >
+                  {extracting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  Fill in the form
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setPasteOpen(false)}>Close</Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
