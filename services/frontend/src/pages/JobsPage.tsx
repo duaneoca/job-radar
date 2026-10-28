@@ -22,6 +22,7 @@ import { Switch } from "../components/ui/switch";
 import { Label } from "../components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../components/ui/sheet";
 import { StarButton } from "../components/StarButton";
+import { AGGREGATOR_SOURCES, findOnCompanySite } from "../lib/companySite";
 import { Separator } from "../components/ui/separator";
 import { Textarea } from "../components/ui/textarea";
 import {
@@ -766,6 +767,16 @@ function JobsTab() {
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
+                {AGGREGATOR_SOURCES.has(selected.source) && (
+                  <button
+                    type="button"
+                    onClick={() => findOnCompanySite(selected)}
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    <Search className="h-3.5 w-3.5" />
+                    Link dead? Find it on the company's site
+                  </button>
+                )}
               </div>
             </>
           )}

@@ -631,11 +631,56 @@ def extract_posting(
                                    db=db, user_id=current_user.id)
 
 
+def _replace_with_import(review_id: UUID, payload: schemas.JobCreate, response: Response,
+                         user: models.User, db: Session) -> schemas.UserJobReviewOut:
+    """The user found this job on the company's own site ("Find on company site")
+    and says the import IS their existing entry. Unlike _adopt_imported_link this is
+    the user's choice, not a match: Adzuna's company names rarely match the
+    careers page's ("NVIDIA" vs "NVIDIA Corporation"), so the automatic match
+    would miss most of these.
+
+    The entry moves to the imported posting: its link, and its full description
+    (an aggregator often gives only an excerpt), so it is scored again. Rows are
+    shared, so this is a Job row of the user's own (or the existing row for that
+    link), never an edit of the old one. The new row keeps the old row's match
+    key, so the aggregator's next re-listing of the same ad is still recognised
+    as this job. A job the system or user had expired comes back: it's live."""
+    review = _get_review_or_404(review_id, user, db)
+    if not payload.url:
+        raise HTTPException(422, "Updating a job needs the posting's link.")
+    target = db.query(models.Job).filter(models.Job.url == payload.url).first()
+    if target is not None:
+        held = _user_review(target.id, user.id, db)
+        if held is not None:
+            # Already their entry for this page — this one or another.
+            response.status_code = status.HTTP_200_OK
+            out = schemas.UserJobReviewOut.from_review(_get_review_or_404(held.id, user, db))
+            out.already_had = "same_link"
+            return out
+    else:
+        target = models.Job(**payload.model_dump(),
+                            match_key=review.job.match_key or dedup.match_key(
+                                payload.company, payload.title, payload.location))
+        db.add(target)
+        db.flush()
+    review.job_id = target.id
+    _add_timeline(db, review.id, "note", "Link and posting updated from the company's site")
+    if review.status == models.JobStatus.EXPIRED:
+        apply_status_change(review, models.JobStatus.NEW, "found live on the company's site", db)
+    db.commit()
+    _celery.send_task("app.tasks.review_job", args=[str(target.id), str(user.id)], queue="review")
+    response.status_code = status.HTTP_200_OK
+    out = schemas.UserJobReviewOut.from_review(_get_review_or_404(review.id, user, db))
+    out.already_had = "replaced"
+    return out
+
+
 @router.post("/manual", response_model=schemas.UserJobReviewOut, status_code=status.HTTP_201_CREATED)
 def create_manual_job(
     payload: schemas.JobCreate,
     response: Response,
     separate: bool = Query(False, description="Add even if the user has this role already"),
+    replaces: Optional[UUID] = Query(None, description="Update this review with the import instead of adding a job"),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
@@ -644,6 +689,8 @@ def create_manual_job(
     Creates a Job + UserJobReview for the current user only, then enqueues AI review.
     Returns 200 if the user already has a review for this job.
     """
+    if replaces is not None:
+        return _replace_with_import(replaces, payload, response, current_user, db)
     # Find existing job: prefer external_id+source match, fall back to URL
     existing_job = None
     if payload.external_id and payload.source:

@@ -161,6 +161,20 @@ function JobPipelineTab() {
 
       <Separator />
 
+      <H2>Dead links: Find on company site</H2>
+      <P>Adzuna and the other job aggregators re-post their ads every few days, so a link can
+        lead to "no longer available" while the job is still open on the company's own careers
+        site. Jobs from those sites have a <strong>Find on company site</strong> button, on the
+        job's page and at the bottom of its side panel, that searches for the posting.</P>
+      <P>When you find it, import it with the bookmarklet (or paste it on Add job). Job Radar
+        remembers which job you were looking for and offers to <strong>update that job</strong>
+        instead of adding a new one. It takes the company's link and full posting, is scored
+        again (aggregators often give only part of the description), and if it had expired it
+        comes back to your list. Turn the switch off, or choose <em>Not that job</em>, to add it
+        as a separate job.</P>
+
+      <Separator />
+
       <H2>Deduplication</H2>
       <P>Job boards list the same opening many times — Adzuna re-posts openings under new
         IDs every few days, and the same role turns up on several sites. Job Radar treats a
