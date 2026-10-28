@@ -545,9 +545,16 @@ function InboxRecruitersTab({ agentEnabled }: { agentEnabled: boolean }) {
             logging the update on that job's timeline automatically.</P>
           <P>A posting marked as a <strong>possible duplicate</strong> shows which of your
             jobs it looks like, with a link to it. If it's the same job, choose
-            <em>Same job — skip</em>; if not, open the link and import it as usual (if it turns
+            <em>Already have it</em>; if not, open the link and import it as usual (if it turns
             out you have it after all, the import takes you to it rather than adding a copy).
-            Any posting can be skipped, and <em>Undo</em> brings it back.</P>
+            Any other posting can be set aside with <em>Not interested</em>. Either one only
+            greys the posting out in the inbox so you know you've seen it; your jobs list isn't
+            changed, and <em>Undo</em> brings it back.</P>
+          <P>Each email has a status badge. The agent marks most emails <strong>Processed</strong>
+            itself. For an email that's <strong>Pending</strong> or <strong>Needs review</strong>,
+            <em>Mark handled</em> says you've dealt with it and moves it to Processed.
+            <em>Dismiss</em> marks any email as not relevant: it stays in the list as
+            <strong>Discarded</strong>, and <em>Restore</em> undoes that.</P>
           <P>The email agent is an optional feature the administrator can turn on or off
             globally. When it's off, the Inbox tab and the Email Agent settings are hidden —
             the Recruiters contact list below stays available either way.</P>
