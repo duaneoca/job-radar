@@ -332,7 +332,9 @@ same banner. The args stay optional only so the functions remain callable from a
 script; if you add a call site, wire them.
 
 Foreground calls record transient kinds too. `llm_complete` already sets
-`num_retries=2`, so a throttle that surfaces has outlasted its retries — the same
+`num_retries=2` (litellm retries through `tenacity`, which it does not install — it is
+pinned in requirements.txt; without it every failure read "tenacity import failed", June–Oct
+2026), so a throttle that surfaces has outlasted its retries — the same
 bar the worker applies. `_PROVIDER_DOWN` (timeout / connection / 5xx) is handled
 explicitly and logged at WARNING; before that it fell through to the catch-all and
 logged at **ERROR**, which put a user's provider outage in the operator's digest.

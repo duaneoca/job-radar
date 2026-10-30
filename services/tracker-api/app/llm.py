@@ -486,8 +486,11 @@ def llm_complete(
             # Auto-retry transient provider hiccups (429 rate-limit windows, 529
             # "overloaded", brief timeouts) with exponential backoff. Absorbs the
             # per-minute spikes that free tiers hit; a hard daily limit still
-            # surfaces cleanly after the retries are exhausted.
+            # surfaces cleanly after the retries are exhausted. litellm retries
+            # through tenacity (see requirements.txt), and without
+            # retry_strategy its retries don't wait at all.
             num_retries=2,
+            retry_strategy="exponential_backoff_retry",
         )
     except litellm.AuthenticationError as e:
         _remember(db, user_id, models.KEY_ERROR_INVALID_KEY, str(e), model)

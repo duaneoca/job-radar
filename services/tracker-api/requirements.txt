@@ -28,6 +28,11 @@ boto3==1.35.76
 
 # Multi-provider LLM routing
 litellm==1.57.3
+# Not imported directly, and not a litellm dependency: litellm imports it only when
+# a call that passed num_retries fails. Without it every failed foreground call
+# (bad key, rate limit, retired model) surfaced as "tenacity import failed" instead
+# of its real error — from June to October 2026. test_llm_retries.py pins it.
+tenacity==9.0.0
 
 # Web search for company research
 tavily-python==0.5.0
