@@ -627,6 +627,8 @@ Parse with `Math.round(parseFloat(match[1].replace(/,/g,'')) * (match[2].toUpper
 - **SQLAlchemy cascade:** always set both `ondelete="CASCADE"` on the FK column AND `cascade="all, delete-orphan"` on the relationship, otherwise bulk `.delete(synchronize_session=False)` won't cascade.
 - **Admin bootstrap:** if `ADMIN_EMAIL` env var is set and no users exist, the first startup creates an admin account with `ADMIN_PASSWORD` and forces a password change.
 - **Docs stay in lockstep with features:** any user-facing change ships matching updates to the in-app Help (`services/frontend/src/pages/HelpPage.tsx`) and, for headline features, the public landing page (`services/frontend/src/pages/LandingPage.tsx` + `index.html` meta). Don't let the docs drift behind the product.
+  Its screenshots (light + dark pairs) are retaken with `scripts/marketing-screenshots` —
+  see [`docs/marketing-screenshots.md`](docs/marketing-screenshots.md).
 
 ---
 

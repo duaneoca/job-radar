@@ -8,17 +8,23 @@ import {
   KeyRound,
   Check,
   ArrowRight,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { BrowserFrame } from "../components/marketing/BrowserFrame";
+import { useDarkMode } from "../hooks/useDarkMode";
 
-/** Screenshots live in /public/marketing (real dark-mode captures of the app). */
+/** Screenshots live in /public/marketing, one per theme: `<name>-light.png` and
+ *  `<name>-dark.png`, so the page shows the app in the theme you're viewing it in.
+ *  Captured from staging by scripts/marketing-screenshots (docs/marketing-screenshots.md). */
 const SHOTS = {
-  jobs: "/marketing/jobs-list.png",
-  detail: "/marketing/job-detail.png",
-  tailor: "/marketing/resume-tailor.png",
-  capture: "/marketing/capture.png",
+  jobs: "jobs-list",
+  detail: "job-detail",
+  tailor: "resume-tailor",
+  capture: "capture",
 };
+const shotSrc = (name: string, dark: boolean) => `/marketing/${name}-${dark ? "dark" : "light"}.png`;
 
 type Feature = {
   icon: typeof Target;
@@ -72,23 +78,40 @@ const FEATURES: Feature[] = [
 
 function Wordmark() {
   return (
-    <span className="flex items-center gap-2 font-bold text-primary">
+    <span className="flex items-center gap-2 whitespace-nowrap font-bold text-primary">
       <Radar className="h-5 w-5" />
       <span className="text-foreground">Job Radar</span>
     </span>
   );
 }
 
-export function LandingPage() {
+/** Light/dark switch. Shares the app's saved theme, so a visitor who picks one
+ *  here keeps it after signing in, and vice versa. Until they choose, the page
+ *  follows their system setting. */
+function ThemeToggle({ dark, onToggle }: { dark: boolean; onToggle: () => void }) {
+  const Icon = dark ? Sun : Moon;
+  const label = dark ? "Switch to light mode" : "Switch to dark mode";
   return (
-    // Forced dark for brand consistency, independent of the app theme toggle.
-    <div className="dark min-h-screen bg-background text-foreground">
+    <Button variant="ghost" size="icon" onClick={onToggle} aria-label={label} title={label}>
+      <Icon className="h-4 w-4" />
+    </Button>
+  );
+}
+
+export function LandingPage() {
+  const { setMode, dark } = useDarkMode();
+  const toggle = () => setMode(dark ? "light" : "dark");
+  return (
+    <div className="min-h-screen bg-background text-foreground">
       {/* Nav */}
       <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
           <Wordmark />
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" asChild>
+          <div className="flex items-center gap-1 sm:gap-2">
+            <ThemeToggle dark={dark} onToggle={toggle} />
+            {/* The hero repeats Sign in just below; on the narrowest phones the
+                header has no room for both it and the theme toggle. */}
+            <Button variant="ghost" asChild className="hidden min-[380px]:inline-flex">
               <Link to="/login">Sign in</Link>
             </Button>
             <Button asChild>
@@ -126,7 +149,7 @@ export function LandingPage() {
             </Button>
           </div>
           <div className="mx-auto mt-14 max-w-4xl">
-            <BrowserFrame src={SHOTS.jobs} alt="Job Radar dashboard" />
+            <BrowserFrame src={shotSrc(SHOTS.jobs, dark)} alt="Job Radar dashboard" />
           </div>
         </div>
       </section>
@@ -157,7 +180,7 @@ export function LandingPage() {
                 </ul>
               </div>
               <div className={flip ? "lg:order-1" : ""}>
-                <BrowserFrame src={f.shot} alt={f.shotAlt} />
+                <BrowserFrame src={shotSrc(f.shot, dark)} alt={f.shotAlt} />
               </div>
             </div>
           );

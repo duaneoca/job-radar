@@ -1,0 +1,9 @@
+{
+  "name": "job-radar-marketing-screenshots",
+  "private": true,
+  "type": "module",
+  "description": "Captures the landing page screenshots from staging. See docs/marketing-screenshots.md.",
+  "dependencies": {
+    "playwright": "1.48.2"
+  }
+}
