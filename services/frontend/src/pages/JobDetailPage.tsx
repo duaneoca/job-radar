@@ -9,6 +9,7 @@ import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
+import { Markdown } from "../components/Markdown";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { Separator } from "../components/ui/separator";
@@ -731,8 +732,8 @@ export function JobDetailPage() {
           )}
 
           {displayedResearch ? (
-            <div className="rounded-lg border bg-muted/30 p-4 text-sm leading-relaxed whitespace-pre-wrap">
-              {displayedResearch}
+            <div className="rounded-lg border bg-muted/30 p-4 text-sm leading-relaxed">
+              <Markdown>{displayedResearch}</Markdown>
             </div>
           ) : (
             <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
