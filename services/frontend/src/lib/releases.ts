@@ -44,12 +44,17 @@ export const RELEASES: Release[] = [
   {
     version: "v1.22.2",
     date: "2026-10-30",
-    headline: "AI errors say what actually went wrong, and you can copy them",
+    headline: "AI errors say what actually went wrong, and company research is easier to read",
     notes: [
       {
         title: "AI errors say what actually went wrong",
         detail:
           "Since June, when application answers, research, interview prep or résumé tailoring failed, Job Radar showed a confusing message about \"tenacity\" instead of the reason. A rejected key, a rate limit and a retired model all looked the same, and the API key warning never appeared for them. You now see the real reason, such as an invalid key or a rate limit, and the key warning shows where it should. A brief hiccup at your AI provider is also retried once before it reaches you, as it was always meant to be.",
+      },
+      {
+        title: "Company research is formatted",
+        detail:
+          "Research on a job showed its formatting as raw symbols: headings started with ### and bold words were wrapped in **. It now shows proper headings, bold text and bullet lists.",
       },
       {
         title: "Copy error messages",
