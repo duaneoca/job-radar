@@ -39,7 +39,7 @@ export function Layout({ children }: LayoutProps) {
     setOpen(false);
     try { await authApi.post("/auth/logout"); } catch { /* ignore */ }
     setUser(null);
-    navigate("/login");
+    navigate("/login", { replace: true });
   }
 
   return (

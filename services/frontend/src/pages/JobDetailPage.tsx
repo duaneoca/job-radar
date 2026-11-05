@@ -469,10 +469,21 @@ export function JobDetailPage() {
 
   const displayedResearch = job.research_summary ?? null;
 
+  // Back to wherever the user came from in the app (keeps the list's filters
+  // and scroll), but only if there IS an in-app page behind this one. Opened
+  // from a link (email, assistant, new tab) or right after signing in, history
+  // .back() would leave the app or land on /login — go to the list instead.
+  // React Router keeps its own entry index in history.state.idx.
+  function goBack() {
+    const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
+    if (idx > 0) navigate(-1);
+    else navigate("/jobs");
+  }
+
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       {/* Back */}
-      <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="-ml-1">
+      <Button variant="ghost" size="sm" onClick={goBack} className="-ml-1">
         <ArrowLeft className="h-4 w-4 mr-1" />
         Back
       </Button>

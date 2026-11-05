@@ -67,7 +67,7 @@ function AccountTab() {
       setUser(res.data);
       setCurrentPassword(""); setNewPassword(""); setConfirmPassword("");
       toast({ title: "Password changed successfully" });
-      if (forcedNext) navigate(forcedNext);
+      if (forcedNext) navigate(forcedNext, { replace: true });
     } catch (err: any) {
       toast({ title: "Failed to change password", description: err?.response?.data?.detail ?? "Unknown error", variant: "destructive" });
     } finally {

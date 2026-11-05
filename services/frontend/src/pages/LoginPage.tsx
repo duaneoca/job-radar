@@ -29,9 +29,10 @@ export function LoginPage() {
       if (res.data.user.must_change_password) {
         // Change the temporary password first, then carry on to `next` — on the
         // OAuth consent page, dropping it would lose the assistant's request.
-        navigate(`/settings?tab=account&force=1&next=${encodeURIComponent(next)}`);
+        navigate(`/settings?tab=account&force=1&next=${encodeURIComponent(next)}`, { replace: true });
       } else {
-        navigate(next);
+        // replace: /login must not stay in history, or Back returns to it.
+        navigate(next, { replace: true });
       }
     } catch (err: any) {
       toast({

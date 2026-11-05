@@ -28,9 +28,10 @@ client.interceptors.response.use(
       // The session is gone: forget the stored user too, or every guarded page
       // (and the OAuth consent page) keeps believing it's signed in — a Back
       // press or another tab would bounce through more 401s. Then sign in and
-      // come back here (lib/loginRedirect.ts).
+      // come back here (lib/loginRedirect.ts). replace(), not href: the page
+      // that 401'd must not stay in history, or Back lands on /login.
       useAuthStore.getState().setUser(null);
-      window.location.href = loginUrl(window.location);
+      window.location.replace(loginUrl(window.location));
     }
     return Promise.reject(err);
   }
