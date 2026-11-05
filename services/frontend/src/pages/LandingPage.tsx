@@ -16,7 +16,8 @@ import { BrowserFrame } from "../components/marketing/BrowserFrame";
 import { useDarkMode } from "../hooks/useDarkMode";
 
 /** Screenshots live in /public/marketing, one per theme: `<name>-light.png` and
- *  `<name>-dark.png`, so the page shows the app in the theme you're viewing it in.
+ *  `<name>-dark.png`, so the page shows the app in the theme you're viewing it in,
+ *  plus a phone-width `<name>-<theme>-phone.png` of each that phones get instead.
  *  Captured from staging by scripts/marketing-screenshots (docs/marketing-screenshots.md). */
 const SHOTS = {
   jobs: "jobs-list",
@@ -24,7 +25,8 @@ const SHOTS = {
   tailor: "resume-tailor",
   capture: "capture",
 };
-const shotSrc = (name: string, dark: boolean) => `/marketing/${name}-${dark ? "dark" : "light"}.png`;
+const shotSrc = (name: string, dark: boolean, phone = false) =>
+  `/marketing/${name}-${dark ? "dark" : "light"}${phone ? "-phone" : ""}.png`;
 
 type Feature = {
   icon: typeof Target;
@@ -149,7 +151,7 @@ export function LandingPage() {
             </Button>
           </div>
           <div className="mx-auto mt-14 max-w-4xl">
-            <BrowserFrame src={shotSrc(SHOTS.jobs, dark)} alt="Job Radar dashboard" />
+            <BrowserFrame src={shotSrc(SHOTS.jobs, dark)} phoneSrc={shotSrc(SHOTS.jobs, dark, true)} alt="Job Radar dashboard" />
           </div>
         </div>
       </section>
@@ -180,7 +182,7 @@ export function LandingPage() {
                 </ul>
               </div>
               <div className={flip ? "lg:order-1" : ""}>
-                <BrowserFrame src={shotSrc(f.shot, dark)} alt={f.shotAlt} />
+                <BrowserFrame src={shotSrc(f.shot, dark)} phoneSrc={shotSrc(f.shot, dark, true)} alt={f.shotAlt} />
               </div>
             </div>
           );
