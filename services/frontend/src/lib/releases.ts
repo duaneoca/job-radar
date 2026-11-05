@@ -44,7 +44,7 @@ export const RELEASES: Release[] = [
   {
     version: "v1.22.2",
     date: "2026-10-30",
-    headline: "AI errors say what actually went wrong, and company research is easier to read",
+    headline: "AI errors say what actually went wrong, research is easier to read, and Back returns to your jobs",
     notes: [
       {
         title: "AI errors say what actually went wrong",
@@ -60,6 +60,11 @@ export const RELEASES: Release[] = [
         title: "Copy error messages",
         detail:
           "You can now select the text of a pop-up message, and error messages have a Copy button. Pasting the exact error is easier than sending a screenshot.",
+      },
+      {
+        title: "Back goes to your jobs, not the sign-in page",
+        detail:
+          "If you had to sign in again on the way to a job, which happens most often on a phone, the Back arrow on the job page took you to the sign-in page instead of your jobs list. Back now returns to your jobs list. Your browser's back button skips the sign-in page too.",
       },
     ],
   },
