@@ -491,7 +491,9 @@ export function JobDetailPage() {
       {/* Header */}
       <div className="space-y-2">
         <div className="flex flex-wrap items-start gap-3">
-          <div className="flex-1 min-w-0">
+          {/* basis-64: without a floor, min-w-0 lets the title shrink to one word
+              beside the buttons on a phone instead of wrapping them below. */}
+          <div className="flex-1 basis-64 min-w-0">
             <div className="flex items-start gap-2">
               <StarButton starred={job.starred} onToggle={toggleStar} className="mt-1" iconClassName="h-6 w-6" />
               <h1 className="text-2xl font-bold leading-snug">{job.title}</h1>
@@ -558,8 +560,8 @@ export function JobDetailPage() {
       {/* AI Score card */}
       {job.ai_score != null && (
         <>
-          <div className="flex items-center gap-4 p-4 rounded-lg border bg-card">
-            <div className="text-center shrink-0">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 p-4 rounded-lg border bg-card">
+            <div className="flex items-baseline gap-2 sm:block sm:text-center shrink-0">
               <button
                 className={`text-4xl font-bold ${scoreColor(job.ai_score)} hover:underline cursor-pointer`}
                 title="Click to see score breakdown"
@@ -569,7 +571,7 @@ export function JobDetailPage() {
               </button>
               <div className="text-xs text-muted-foreground">AI score</div>
             </div>
-            <Separator orientation="vertical" className="h-12" />
+            <Separator orientation="vertical" className="hidden sm:block h-12" />
             <div className="flex-1 space-y-1">
               {job.recommended && (
                 <div className="flex items-center gap-1 text-sm font-medium text-yellow-600 dark:text-yellow-400">
