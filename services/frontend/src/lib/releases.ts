@@ -42,6 +42,18 @@ export interface Release {
 export const RELEASES: Release[] = [
   // Newest first. See the module comment before adding one.
   {
+    version: "v1.22.3",
+    date: "2026-11-05",
+    headline: "Job pages fit on a phone",
+    notes: [
+      {
+        title: "Job pages fit on a phone",
+        detail:
+          "On a phone, the Apply and Find on company site buttons crowded the job title down to a word or two, and the company name wrapped one word per line. The buttons now sit below the title, and the AI score sits above its summary so the summary uses the full width.",
+      },
+    ],
+  },
+  {
     version: "v1.22.2",
     date: "2026-10-30",
     headline: "AI errors say what actually went wrong, research is easier to read, and Back returns to your jobs",
