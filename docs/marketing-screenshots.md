@@ -1,17 +1,19 @@
 # Landing page screenshots
 
 The public landing page (`services/frontend/src/pages/LandingPage.tsx`) shows four
-screenshots of the app. Each one exists twice, light and dark, and the page shows the set
-that matches the visitor's theme, including after they flip the toggle in its header. The
-dark jobs list is also the link-preview image (`og:image` / `twitter:image` in
-`services/frontend/index.html`).
+screenshots of the app. Each one exists four times: light and dark, desktop and phone. The
+page shows the theme that matches the visitor's, including after they flip the toggle in
+its header. Below 640 pixels wide it shows the phone shots in a phone-shaped frame, since a
+desktop screenshot shrunk to a phone can't be read. `<picture>` makes the choice, so each
+visitor downloads only the set they see. The dark desktop jobs list is also the
+link-preview image (`og:image` / `twitter:image` in `services/frontend/index.html`).
 
 | Image | Screen | Captured from |
 |---|---|---|
-| `jobs-list-{light,dark}.png` | Jobs list, Reviewed only | `/jobs` |
-| `job-detail-{light,dark}.png` | A job, Research tab | `/jobs/<id>` |
-| `resume-tailor-{light,dark}.png` | Tailored résumé review | `/jobs/<id>/tailor` |
-| `capture-{light,dark}.png` | Add Job, filled in, not submitted | `/jobs/add` |
+| `jobs-list-{light,dark}[-phone].png` | Jobs list, Reviewed only | `/jobs` |
+| `job-detail-{light,dark}[-phone].png` | A job, Research tab (phone: scrolled to it) | `/jobs/<id>` |
+| `resume-tailor-{light,dark}[-phone].png` | Tailored résumé review | `/jobs/<id>/tailor` |
+| `capture-{light,dark}[-phone].png` | Add Job, filled in, not submitted | `/jobs/add` |
 
 They live in `services/frontend/public/marketing/`. Everything in `public/` is served on
 the site, so keep notes like this one out of that folder.
@@ -37,17 +39,20 @@ and scoring keep the account current.
    ```bash
    node capture.mjs login
    ```
-4. **Capture all eight.**
+4. **Capture all sixteen.**
    ```bash
    node capture.mjs shots --job <id>
    ```
-   Each image is 2880 × 1800: a 1440 × 900 window at 2× for sharp text on retina screens.
+   Desktop images are 2880 × 1800: a 1440 × 900 window at 2× for sharp text on retina
+   screens. Phone images are 1170 × 2340: a 390 × 780 phone window at 3×, with touch
+   emulation, so the app lays itself out as it does on a real phone.
    The script closes the release banner, filters the list to Reviewed, opens the Research
    tab, and fills Add Job from another job on the account. It prefers The Muse, which sends
    the whole posting; Adzuna only sends a snippet.
 5. **Look at every image** before committing. A blank tab, an error message or a stray
    banner is easy to miss in a file list. To see them in place, run the frontend
    (`npm run dev` in `services/frontend`), open `/` signed out, and flip the theme toggle.
+   Narrow the window below 640 pixels to see the phone set.
 6. **Delete the saved session.**
    ```bash
    node capture.mjs logout
@@ -61,4 +66,5 @@ If the script says the session expired, run `login` again.
 The screens, the window size and the job used for Add Job are all in
 `scripts/marketing-screenshots/capture.mjs`. To add a screenshot, add a capture step there
 and a feature (or a `SHOTS` entry) in `LandingPage.tsx`. Keep the `<name>-light.png` /
-`<name>-dark.png` pair, since the page builds both paths from the name.
+`<name>-dark.png` pair and their `-phone` versions, since the page builds all four paths from
+the name.
