@@ -148,3 +148,78 @@ def test_saving_same_resume_text_keeps_fresh(client, db):
     r = client.put("/profile", json={"resume_text": "same", "full_name": "Duane"})
     assert r.status_code == 200
     assert r.json()["resume_structured_stale"] is False
+
+
+# ── a heading the model split from its content ────────────────
+
+SPLIT_TEXT = """Jane Doe
+
+SUMMARY
+Engineer.
+
+PRODUCTION AI PROJECTS (2024-present)
+- Built an agentic email pipeline with LangGraph and Slack hand-off.
+- Built private voice assistants on Raspberry Pi hardware.
+
+EXPERIENCE
+Acme Corp (2010-2024)
+- Ran the platform team for fourteen years.
+
+EDUCATION
+BA Computer Science, UC Berkeley
+"""
+
+# What a model returned for it: the bullets filed as `projects` with no heading,
+# and the heading kept as an EMPTY custom section.
+SPLIT_PARSE = {
+    "summary": "Engineer.",
+    "experience": [{"company": "Acme Corp", "titles": [], "start": "2010", "end": "2024",
+                    "bullets": ["Ran the platform team for fourteen years."]}],
+    "education": [{"degree": "BA Computer Science", "school": "UC Berkeley"}],
+    "projects": [{"title": None, "bullets": [
+        "Built an agentic email pipeline with LangGraph and Slack hand-off.",
+        "Built private voice assistants on Raspberry Pi hardware."]}],
+    "custom_sections": [{"title": "PRODUCTION AI PROJECTS (2024-present)", "entries": []}],
+    "section_titles": {"summary": "SUMMARY", "experience": "EXPERIENCE", "education": "EDUCATION"},
+}
+
+
+def test_parse_rejoins_a_heading_split_from_its_content(monkeypatch):
+    monkeypatch.setattr(resume_tailor, "llm_complete", lambda **k: json.dumps(SPLIT_PARSE))
+    out = resume_tailor.parse_resume_text(SPLIT_TEXT, "key", "model")
+    assert out.custom_sections == []
+    assert out.section_titles["projects"] == "PRODUCTION AI PROJECTS (2024-present)"
+    # Where the heading is in the text, not appended after Education.
+    assert out.section_order[:4] == ["summary", "projects", "experience", "education"]
+
+
+def test_rejoin_leaves_an_empty_section_whose_content_is_elsewhere():
+    # The untitled projects' bullets are NOT under this heading in the text.
+    text = SPLIT_TEXT.replace("PRODUCTION AI PROJECTS (2024-present)", "VOLUNTEERING") \
+        + "\nSide work\n- Built an agentic email pipeline with LangGraph and Slack hand-off.\n"
+    text = text.replace("- Built an agentic email pipeline with LangGraph and Slack hand-off.\n- Built",
+                        "- Built", 1)
+    s = schemas.ResumeStructured.model_validate(
+        {**SPLIT_PARSE, "custom_sections": [{"title": "VOLUNTEERING", "entries": []}]})
+    assert resume_tailor.rejoin_orphan_headings(text, s) is False
+    assert [c.title for c in s.custom_sections] == ["VOLUNTEERING"]
+
+
+def test_rejoin_never_takes_a_section_that_has_its_own_heading():
+    s = schemas.ResumeStructured.model_validate(
+        {**SPLIT_PARSE, "section_titles": {**SPLIT_PARSE["section_titles"], "projects": "Projects"}})
+    assert resume_tailor.rejoin_orphan_headings(SPLIT_TEXT, s) is False
+    assert s.section_titles["projects"] == "Projects"
+
+
+def test_stored_split_resume_is_repaired_on_read(db):
+    from app.routers import generate
+    stored = schemas.ResumeStructured.model_validate(SPLIT_PARSE)
+    stored.section_order = ["summary", "custom:production-ai-projects-2024-present",
+                            "experience", "education", "skills", "projects"]
+    p = _seed_profile(db, resume_text=SPLIT_TEXT, structured=stored.model_dump(), stale=False)
+    out = generate._fresh_structured(p, TEST_USER_ID, db)
+    assert out.section_titles["projects"] == "PRODUCTION AI PROJECTS (2024-present)"
+    assert out.section_order[:4] == ["summary", "projects", "experience", "education"]
+    db.refresh(p)
+    assert p.resume_structured["custom_sections"] == []

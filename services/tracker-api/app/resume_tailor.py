@@ -63,7 +63,7 @@ Rules:
 - Keep bullet wording verbatim where possible (you may drop a leading bullet glyph).
 - If a role has sub-periods (e.g. "Building the Platform (2007–2013)"), put them in "phases"; otherwise put bullets directly on the experience and leave "phases" empty.
 - "notable" is for a "Notable customers/clients" style line, split into a list.
-- "projects" is a section of projects or ongoing work, whatever its heading says ("Side projects", "Current stuff").
+- "projects" is a section of projects or ongoing work, whatever its heading says ("Side projects", "Current stuff"). Its heading goes in "section_titles.projects" — never ALSO list that heading in "custom_sections". A section's heading and its content always stay together.
 - EVERY other section goes in "custom_sections" with its heading as "title" — Certifications, Volunteering, Publications, Awards, Languages, or anything the résumé names itself. Each line or item is an entry: a heading-like line as the entry "title", detail lines as "bullets". NEVER drop a section because it doesn't fit the shape above.
 - "section_titles": each of the five named sections' heading EXACTLY as written in the résumé, or null when it has no heading.
 - Years/dates: copy them as written (e.g. "2007", "2013 – 2026", "present").
@@ -142,6 +142,58 @@ def detect_section_order(resume_text: str | None, resume=None) -> list[str] | No
     return schemas.normalize_section_order(seen, keys)
 
 
+def _first_text(structured: schemas.ResumeStructured, key: str) -> str | None:
+    """The first line of content a typed section holds, for finding it in the text."""
+    if key == "summary":
+        return structured.summary
+    for e in getattr(structured, key):
+        for v in e.model_dump().values():
+            for s in (v if isinstance(v, list) else [v]):
+                if isinstance(s, str) and len(_norm_heading(s)) >= 12:
+                    return s
+    return None
+
+
+def rejoin_orphan_headings(resume_text: str | None, structured: schemas.ResumeStructured) -> bool:
+    """Reunite a heading the model split from its content. Returns True if it did.
+
+    A heading like "PRODUCTION AI PROJECTS (2024-present)" invites a split: the
+    content goes into the typed `projects` with no heading of its own, and the
+    heading comes back as an EMPTY custom section. The section then shows nothing
+    where it belongs and its bullets sit under a stock "Projects" at the end. The
+    text settles it: when an empty custom heading's next lines are where an
+    untitled typed section's content is, that heading is the section's title, and
+    the empty custom section goes. Deterministic, so it repairs stored résumés too.
+    """
+    lines = [_norm_heading(ln) for ln in (resume_text or "").splitlines()]
+    known = set(_HEADING_TO_SECTION)
+    known |= {_norm_heading(t) for t in structured.section_titles.values()}
+    known |= {_norm_heading(s.title) for s in structured.custom_sections}
+    heads = [i for i, ln in enumerate(lines) if ln and ln in known]
+
+    def line_of(text: str) -> int | None:
+        probe = _norm_heading(text)[:40]
+        return next((i for i, ln in enumerate(lines) if probe and probe in ln), None)
+
+    changed = False
+    for sec in list(structured.custom_sections):
+        if sec.entries:
+            continue
+        start = next((i for i in heads if lines[i] == _norm_heading(sec.title)), None)
+        if start is None:
+            continue
+        end = next((i for i in heads if i > start), len(lines))
+        for key in schemas.RESUME_SECTIONS:
+            first = None if structured.section_titles.get(key) else _first_text(structured, key)
+            at = line_of(first) if first else None
+            if at is not None and start < at < end:
+                structured.section_titles[key] = sec.title
+                structured.custom_sections.remove(sec)
+                changed = True
+                break
+    return changed
+
+
 def resolved_section_order(resume) -> list[str]:
     """A résumé's section order (dict or ResumeStructured), defaulted when unknown."""
     d = _as_dict(resume)
@@ -196,6 +248,7 @@ def parse_resume_text(resume_text: str, api_key: str, model: str, *,
     except Exception as e:  # pydantic ValidationError
         logger.error("Résumé parse failed schema validation: %s", e)
         raise HTTPException(status_code=502, detail="AI returned an unexpected résumé structure. Try again.")
+    rejoin_orphan_headings(resume_text, structured)
     # Read from the text, not asked of the model: the headings are right there,
     # and a deterministic answer is one the tests can pin. The parse supplies the
     # résumé's own headings, so custom sections are found too.
