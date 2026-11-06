@@ -39,6 +39,9 @@ tavily-python==0.5.0
 
 # Task queue (for fan-out to ai-reviewer)
 celery==5.4.0
+# celery 5.4.0 accepts any kombu <6. kombu 5.7.0 (Nov 2026) needs redis-py >= 6.1 and
+# imports packaging, which nothing installs: the v1.22.2 rebuild crash-looped both workers.
+kombu==5.6.2
 redis==5.2.0
 
 # Testing
