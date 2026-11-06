@@ -42,6 +42,18 @@ export interface Release {
 export const RELEASES: Release[] = [
   // Newest first. See the module comment before adding one.
   {
+    version: "v1.22.4",
+    date: "2026-11-06",
+    headline: "Tailored résumés keep sections with headings of your own",
+    notes: [
+      {
+        title: "Sections with your own headings stay in place",
+        detail:
+          "A section whose heading contained a word like \"Projects\" (for example \"Production AI Projects\") could come apart when your résumé was read: the heading showed up empty, and its content moved to the end under a plain \"Projects\" heading. Tailoring now puts them back together in the right place. Your next tailor fixes a résumé that was already affected, without re-reading it.",
+      },
+    ],
+  },
+  {
     version: "v1.22.3",
     date: "2026-11-05",
     headline: "Job pages fit on a phone",

@@ -602,13 +602,19 @@ def _fresh_structured(profile: models.Profile, user_id: UUID, db: Session):
     The honesty core later checks against facts derived from this."""
     if profile.resume_structured and not profile.resume_structured_stale:
         structured = schemas.ResumeStructured.model_validate(profile.resume_structured)
-        if structured.section_order is None:
+        # A heading parsed apart from its content is repaired from the text, and
+        # the order re-read, since the section now has its real heading.
+        rejoined = resume_tailor.rejoin_orphan_headings(profile.resume_text, structured)
+        if structured.section_order is None or rejoined:
             # Parsed before section order was recorded: read it from the text
             # (no model call) and keep it, so tailoring starts from the real order.
-            structured.section_order = schemas.normalize_section_order(
+            # A re-read that finds nothing keeps the order there was.
+            order = schemas.normalize_section_order(
                 resume_tailor.detect_section_order(profile.resume_text, structured),
                 structured.custom_keys())
-            if structured.section_order is not None:
+            structured.section_order = order or schemas.normalize_section_order(
+                structured.section_order, structured.custom_keys())
+            if structured.section_order is not None or rejoined:
                 profile.resume_structured = structured.model_dump()
                 db.commit()
         return structured
