@@ -959,6 +959,15 @@ class AgentPostingIn(BaseModel):
     salary_min: Optional[int] = None
     salary_max: Optional[int] = None
     description: Optional[str] = None
+    # The agent's stable identity for this posting across emails (spec §3.6).
+    # Opaque to us; capped and stored, matched only for equality (Phase B).
+    dedup_key: Optional[str] = None
+
+    @field_validator("dedup_key")
+    @classmethod
+    def _cap_dedup_key(cls, v):
+        v = (v or "").strip()
+        return v[:300] if v else None
 
     @field_validator("location")
     @classmethod
@@ -1258,6 +1267,67 @@ class AgentFolderConfig(BaseModel):
     unprocessed: Optional[str]
 
 
+ZERO_POSTINGS_ACTIONS = ("mark_read", "unprocessed")   # = the agent's agent/nodes.py
+_DOMAIN_RE = re.compile(r"^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
+MAX_SENDER_DOMAINS = 100
+
+
+class AgentEmailPolicy(BaseModel):
+    """`email_policy` in the cloud config (spec §3.6). Every field optional; a
+    None field means "not set" and the agent applies its own default (the
+    built-in job-board list, require auth, mark_read). An EMPTY domain list is
+    a real setting: allow any sender."""
+    allowed_sender_domains: Optional[List[str]] = None
+    require_sender_auth: Optional[bool] = None
+    zero_postings_action: Optional[str] = None
+    # Authentication-Results authserv-ids to trust for the DMARC check. None =
+    # the agent's defaults (mail.protonmail.ch, mx.google.com). Unlike the
+    # domain list, the agent reads [] as "defaults" too, so [] is stored as None.
+    trusted_authserv_ids: Optional[List[str]] = None
+
+
+def _clean_hostnames(v, what: str):
+    out: list[str] = []
+    for raw in v:
+        d = (raw or "").strip().lower().lstrip("@.")
+        if not d:
+            continue
+        if not _DOMAIN_RE.match(d):
+            raise ValueError(f"Not a {what}: {raw!r}")
+        if d not in out:
+            out.append(d)
+    if len(out) > MAX_SENDER_DOMAINS:
+        raise ValueError(f"At most {MAX_SENDER_DOMAINS} entries.")
+    return out
+
+
+class EmailPolicyIn(AgentEmailPolicy):
+    """What Settings → Email Agent → Email policy saves. Validated here so a bad
+    value fails on save, not as a loud failure in the agent's next run."""
+
+    @field_validator("allowed_sender_domains")
+    @classmethod
+    def _domains(cls, v):
+        return None if v is None else _clean_hostnames(v, "domain name")
+
+    @field_validator("trusted_authserv_ids")
+    @classmethod
+    def _authserv(cls, v):
+        if v is None:
+            return None
+        return _clean_hostnames(v, "mail server name") or None
+
+    @field_validator("zero_postings_action")
+    @classmethod
+    def _action(cls, v):
+        if v is None:
+            return None
+        v = v.strip().lower()
+        if v not in ZERO_POSTINGS_ACTIONS:
+            raise ValueError(f"zero_postings_action must be one of {', '.join(ZERO_POSTINGS_ACTIONS)}")
+        return v
+
+
 class AgentSlackConfig(BaseModel):
     bot_token: str          # decrypted, workspace-scoped xoxb- — in-cluster only
     channel_id: str
@@ -1270,6 +1340,7 @@ class AgentConfigOut(BaseModel):
     email_credentials: Optional[dict]  # decrypted blob — in-cluster only
     enabled: bool = False    # per-user pause; agent skips this user when False
     slack: Optional[AgentSlackConfig] = None  # per-user notifier; None until connected + channel set
+    email_policy: Optional[AgentEmailPolicy] = None  # spec §3.6; None = agent defaults
 
 
 # Slack notifications (per-user OAuth install — JR-6). Status is masked; never the token.
@@ -1308,6 +1379,7 @@ class EmailCredentialStatusOut(BaseModel):
     updated_at: Optional[datetime]
     imap_host: Optional[str] = None      # non-secret, for prefilling the IMAP form
     imap_username: Optional[str] = None  # the password is never returned
+    email_policy: AgentEmailPolicy = AgentEmailPolicy()
 
 
 class EmailCredentialUpdateIn(BaseModel):

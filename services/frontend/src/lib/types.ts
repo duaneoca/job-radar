@@ -62,6 +62,16 @@ export interface EmailCredentialStatus {
   updated_at: string | null;
   imap_host?: string | null;
   imap_username?: string | null;
+  email_policy: EmailPolicy;
+}
+/** Cloud agent email policy (spec §3.6). null = not set: the agent's default
+ *  applies. allowed_sender_domains: [] is a real setting — allow any sender. */
+export interface EmailPolicy {
+  allowed_sender_domains: string[] | null;
+  require_sender_auth: boolean | null;
+  zero_postings_action: "mark_read" | "unprocessed" | null;
+  /** Mail servers trusted for the DMARC check; null = the agent's defaults. */
+  trusted_authserv_ids: string[] | null;
 }
 
 // ─── Slack notifications (per-user OAuth install — JR-6) ──────

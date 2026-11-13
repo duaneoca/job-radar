@@ -765,6 +765,10 @@ class InboxPosting(Base):
     salary_min     = Column(Integer, nullable=True)
     salary_max     = Column(Integer, nullable=True)
     description    = Column(Text, nullable=True)
+    # The agent's stable identity for this posting across emails (spec §3.6):
+    # linkedin:<id> · glassdoor:<id> · indeed:<jk> · url:<host+path> · ct:<company>|<title>.
+    # Recorded only for now; Phase B makes (user_id, dedup_key) unique.
+    dedup_key      = Column(String(300), nullable=True)
     action_required    = Column(Boolean, nullable=False, default=False)
     possible_duplicate = Column(Boolean, nullable=False, default=False)
     matched_review_id  = Column(Uuid(), ForeignKey("user_job_reviews.id", ondelete="SET NULL"), nullable=True)
@@ -823,6 +827,18 @@ class EmailCredential(Base):
     folder_social        = Column(Text, nullable=True)
     folder_unprocessed   = Column(Text, nullable=True)
     enabled        = Column(Boolean, nullable=False, server_default="true")  # per-user pause (JR-5)
+    # Cloud agent email policy (spec §3.6), sent as `email_policy` in the cloud
+    # config. NULL = not set: the field is omitted and the agent uses its own
+    # default. An empty domain list is NOT the same as NULL — it means "allow
+    # any sender" — so the column is JSON, never coerced.
+    allowed_sender_domains = Column(JSON, nullable=True)
+    require_sender_auth    = Column(Boolean, nullable=True)
+    zero_postings_action   = Column(String(20), nullable=True)
+    # Mail servers whose Authentication-Results header the agent trusts for the
+    # DMARC check. NULL = the agent's defaults (Proton, Gmail) — which would
+    # reject every email for a user on any other IMAP host while
+    # require_sender_auth is on, so they must be able to name their own.
+    trusted_authserv_ids   = Column(JSON, nullable=True)
     created_at     = Column(DateTime(timezone=True), default=utcnow)
     updated_at     = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

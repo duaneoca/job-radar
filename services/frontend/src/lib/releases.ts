@@ -42,6 +42,18 @@ export interface Release {
 export const RELEASES: Release[] = [
   // Newest first. See the module comment before adding one.
   {
+    version: "v1.23.0",
+    date: "2026-11-13",
+    headline: "Choose which emails the email agent reads",
+    notes: [
+      {
+        title: "Email policy for the email agent",
+        detail:
+          "Settings → Email Agent has a new Email policy section. Choose which senders the hosted agent reads from — the job boards it knows, your own list of domains, or anyone — whether it should only read email your mail provider confirmed is genuine, and what happens to an email with no jobs in it. Until now these were fixed.",
+      },
+    ],
+  },
+  {
     version: "v1.22.4",
     date: "2026-11-06",
     headline: "Tailored résumés keep sections with headings of your own",

@@ -122,6 +122,18 @@ def _get_review_owned(review_id: UUID, user: models.User, db: Session) -> models
 
 # ── Agent-facing endpoints (X-Agent-Key) ─────────────────────
 
+def _email_policy(cred: Optional[models.EmailCredential]) -> schemas.AgentEmailPolicy:
+    """The stored email policy; unset fields stay None (agent default)."""
+    if cred is None:
+        return schemas.AgentEmailPolicy()
+    return schemas.AgentEmailPolicy(
+        allowed_sender_domains=cred.allowed_sender_domains,
+        require_sender_auth=cred.require_sender_auth,
+        zero_postings_action=cred.zero_postings_action,
+        trusted_authserv_ids=cred.trusted_authserv_ids,
+    )
+
+
 def _build_agent_config(user: models.User, db: Session) -> schemas.AgentConfigOut:
     """Assemble a user's decrypted agent config (LLM key + email creds + folders).
     Shared by /agent/config (X-Agent-Key) and /agent/cloud/config/{user_id}
@@ -213,6 +225,9 @@ def _build_agent_config(user: models.User, db: Session) -> schemas.AgentConfigOu
         email_credentials=email_credentials_blob,
         enabled=bool(cred and cred.enabled),
         slack=slack_config,
+        # Omitted entirely when nothing is set, so the agent sees exactly what
+        # an older Job Radar sends and applies its own defaults (spec §3.6).
+        email_policy=policy if (policy := _email_policy(cred)).model_dump(exclude_none=True) else None,
     )
 
 
@@ -419,6 +434,7 @@ def _credential_status(cred: Optional[models.EmailCredential]) -> schemas.EmailC
         updated_at=cred.updated_at,
         imap_host=blob.get("host"),
         imap_username=blob.get("username"),
+        email_policy=_email_policy(cred),
     )
 
 
@@ -678,6 +694,32 @@ def _gmail_list_labels(cred: models.EmailCredential) -> list[str]:
     except Exception:
         raise HTTPException(status_code=400, detail="Couldn't list your Gmail labels. Try again.")
     return sorted(lab["name"] for lab in labels if lab.get("type") == "user" and lab.get("name"))
+
+
+@router.put("/email-credentials/policy", response_model=schemas.EmailCredentialStatusOut)
+def update_email_policy(
+    payload: schemas.EmailPolicyIn,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Save the cloud agent's email policy (spec §3.6). Every field is written
+    as sent, so None resets that field to the agent's default. Kept apart from
+    PUT /email-credentials because that one verifies folders against the
+    mailbox when enabling, which a policy edit has no reason to trigger."""
+    cred = (
+        db.query(models.EmailCredential)
+        .filter(models.EmailCredential.user_id == user.id)
+        .first()
+    )
+    if not cred:
+        raise HTTPException(status_code=404, detail="No mailbox connected")
+    cred.allowed_sender_domains = payload.allowed_sender_domains
+    cred.require_sender_auth = payload.require_sender_auth
+    cred.zero_postings_action = payload.zero_postings_action
+    cred.trusted_authserv_ids = payload.trusted_authserv_ids
+    db.commit()
+    db.refresh(cred)
+    return _credential_status(cred)
 
 
 @router.get("/email-credentials/folders", response_model=schemas.MailboxFoldersOut)
@@ -1029,6 +1071,7 @@ def create_inbox_entry(
             salary_min=p.salary_min,
             salary_max=p.salary_max,
             description=p.description,
+            dedup_key=p.dedup_key,
         )
         db.add(posting)
         db.flush()

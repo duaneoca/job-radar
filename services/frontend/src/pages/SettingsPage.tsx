@@ -19,7 +19,7 @@ import { safeNext } from "../lib/loginRedirect";
 import { formatDate } from "../lib/utils";
 import { AgentStatsView } from "../components/AgentStatsView";
 import { isWritingModelError } from "../lib/types";
-import type { APIKey, LLMProvider, AgentApiKey, AgentApiKeyCreated, AgentFolderConfig, EmailCredentialStatus, MailboxFolders, SlackStatus, SlackChannel, ConnectedApp, AssistantUsage } from "../lib/types";
+import type { APIKey, LLMProvider, AgentApiKey, AgentApiKeyCreated, AgentFolderConfig, EmailCredentialStatus, EmailPolicy, MailboxFolders, SlackStatus, SlackChannel, ConnectedApp, AssistantUsage } from "../lib/types";
 
 // ─── Account Details tab ──────────────────────────────────────────────────────
 
@@ -1500,6 +1500,154 @@ function MailboxConfig({ status, connectedLabel, noun }: {
 
       <Button size="sm" disabled={saving} onClick={saveFolders}>
         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : `Save ${noun}s`}
+      </Button>
+
+      <EmailPolicySection policy={status.email_policy} />
+    </div>
+  );
+}
+
+type SenderMode = "default" | "only" | "any";
+
+/** Which emails in Postings the hosted agent will read, and what it does when an
+ *  email yields nothing. Stored per mailbox and sent to the agent as
+ *  `email_policy` (spec §3.6); "default" stores nothing, so the agent's own
+ *  built-in job-board list applies and improves with the agent. */
+function EmailPolicySection({ policy }: { policy: EmailPolicy }) {
+  const qc = useQueryClient();
+  const [mode, setMode] = useState<SenderMode>("default");
+  const [domains, setDomains] = useState("");
+  const [requireAuth, setRequireAuth] = useState(true);
+  const [zeroAction, setZeroAction] = useState<"mark_read" | "unprocessed">("mark_read");
+  const [trusted, setTrusted] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setTrusted((policy?.trusted_authserv_ids ?? []).join("\n"));
+    const d = policy?.allowed_sender_domains;
+    setMode(d == null ? "default" : d.length === 0 ? "any" : "only");
+    setDomains((d ?? []).join("\n"));
+    setRequireAuth(policy?.require_sender_auth ?? true);
+    setZeroAction(policy?.zero_postings_action ?? "mark_read");
+  }, [policy]);
+
+  async function save() {
+    const list = domains.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
+    if (mode === "only" && list.length === 0) {
+      toast({ title: "Add at least one domain", description: "Or choose “Any sender”.", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      await agentApi.put("/agent/email-credentials/policy", {
+        allowed_sender_domains: mode === "default" ? null : mode === "any" ? [] : list,
+        require_sender_auth: requireAuth,
+        zero_postings_action: zeroAction,
+        // Always sent: the endpoint writes every field, so omitting it would reset it.
+        trusted_authserv_ids: (() => {
+          const t = trusted.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
+          return t.length ? t : null;
+        })(),
+      });
+      qc.invalidateQueries({ queryKey: ["agent-email-credentials"] });
+      toast({ title: "Email policy saved" });
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      toast({
+        title: "Couldn't save the email policy",
+        description: Array.isArray(detail) ? detail.map((d: any) => d.msg).join("; ") : detail,
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3 border-t pt-4">
+      <div>
+        <h4 className="text-sm font-medium">Email policy</h4>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Which emails in Postings the agent reads. Anything it won't read is moved to
+          Unprocessed and left unread for you.
+        </p>
+      </div>
+
+      <div className="space-y-1">
+        <Label htmlFor="policy-senders" className="text-xs">Senders</Label>
+        <select
+          id="policy-senders"
+          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          value={mode}
+          onChange={(e) => setMode(e.target.value as SenderMode)}
+        >
+          <option value="default">Job boards the agent knows (LinkedIn, Glassdoor, Indeed, Dice…)</option>
+          <option value="only">Only these domains</option>
+          <option value="any">Any sender</option>
+        </select>
+        {mode === "only" && (
+          <textarea
+            aria-label="Allowed sender domains"
+            className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            placeholder={"linkedin.com\nglassdoor.com"}
+            value={domains}
+            onChange={(e) => setDomains(e.target.value)}
+          />
+        )}
+        {mode === "any" && (
+          <p className="text-xs text-amber-700 dark:text-amber-500">
+            Any email in Postings will be read, so only file job alerts there.
+          </p>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <p className="text-sm">Require sender authentication</p>
+          <p className="text-xs text-muted-foreground">
+            Only read email your mail provider confirmed really came from that domain (DMARC).
+            Leave this on unless a real job board keeps failing it.
+          </p>
+        </div>
+        <Switch checked={requireAuth} onCheckedChange={setRequireAuth} aria-label="Require sender authentication" />
+      </div>
+
+      <details className="text-sm" open={trusted.trim() !== ""}>
+        <summary className="cursor-pointer text-xs text-muted-foreground">Advanced: trusted mail servers</summary>
+        <div className="space-y-1 mt-2">
+          <p className="text-xs text-muted-foreground">
+            The agent checks authentication only in the results your own mail server added. It
+            already trusts Gmail and Proton. If your mailbox is somewhere else (Fastmail, a work
+            server…) and sender authentication is on, add your server's name as it appears at the
+            start of the <code>Authentication-Results</code> header — otherwise every email will
+            be moved to Unprocessed. Leave blank to use the defaults (Gmail and Proton). To skip
+            sender authentication altogether, turn off <em>Require sender authentication</em> above.
+          </p>
+          <textarea
+            aria-label="Trusted mail servers"
+            className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            placeholder={"mx.fastmail.com"}
+            value={trusted}
+            onChange={(e) => setTrusted(e.target.value)}
+          />
+        </div>
+      </details>
+
+      <div className="space-y-1">
+        <Label htmlFor="policy-zero" className="text-xs">When an email has no jobs in it</Label>
+        <select
+          id="policy-zero"
+          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          value={zeroAction}
+          onChange={(e) => setZeroAction(e.target.value as "mark_read" | "unprocessed")}
+        >
+          <option value="mark_read">Mark it read and leave it in Postings</option>
+          <option value="unprocessed">Move it to Unprocessed, unread</option>
+        </select>
+      </div>
+
+      <Button size="sm" variant="outline" disabled={saving} onClick={save}>
+        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save email policy"}
       </Button>
     </div>
   );
