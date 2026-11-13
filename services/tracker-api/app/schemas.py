@@ -1328,6 +1328,30 @@ class EmailPolicyIn(AgentEmailPolicy):
         return v
 
 
+RETENTION_MAX_DAYS = 365
+
+
+class AgentRetention(BaseModel):
+    """`retention` in the cloud config (spec §3.8). None = off for that folder."""
+    social_days: Optional[int] = None
+    postings_days: Optional[int] = None
+
+
+class RetentionIn(AgentRetention):
+    """Settings → Email Agent → Mailbox retention. 0 or None turns a folder off;
+    anything else must be 1–365. The agent clamps negatives but has no upper
+    bound, so this is the only cap."""
+
+    @field_validator("social_days", "postings_days")
+    @classmethod
+    def _days(cls, v):
+        if v is None or v == 0:
+            return None
+        if not 1 <= v <= RETENTION_MAX_DAYS:
+            raise ValueError(f"Days must be 1–{RETENTION_MAX_DAYS}, or 0/blank for off")
+        return v
+
+
 class AgentSlackConfig(BaseModel):
     bot_token: str          # decrypted, workspace-scoped xoxb- — in-cluster only
     channel_id: str
@@ -1341,6 +1365,7 @@ class AgentConfigOut(BaseModel):
     enabled: bool = False    # per-user pause; agent skips this user when False
     slack: Optional[AgentSlackConfig] = None  # per-user notifier; None until connected + channel set
     email_policy: Optional[AgentEmailPolicy] = None  # spec §3.6; None = agent defaults
+    retention: Optional[AgentRetention] = None        # spec §3.8; None = off
 
 
 # Slack notifications (per-user OAuth install — JR-6). Status is masked; never the token.
@@ -1380,6 +1405,7 @@ class EmailCredentialStatusOut(BaseModel):
     imap_host: Optional[str] = None      # non-secret, for prefilling the IMAP form
     imap_username: Optional[str] = None  # the password is never returned
     email_policy: AgentEmailPolicy = AgentEmailPolicy()
+    retention: AgentRetention = AgentRetention()
 
 
 class EmailCredentialUpdateIn(BaseModel):

@@ -599,6 +599,13 @@ function InboxRecruitersTab({ agentEnabled }: { agentEnabled: boolean }) {
             jobs in it: mark it read, or move it to Unprocessed for you to look at. Anything
             the agent won't read goes to Unprocessed, unread. Running the agent locally? The
             same settings live in its <code>.env</code> file.</P>
+          <H3>Mailbox retention (cloud)</H3>
+          <P>Optionally, the agent can move old mail out of your <strong>Social</strong> and{" "}
+            <strong>Postings</strong> folders: set a number of days for each, and mail older than
+            that — read or unread — goes to Trash. Starred mail is always kept. Interaction and
+            Unprocessed are never cleaned, and nothing is deleted outright: your mail provider empties
+            Trash on its own schedule (Gmail after 30 days; Proton only if "auto-delete unwanted
+            messages" is on). Leave the boxes blank to keep everything.</P>
           <Callout>
             Your decrypted mail credentials never leave the cluster (cloud) or your machine
             (local). The agent only writes back status updates and suggestions — you stay in

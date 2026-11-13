@@ -19,7 +19,7 @@ import { safeNext } from "../lib/loginRedirect";
 import { formatDate } from "../lib/utils";
 import { AgentStatsView } from "../components/AgentStatsView";
 import { isWritingModelError } from "../lib/types";
-import type { APIKey, LLMProvider, AgentApiKey, AgentApiKeyCreated, AgentFolderConfig, EmailCredentialStatus, EmailPolicy, MailboxFolders, SlackStatus, SlackChannel, ConnectedApp, AssistantUsage } from "../lib/types";
+import type { APIKey, LLMProvider, AgentApiKey, AgentApiKeyCreated, AgentFolderConfig, EmailCredentialStatus, EmailPolicy, MailboxFolders, MailboxRetention, SlackStatus, SlackChannel, ConnectedApp, AssistantUsage } from "../lib/types";
 
 // ─── Account Details tab ──────────────────────────────────────────────────────
 
@@ -1503,6 +1503,83 @@ function MailboxConfig({ status, connectedLabel, noun }: {
       </Button>
 
       <EmailPolicySection policy={status.email_policy} />
+      <RetentionSection retention={status.retention} noun={noun} />
+    </div>
+  );
+}
+
+/** Mailbox retention (spec §3.8). Blank = off. The agent only ever touches
+ *  Social and Postings; which folders can be cleaned is not a setting. */
+function RetentionSection({ retention, noun }: { retention: MailboxRetention; noun: "label" | "folder" }) {
+  const qc = useQueryClient();
+  const [social, setSocial] = useState("");
+  const [postings, setPostings] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setSocial(retention?.social_days ? String(retention.social_days) : "");
+    setPostings(retention?.postings_days ? String(retention.postings_days) : "");
+  }, [retention]);
+
+  function parse(v: string): number | null | undefined {
+    const t = v.trim();
+    if (!t) return null;
+    const n = Number(t);
+    return Number.isInteger(n) && n >= 0 && n <= 365 ? (n === 0 ? null : n) : undefined;
+  }
+
+  async function save() {
+    const s = parse(social), p = parse(postings);
+    if (s === undefined || p === undefined) {
+      toast({ title: "Use a whole number of days from 1 to 365", description: "Leave it blank to keep that mail.", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      await agentApi.put("/agent/email-credentials/retention", { social_days: s, postings_days: p });
+      qc.invalidateQueries({ queryKey: ["agent-email-credentials"] });
+      toast({ title: "Mailbox retention saved" });
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      toast({
+        title: "Couldn't save mailbox retention",
+        description: Array.isArray(detail) ? detail.map((d: any) => d.msg).join("; ") : detail,
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const field = (id: string, label: string, value: string, set: (v: string) => void) => (
+    <div className="space-y-1">
+      <Label htmlFor={id} className="text-xs">{label}</Label>
+      <div className="flex items-center gap-2">
+        <Input id={id} inputMode="numeric" className="w-24" placeholder="Off" value={value}
+               onChange={(e) => set(e.target.value)} />
+        <span className="text-xs text-muted-foreground">days</span>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-3 border-t pt-4">
+      <div>
+        <h4 className="text-sm font-medium">Mailbox retention</h4>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Move mail to Trash once it's older than this — read <strong>and</strong> unread. Starred mail
+          is always kept, so star anything you want to hold on to. Only the Social and Postings{" "}
+          {noun}s are ever cleaned; Interaction and Unprocessed never are. Your mail provider empties
+          Trash later (Gmail after 30 days). Leave blank to keep mail; 14 days is a good start.
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-6">
+        {field("retention-social", "Social", social, setSocial)}
+        {field("retention-postings", "Postings", postings, setPostings)}
+      </div>
+      <Button size="sm" variant="outline" disabled={saving} onClick={save}>
+        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save mailbox retention"}
+      </Button>
     </div>
   );
 }

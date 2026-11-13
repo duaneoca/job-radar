@@ -44,12 +44,17 @@ export const RELEASES: Release[] = [
   {
     version: "v1.23.0",
     date: "2026-11-13",
-    headline: "Choose which emails the email agent reads",
+    headline: "Choose which emails the email agent reads, and clear out old ones",
     notes: [
       {
         title: "Email policy for the email agent",
         detail:
           "Settings → Email Agent has a new Email policy section. Choose which senders the hosted agent reads from — the job boards it knows, your own list of domains, or anyone — whether it should only read email your mail provider confirmed is genuine, and what happens to an email with no jobs in it. Until now these were fixed.",
+      },
+      {
+        title: "Clear out old job alerts automatically",
+        detail:
+          "Also under Settings → Email Agent: Mailbox retention. Pick a number of days for your Social and Postings folders, and the agent moves older mail there to Trash. Starred mail is always kept, and nothing else is ever touched.",
       },
     ],
   },

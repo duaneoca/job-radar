@@ -134,6 +134,15 @@ def _email_policy(cred: Optional[models.EmailCredential]) -> schemas.AgentEmailP
     )
 
 
+def _retention(cred: Optional[models.EmailCredential]) -> schemas.AgentRetention:
+    if cred is None:
+        return schemas.AgentRetention()
+    return schemas.AgentRetention(
+        social_days=cred.retention_social_days,
+        postings_days=cred.retention_postings_days,
+    )
+
+
 def _build_agent_config(user: models.User, db: Session) -> schemas.AgentConfigOut:
     """Assemble a user's decrypted agent config (LLM key + email creds + folders).
     Shared by /agent/config (X-Agent-Key) and /agent/cloud/config/{user_id}
@@ -228,6 +237,8 @@ def _build_agent_config(user: models.User, db: Session) -> schemas.AgentConfigOu
         # Omitted entirely when nothing is set, so the agent sees exactly what
         # an older Job Radar sends and applies its own defaults (spec §3.6).
         email_policy=policy if (policy := _email_policy(cred)).model_dump(exclude_none=True) else None,
+        # Omitted when both folders are off — what an older Job Radar sends (§3.8).
+        retention=ret if (ret := _retention(cred)).model_dump(exclude_none=True) else None,
     )
 
 
@@ -435,6 +446,7 @@ def _credential_status(cred: Optional[models.EmailCredential]) -> schemas.EmailC
         imap_host=blob.get("host"),
         imap_username=blob.get("username"),
         email_policy=_email_policy(cred),
+        retention=_retention(cred),
     )
 
 
@@ -717,6 +729,29 @@ def update_email_policy(
     cred.require_sender_auth = payload.require_sender_auth
     cred.zero_postings_action = payload.zero_postings_action
     cred.trusted_authserv_ids = payload.trusted_authserv_ids
+    db.commit()
+    db.refresh(cred)
+    return _credential_status(cred)
+
+
+@router.put("/email-credentials/retention", response_model=schemas.EmailCredentialStatusOut)
+def update_retention(
+    payload: schemas.RetentionIn,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Save mailbox retention (spec §3.8). Both fields are written as sent, so
+    None or 0 turns that folder off. Which folders can be cleaned is NOT a
+    setting: the agent hard-codes Social and Postings only."""
+    cred = (
+        db.query(models.EmailCredential)
+        .filter(models.EmailCredential.user_id == user.id)
+        .first()
+    )
+    if not cred:
+        raise HTTPException(status_code=404, detail="No mailbox connected")
+    cred.retention_social_days = payload.social_days
+    cred.retention_postings_days = payload.postings_days
     db.commit()
     db.refresh(cred)
     return _credential_status(cred)
