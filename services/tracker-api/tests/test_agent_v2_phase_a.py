@@ -64,11 +64,6 @@ def test_dedup_key_is_optional_and_capped(client, db):
     assert len(db.get(models.InboxPosting, uuid.UUID(b)).dedup_key) == 300
 
 
-def test_phase_a_does_not_enforce_uniqueness(client, db):
-    """The same key twice is still two rows until Phase B."""
-    _post(client, [{"company": "A", "role": "R", "dedup_key": "url:boards.greenhouse.io/acme/1"}])
-    _post(client, [{"company": "A", "role": "R", "dedup_key": "url:boards.greenhouse.io/acme/1"}])
-    assert db.query(models.InboxPosting).filter_by(dedup_key="url:boards.greenhouse.io/acme/1").count() == 2
 
 
 # ── email policy ───────────────────────────────────────────────

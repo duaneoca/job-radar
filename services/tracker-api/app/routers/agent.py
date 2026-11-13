@@ -24,6 +24,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app import feature_flags, models, schemas
@@ -1003,6 +1004,13 @@ def get_agent_reviews(
     ]
 
 
+def _is_dedup_conflict(exc: IntegrityError) -> bool:
+    """Postgres names the index in the error; SQLite (tests) names the columns."""
+    msg = str(getattr(exc, "orig", exc))
+    return ("uq_inbox_postings_user_dedup_key" in msg
+            or "inbox_postings.user_id, inbox_postings.dedup_key" in msg)
+
+
 @router.post("/inbox", response_model=schemas.AgentInboxOut, status_code=status.HTTP_201_CREATED)
 def create_inbox_entry(
     payload: schemas.AgentInboxIn,
@@ -1054,8 +1062,23 @@ def create_inbox_entry(
     db.add(email)
     db.flush()
 
+    # Phase B (spec §3.6): a posting whose dedup_key this user already has is
+    # SKIPPED, never a 4xx for the whole email — the email and its other
+    # postings still land. Skipped ones stay in raw_extracted_json.postings,
+    # so the row still names them under "already listed from an earlier email".
+    keys = {p.dedup_key for p in payload.postings if p.dedup_key}
+    taken: set[str] = set()
+    if keys:
+        taken = {k for (k,) in db.query(models.InboxPosting.dedup_key)
+                 .filter(models.InboxPosting.user_id == user.id,
+                         models.InboxPosting.dedup_key.in_(keys))}
+    skipped = 0
+
     posting_ids = []
     for p in payload.postings:
+        if p.dedup_key and p.dedup_key in taken:
+            skipped += 1
+            continue
         link = _validate_link(p.link)  # C2
         posting = models.InboxPosting(
             inbox_email_id=email.id,
@@ -1073,10 +1096,26 @@ def create_inbox_entry(
             description=p.description,
             dedup_key=p.dedup_key,
         )
-        db.add(posting)
-        db.flush()
+        # A savepoint per keyed posting: a concurrent run for the same user can
+        # insert the key between the lookup above and here, and the unique
+        # index must then cost this one posting, not the whole email.
+        try:
+            with db.begin_nested():
+                db.add(posting)
+                db.flush()
+        except IntegrityError as exc:
+            # Only a clash on THIS index is a duplicate; anything else (a bad
+            # agent-supplied id, say) is still an error and must not be counted.
+            if not (p.dedup_key and _is_dedup_conflict(exc)):
+                raise
+            skipped += 1
+            continue
+        if p.dedup_key:
+            taken.add(p.dedup_key)
         posting_ids.append(posting.id)
 
+    if skipped:
+        logger.info("inbox: skipped %d duplicate posting(s) for user %s (dedup_key)", skipped, user.id)
     db.commit()
     return schemas.AgentInboxOut(inbox_email_id=email.id, posting_ids=posting_ids)
 
