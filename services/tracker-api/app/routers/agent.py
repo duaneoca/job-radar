@@ -1393,7 +1393,22 @@ def list_inbox(
                 p.matched_job = briefs.get(p.matched_review_id)
 
     _attach_seen_elsewhere(items, out, current_user.id, db)
+    _attach_recruiter(items, out)
     return schemas.PaginatedInbox(total=total, items=out)
+
+
+def _attach_recruiter(items, out) -> None:
+    """Show the recruiter card on the row it came from. The sorter files
+    recruiter mail with no postings (spec §3.7), so without this the row says
+    nothing about who wrote. Sanitised exactly as the Recruiters page does —
+    the card is agent-derived (C2) — and only the CRM fields go out."""
+    from app.routers.recruiters import _clean_card   # same rules as the CRM
+    for e, o in zip(items, out):
+        raw = e.raw_extracted_json if isinstance(e.raw_extracted_json, dict) else {}
+        card = _clean_card(raw.get("recruiter_contact"))
+        fields = {k: card.get(k) for k in schemas.InboxRecruiterOut.model_fields}
+        if fields.get("name") or fields.get("email"):
+            o.recruiter = schemas.InboxRecruiterOut(**fields)
 
 
 def _norm_pair(company: str | None, role: str | None) -> tuple[str, str]:

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Inbox as InboxIcon, ChevronRight, ChevronDown, ExternalLink, Check, EyeOff,
-  Trash2, AlertTriangle, Loader2, Building2, CircleDot, Undo2, Copy, Plus,
+  Trash2, AlertTriangle, Loader2, Building2, CircleDot, Undo2, Copy, Plus, UserRound,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "../components/ui/button";
@@ -16,7 +16,7 @@ import { cn, formatSalary, safeHref } from "../lib/utils";
 import { toast } from "../hooks/useToast";
 import { getConfirmLinks, setConfirmLinks } from "../hooks/useConfirmLinks";
 import { ExternalLinkConfirmDialog } from "../components/ExternalLinkConfirmDialog";
-import type {
+import type { InboxRecruiter,
   EmailCategory, EmailStatus, InboxEmail, InboxPosting, InboxInteraction, PaginatedInbox,
 } from "../lib/types";
 
@@ -197,6 +197,40 @@ function InteractionRow({ i }: { i: InboxInteraction }) {
 
 // ─── Email row (expandable) ───────────────────────────────────
 
+/** The agent's recruiter card, as text. Only linkedin_url becomes a link, and
+ *  only if http(s) — through the same confirm-before-opening path as postings. */
+function RecruiterCard({ r, onOpen }: { r: InboxRecruiter; onOpen: (url: string) => void }) {
+  const role = [r.title, r.employer].filter(Boolean).join(" · ");
+  const href = safeHref(r.linkedin_url);   // [C2]
+  return (
+    <div className="flex items-start gap-2 py-2 text-sm">
+      <UserRound className="h-4 w-4 shrink-0 mt-0.5 text-muted-foreground" />
+      <div className="min-w-0">
+        <div>
+          <span className="font-medium">{r.name || r.email}</span>
+          {role && <span className="text-muted-foreground"> — {role}</span>}
+          {r.type && (
+            <Badge variant="outline" className="ml-2 text-[10px] py-0">
+              {r.type === "agency" ? "Agency" : "In-house"}
+            </Badge>
+          )}
+        </div>
+        <div className="text-xs text-muted-foreground flex flex-wrap gap-x-3">
+          {r.email && r.name && <span className="break-all">{r.email}</span>}
+          {r.phone && <span>{r.phone}</span>}
+          {href && (
+            <a href={href} onClick={(e) => { e.preventDefault(); onOpen(href); }}
+               className="cursor-pointer hover:underline underline-offset-2">
+              LinkedIn <ExternalLink className="inline h-3 w-3" />
+            </a>
+          )}
+          <Link to="/jobs?tab=recruiters" className="hover:underline underline-offset-2">Recruiters</Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EmailRow({
   email, expanded, onToggle, onPatch, onDelete, onOpen, onPostingStatus, busy,
 }: {
@@ -260,6 +294,7 @@ function EmailRow({
               ))}
             </div>
           )}
+          {email.recruiter && <RecruiterCard r={email.recruiter} onOpen={onOpen} />}
           {email.interactions.map((i) => <InteractionRow key={i.id} i={i} />)}
           {/* The agent keeps each job under the first email that surfaced it, so a
               later alert carrying the same jobs stores fewer rows. Say so, or the
@@ -306,7 +341,15 @@ function EmailRow({
             </div>
           )}
           {email.postings.length === 0 && email.interactions.length === 0 && (email.seen_elsewhere ?? []).length === 0 && (
-            <p className="text-sm text-muted-foreground py-2">No postings or status updates extracted.</p>
+            // Recruiter, application and network mail is filed with no postings
+            // by design — "nothing extracted" read as a failure for those.
+            <p className="text-sm text-muted-foreground py-2">
+              {email.category === "job_alert"
+                ? "No postings or status updates extracted."
+                : email.recruiter
+                  ? "No job details in this email — reply from your mailbox, or add the recruiter from Recruiters."
+                  : "Filed for you to read in your mailbox. Nothing here to add to your jobs."}
+            </p>
           )}
 
           <div className="flex items-center gap-2 mt-3 pt-2 border-t">
