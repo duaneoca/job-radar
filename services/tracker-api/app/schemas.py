@@ -1202,6 +1202,19 @@ class SeenElsewhereOut(BaseModel):
     imported_review_id: Optional[UUID] = None
 
 
+class InboxRecruiterOut(BaseModel):
+    """The agent's recruiter card for one email, AFTER the same sanitising the
+    Recruiters page uses (routers/recruiters._clean_card: capped, http(s)-only
+    linkedin_url). Agent-derived, so untrusted (C2): render as text only."""
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    title: Optional[str] = None
+    employer: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    type: Optional[str] = None   # agency | in_house
+
+
 class InboxEmailOut(BaseModel):
     id: UUID
     message_id: str
@@ -1217,6 +1230,7 @@ class InboxEmailOut(BaseModel):
     postings: List[InboxPostingOut] = []
     interactions: List[InboxInteractionOut] = []
     seen_elsewhere: List[SeenElsewhereOut] = []
+    recruiter: Optional[InboxRecruiterOut] = None   # sorter-filed recruiter mail (§3.7)
 
     class Config:
         from_attributes = True
