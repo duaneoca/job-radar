@@ -1280,6 +1280,25 @@ class AgentEmailPolicy(BaseModel):
     allowed_sender_domains: Optional[List[str]] = None
     require_sender_auth: Optional[bool] = None
     zero_postings_action: Optional[str] = None
+    # Authentication-Results authserv-ids to trust for the DMARC check. None =
+    # the agent's defaults (mail.protonmail.ch, mx.google.com). Unlike the
+    # domain list, the agent reads [] as "defaults" too, so [] is stored as None.
+    trusted_authserv_ids: Optional[List[str]] = None
+
+
+def _clean_hostnames(v, what: str):
+    out: list[str] = []
+    for raw in v:
+        d = (raw or "").strip().lower().lstrip("@.")
+        if not d:
+            continue
+        if not _DOMAIN_RE.match(d):
+            raise ValueError(f"Not a {what}: {raw!r}")
+        if d not in out:
+            out.append(d)
+    if len(out) > MAX_SENDER_DOMAINS:
+        raise ValueError(f"At most {MAX_SENDER_DOMAINS} entries.")
+    return out
 
 
 class EmailPolicyIn(AgentEmailPolicy):
@@ -1289,20 +1308,14 @@ class EmailPolicyIn(AgentEmailPolicy):
     @field_validator("allowed_sender_domains")
     @classmethod
     def _domains(cls, v):
+        return None if v is None else _clean_hostnames(v, "domain name")
+
+    @field_validator("trusted_authserv_ids")
+    @classmethod
+    def _authserv(cls, v):
         if v is None:
             return None
-        out: list[str] = []
-        for raw in v:
-            d = (raw or "").strip().lower().lstrip("@.")
-            if not d:
-                continue
-            if not _DOMAIN_RE.match(d):
-                raise ValueError(f"Not a domain name: {raw!r}")
-            if d not in out:
-                out.append(d)
-        if len(out) > MAX_SENDER_DOMAINS:
-            raise ValueError(f"At most {MAX_SENDER_DOMAINS} sender domains.")
-        return out
+        return _clean_hostnames(v, "mail server name") or None
 
     @field_validator("zero_postings_action")
     @classmethod

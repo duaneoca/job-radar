@@ -77,7 +77,8 @@ def test_unset_policy_is_omitted_from_the_cloud_config(client, mailbox):
     """An older Job Radar sends no email_policy; an unset one must look the same."""
     assert _cloud_config(client)["email_policy"] is None
     assert client.get("/agent/email-credentials").json()["email_policy"] == {
-        "allowed_sender_domains": None, "require_sender_auth": None, "zero_postings_action": None}
+        "allowed_sender_domains": None, "require_sender_auth": None, "zero_postings_action": None,
+        "trusted_authserv_ids": None}
 
 
 def test_policy_round_trips_into_the_cloud_config(client, mailbox):
@@ -87,7 +88,8 @@ def test_policy_round_trips_into_the_cloud_config(client, mailbox):
     assert r.status_code == 200, r.text
     policy = _cloud_config(client)["email_policy"]
     assert policy == {"allowed_sender_domains": ["linkedin.com", "glassdoor.com"],
-                      "require_sender_auth": False, "zero_postings_action": "unprocessed"}
+                      "require_sender_auth": False, "zero_postings_action": "unprocessed",
+                      "trusted_authserv_ids": None}
 
 
 def test_empty_domain_list_means_allow_any_and_survives(client, mailbox):
@@ -116,3 +118,26 @@ def test_bad_policy_fails_on_save_not_in_the_agent(client, mailbox, body):
 def test_policy_needs_a_connected_mailbox(client):
     r = client.put("/agent/email-credentials/policy", json={"require_sender_auth": True})
     assert r.status_code == 404
+
+
+# ── trusted mail servers (non-Gmail/Proton IMAP users) ─────────
+
+def test_trusted_authserv_ids_reach_the_agent(client, mailbox):
+    """With require_sender_auth on and only the agent's defaults (Proton, Gmail),
+    a user on any other IMAP host has every email rejected. They name theirs."""
+    client.put("/agent/email-credentials/policy", json={
+        "trusted_authserv_ids": [" Mx.Fastmail.com ", "mx.fastmail.com", "mail.example.org"]})
+    assert _cloud_config(client)["email_policy"]["trusted_authserv_ids"] == [
+        "mx.fastmail.com", "mail.example.org"]
+
+
+def test_empty_trusted_list_means_defaults_and_is_stored_as_unset(client, mailbox):
+    """The agent reads [] as "use defaults" (unlike the domain list), so storing
+    [] would claim a setting that has no effect."""
+    client.put("/agent/email-credentials/policy", json={"trusted_authserv_ids": []})
+    assert _cloud_config(client)["email_policy"] is None
+
+
+def test_bad_trusted_server_name_is_refused(client, mailbox):
+    r = client.put("/agent/email-credentials/policy", json={"trusted_authserv_ids": ["not a host"]})
+    assert r.status_code == 422

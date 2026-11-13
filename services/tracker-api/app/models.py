@@ -834,6 +834,11 @@ class EmailCredential(Base):
     allowed_sender_domains = Column(JSON, nullable=True)
     require_sender_auth    = Column(Boolean, nullable=True)
     zero_postings_action   = Column(String(20), nullable=True)
+    # Mail servers whose Authentication-Results header the agent trusts for the
+    # DMARC check. NULL = the agent's defaults (Proton, Gmail) — which would
+    # reject every email for a user on any other IMAP host while
+    # require_sender_auth is on, so they must be able to name their own.
+    trusted_authserv_ids   = Column(JSON, nullable=True)
     created_at     = Column(DateTime(timezone=True), default=utcnow)
     updated_at     = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

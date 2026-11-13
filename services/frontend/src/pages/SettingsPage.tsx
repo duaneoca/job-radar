@@ -1519,9 +1519,11 @@ function EmailPolicySection({ policy }: { policy: EmailPolicy }) {
   const [domains, setDomains] = useState("");
   const [requireAuth, setRequireAuth] = useState(true);
   const [zeroAction, setZeroAction] = useState<"mark_read" | "unprocessed">("mark_read");
+  const [trusted, setTrusted] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    setTrusted((policy?.trusted_authserv_ids ?? []).join("\n"));
     const d = policy?.allowed_sender_domains;
     setMode(d == null ? "default" : d.length === 0 ? "any" : "only");
     setDomains((d ?? []).join("\n"));
@@ -1541,6 +1543,11 @@ function EmailPolicySection({ policy }: { policy: EmailPolicy }) {
         allowed_sender_domains: mode === "default" ? null : mode === "any" ? [] : list,
         require_sender_auth: requireAuth,
         zero_postings_action: zeroAction,
+        // Always sent: the endpoint writes every field, so omitting it would reset it.
+        trusted_authserv_ids: (() => {
+          const t = trusted.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
+          return t.length ? t : null;
+        })(),
       });
       qc.invalidateQueries({ queryKey: ["agent-email-credentials"] });
       toast({ title: "Email policy saved" });
@@ -1604,6 +1611,26 @@ function EmailPolicySection({ policy }: { policy: EmailPolicy }) {
         </div>
         <Switch checked={requireAuth} onCheckedChange={setRequireAuth} aria-label="Require sender authentication" />
       </div>
+
+      <details className="text-sm" open={trusted.trim() !== ""}>
+        <summary className="cursor-pointer text-xs text-muted-foreground">Advanced: trusted mail servers</summary>
+        <div className="space-y-1 mt-2">
+          <p className="text-xs text-muted-foreground">
+            The agent checks authentication only in the results your own mail server added. It
+            already trusts Gmail and Proton. If your mailbox is somewhere else (Fastmail, a work
+            server…) and sender authentication is on, add your server's name as it appears at the
+            start of the <code>Authentication-Results</code> header — otherwise every email will
+            be moved to Unprocessed. Leave blank to use the defaults.
+          </p>
+          <textarea
+            aria-label="Trusted mail servers"
+            className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            placeholder={"mx.fastmail.com"}
+            value={trusted}
+            onChange={(e) => setTrusted(e.target.value)}
+          />
+        </div>
+      </details>
 
       <div className="space-y-1">
         <Label htmlFor="policy-zero" className="text-xs">When an email has no jobs in it</Label>

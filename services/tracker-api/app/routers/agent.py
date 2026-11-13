@@ -130,6 +130,7 @@ def _email_policy(cred: Optional[models.EmailCredential]) -> schemas.AgentEmailP
         allowed_sender_domains=cred.allowed_sender_domains,
         require_sender_auth=cred.require_sender_auth,
         zero_postings_action=cred.zero_postings_action,
+        trusted_authserv_ids=cred.trusted_authserv_ids,
     )
 
 
@@ -715,6 +716,7 @@ def update_email_policy(
     cred.allowed_sender_domains = payload.allowed_sender_domains
     cred.require_sender_auth = payload.require_sender_auth
     cred.zero_postings_action = payload.zero_postings_action
+    cred.trusted_authserv_ids = payload.trusted_authserv_ids
     db.commit()
     db.refresh(cred)
     return _credential_status(cred)
