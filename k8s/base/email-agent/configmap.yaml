@@ -16,3 +16,19 @@ data:
   DAILY_SPEND_CEILING_USD: "5"
   # SLACK_ADMIN_CHANNEL is set per-env via overlay/secret if it differs; default here.
   SLACK_ADMIN_CHANNEL: "#job-radar-ops"
+  # ── Sorter (job-radar-agent INTEGRATION_SPEC §3.7) ──────────────────────────
+  # Files each user's root-folder mail with ONE system-wide Jev call per email.
+  # The key is TYPESAFE_API_KEY in email-agent-secrets (system-wide, admin-level,
+  # never BYOK, never in the DB or the cloud config bundle).
+  #
+  # OFF until TYPESAFE_API_KEY is in email-agent-secrets in BOTH namespaces:
+  # with the switch on and no key, the agent raises SystemExit while building a
+  # user's run, which fails the whole multi-user pass, not just that user.
+  # Turn it on HERE, in a PR — not with kubectl: every deploy runs
+  # `kubectl apply -k`, which silently reverts an imperative ConfigMap edit.
+  SORTER_ENABLED: "false"
+  # Optional tuning — the agent's defaults apply when these are absent:
+  #   JEV_MODEL: "jev-latest"
+  #   SORTER_MIN_CONFIDENCE: "0.85"   # below this → Unprocessed
+  #   SORTER_MIN_MARGIN: "0.30"       # best-vs-runner-up gap below this → Unprocessed
+  #   BULK_RECRUITER_DOMAINS: ""      # comma list; recruiter mail from these goes to Postings
