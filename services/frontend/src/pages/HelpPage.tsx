@@ -590,6 +590,15 @@ function InboxRecruitersTab({ agentEnabled }: { agentEnabled: boolean }) {
               IMAP mailbox; your mail credentials never leave your computer. See{" "}
               <strong>Settings → Email Agent → local setup</strong> for the walkthrough.</Li>
           </ul>
+          <H3>Email policy (cloud)</H3>
+          <P>Under the folder settings, <strong>Email policy</strong> controls which emails in
+            Postings the hosted agent reads. By default it reads only job boards it knows
+            (LinkedIn, Glassdoor, Indeed, Dice and others), and only when your mail provider
+            confirmed the email really came from that site. You can list your own domains
+            instead, or allow any sender. You also choose what happens to an email with no
+            jobs in it: mark it read, or move it to Unprocessed for you to look at. Anything
+            the agent won't read goes to Unprocessed, unread. Running the agent locally? The
+            same settings live in its <code>.env</code> file.</P>
           <Callout>
             Your decrypted mail credentials never leave the cluster (cloud) or your machine
             (local). The agent only writes back status updates and suggestions — you stay in
