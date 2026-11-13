@@ -63,6 +63,13 @@ export interface EmailCredentialStatus {
   imap_host?: string | null;
   imap_username?: string | null;
   email_policy: EmailPolicy;
+  retention: MailboxRetention;
+}
+/** Mailbox retention (spec §3.8): days before Social / Postings mail goes to
+ *  Trash. null = off. */
+export interface MailboxRetention {
+  social_days: number | null;
+  postings_days: number | null;
 }
 /** Cloud agent email policy (spec §3.6). null = not set: the agent's default
  *  applies. allowed_sender_domains: [] is a real setting — allow any sender. */

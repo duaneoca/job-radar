@@ -839,6 +839,10 @@ class EmailCredential(Base):
     # reject every email for a user on any other IMAP host while
     # require_sender_auth is on, so they must be able to name their own.
     trusted_authserv_ids   = Column(JSON, nullable=True)
+    # Mailbox retention (spec §3.8): mail in Social / Postings older than N days
+    # goes to the provider's Trash (starred kept). NULL = off; else 1–365.
+    retention_social_days   = Column(Integer, nullable=True)
+    retention_postings_days = Column(Integer, nullable=True)
     created_at     = Column(DateTime(timezone=True), default=utcnow)
     updated_at     = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
