@@ -1620,7 +1620,8 @@ function EmailPolicySection({ policy }: { policy: EmailPolicy }) {
             already trusts Gmail and Proton. If your mailbox is somewhere else (Fastmail, a work
             server…) and sender authentication is on, add your server's name as it appears at the
             start of the <code>Authentication-Results</code> header — otherwise every email will
-            be moved to Unprocessed. Leave blank to use the defaults.
+            be moved to Unprocessed. Leave blank to use the defaults (Gmail and Proton). To skip
+            sender authentication altogether, turn off <em>Require sender authentication</em> above.
           </p>
           <textarea
             aria-label="Trusted mail servers"
