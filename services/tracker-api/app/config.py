@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     # (§1.6b). The agent finalizes on crash/SIGTERM; only a hard SIGKILL/OOM can
     # dangle, so this is the safety net. Well beyond the CronJob's ~10-min deadline.
     agent_run_reap_minutes: int = 30
+    # The hosted agent CronJob's schedule (k8s/base/email-agent/cronjob.yaml,
+    # "*/15"). A cloud user's expected cadence; a local agent's is inferred from
+    # its own runs (app/agent_health.py). Keep in step with the CronJob.
+    agent_cloud_interval_minutes: int = 15
 
     # Cloud agent internal token (JR-5). The single in-cluster CronJob authenticates
     # as *itself* (not a user) to the /agent/cloud/* enumeration endpoints, and uses

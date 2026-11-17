@@ -27,7 +27,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
-from app import feature_flags, models, schemas
+from app import agent_health, feature_flags, models, schemas
 from app.config import settings
 from app.database import get_db
 from app.llm import get_active_llm_key
@@ -1378,6 +1378,7 @@ def report_run(
         escalations=payload.escalations,
         retries=payload.retries,
         error_summary=payload.error_summary,
+        late=payload.late,
     )
     db.add(run)
     db.commit()
@@ -1520,7 +1521,52 @@ def get_stats(
     current_user: models.User = Depends(get_current_user),
 ):
     """Per-user agent stats for the settings page."""
-    return _compute_stats(current_user.id, db)
+    stats = _compute_stats(current_user.id, db)
+    stats.health = _health(current_user.id, db)
+    return stats
+
+
+@router.get("/health/users", response_model=list[schemas.AgentUserHealthOut])
+def get_health_by_user(
+    db: Session = Depends(get_db),
+    _admin: models.User = Depends(get_current_admin),
+):
+    """Admin: every agent user's reachability, unreachable first. A hosted user
+    has no log of their own, so this is the only place an outage shows up.
+    An "agent user" is anyone with runs, a mailbox, or an active agent key.
+    One _health query pair per user: fine at today's handful of users; batch
+    it into a single windowed query if that grows."""
+    ids = (
+        {u for (u,) in db.query(models.AgentRun.user_id).distinct()}
+        | {u for (u,) in db.query(models.EmailCredential.user_id)}
+        | {u for (u,) in db.query(models.AgentAPIKey.user_id).filter(models.AgentAPIKey.revoked == False)}  # noqa: E712
+    )
+    users = {u.id: u for u in db.query(models.User).filter(models.User.id.in_(ids))} if ids else {}
+    out = [
+        schemas.AgentUserHealthOut(user_id=uid, email=u.email, **_health(uid, db).model_dump())
+        for uid, u in users.items()
+    ]
+    order = {agent_health.UNREACHABLE: 0, agent_health.NEVER_CONNECTED: 1, agent_health.HEALTHY: 2}
+    return sorted(out, key=lambda h: (order.get(h.state, 3), h.email))
+
+
+def _health(user_id: UUID, db: Session) -> schemas.AgentHealthOut:
+    """One user's agent health from their recent runs. Only the timestamps are
+    read: the last CADENCE_SAMPLE runs for cadence, plus the history window."""
+    now = datetime.now(timezone.utc)
+    cutoff = now - agent_health.HISTORY_WINDOW
+    cols = (models.AgentRun.started_at, models.AgentRun.finished_at,
+            models.AgentRun.late, models.AgentRun.environment)
+    q = db.query(*cols).filter(models.AgentRun.user_id == user_id)
+    rows = set(q.filter(models.AgentRun.started_at >= cutoff).all())
+    rows |= set(q.order_by(models.AgentRun.started_at.desc()).limit(agent_health.CADENCE_SAMPLE).all())
+    runs = [agent_health.Run(r[0], r[1], bool(r[2]), getattr(r[3], "value", r[3])) for r in rows]
+    h = agent_health.compute(runs, now, timedelta(minutes=settings.agent_cloud_interval_minutes))
+    return schemas.AgentHealthOut(
+        state=h.state, last_seen_at=h.last_seen_at, unreachable_since=h.unreachable_since,
+        expected_interval_minutes=h.expected_interval_minutes, environment=h.environment,
+        periods=[schemas.AgentPeriodOut(kind=p.kind, start=p.start, end=p.end) for p in h.periods],
+    )
 
 
 @router.get("/stats/global", response_model=schemas.AgentStatsOut)

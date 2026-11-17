@@ -35,6 +35,14 @@ export function formatDate(iso?: string | null): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+/** "Nov 17, 3:05 PM" — for events within days, where the time matters. */
+export function formatDateTime(iso?: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("en-US", {
+    month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+  });
+}
+
 export function formatAge(iso?: string | null): string {
   if (!iso) return "—";
   const ms = Date.now() - new Date(iso).getTime();
