@@ -748,6 +748,13 @@ class InboxEmail(Base):
 class InboxPosting(Base):
     """One row per extracted job posting from an email. Capped at 30 per email (enforced in API)."""
     __tablename__ = "inbox_postings"
+    __table_args__ = (
+        # Phase B (spec §3.6): the cloud agent's only cross-email duplicate
+        # memory. Partial, so rows without a key are never constrained.
+        Index("uq_inbox_postings_user_dedup_key", "user_id", "dedup_key", unique=True,
+              postgresql_where=text("dedup_key IS NOT NULL"),
+              sqlite_where=text("dedup_key IS NOT NULL")),
+    )
 
     id             = Column(Uuid(), primary_key=True, default=uuid.uuid4)
     inbox_email_id = Column(Uuid(), ForeignKey("inbox_emails.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -767,7 +774,7 @@ class InboxPosting(Base):
     description    = Column(Text, nullable=True)
     # The agent's stable identity for this posting across emails (spec §3.6):
     # linkedin:<id> · glassdoor:<id> · indeed:<jk> · url:<host+path> · ct:<company>|<title>.
-    # Recorded only for now; Phase B makes (user_id, dedup_key) unique.
+    # Unique per user (Phase B): a repeat is skipped on insert, not stored twice.
     dedup_key      = Column(String(300), nullable=True)
     action_required    = Column(Boolean, nullable=False, default=False)
     possible_duplicate = Column(Boolean, nullable=False, default=False)
