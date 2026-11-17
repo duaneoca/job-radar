@@ -42,6 +42,18 @@ export interface Release {
 export const RELEASES: Release[] = [
   // Newest first. See the module comment before adding one.
   {
+    version: "v1.24.0",
+    date: "2026-11-13",
+    headline: "See who a recruiter email is from",
+    notes: [
+      {
+        title: "See who a recruiter email is from",
+        detail:
+          "In the Inbox, a recruiter email now shows the recruiter's name, title and employer, with their email, phone or LinkedIn when the agent found them. Emails with nothing to import no longer say \"No postings or status updates extracted\", which read as if something had failed.",
+      },
+    ],
+  },
+  {
     version: "v1.23.0",
     date: "2026-11-13",
     headline: "Choose which emails the email agent reads, and clear out old ones",

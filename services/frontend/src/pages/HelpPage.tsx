@@ -554,6 +554,11 @@ function InboxRecruitersTab({ agentEnabled }: { agentEnabled: boolean }) {
             Any other posting can be set aside with <em>Not interested</em>. Either one only
             greys the posting out in the inbox so you know you've seen it; your jobs list isn't
             changed, and <em>Undo</em> brings it back.</P>
+          <P>Recruiter emails show who wrote — name, title, employer, and email, phone or
+            LinkedIn when the agent found them — even when there's no job in the email to add.
+            Recruiter, application and network emails often have nothing to import; the inbox
+            says so rather than suggesting something went wrong. To keep a recruiter, add them
+            from <strong>Jobs → Recruiters</strong>, where they're suggested for you.</P>
           <P>Each email has a status badge. The agent marks most emails <strong>Processed</strong>
             itself. For an email that's <strong>Pending</strong> or <strong>Needs review</strong>,
             <em>Mark handled</em> says you've dealt with it and moves it to Processed.

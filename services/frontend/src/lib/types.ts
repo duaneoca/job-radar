@@ -163,6 +163,18 @@ export interface InboxEmail {
   interactions: InboxInteraction[];
   /** Verified in this email but stored under an earlier one (the agent's dedup). */
   seen_elsewhere: SeenElsewhere[];
+  /** Who wrote, for recruiter mail the agent filed without postings. Agent-
+   *  derived and sanitised server-side, but still text only (C2). */
+  recruiter?: InboxRecruiter | null;
+}
+export interface InboxRecruiter {
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  title: string | null;
+  employer: string | null;
+  linkedin_url: string | null;
+  type: "agency" | "in_house" | null;
 }
 
 export interface SeenElsewhere {
