@@ -44,12 +44,17 @@ export const RELEASES: Release[] = [
   {
     version: "v1.24.0",
     date: "2026-11-13",
-    headline: "See who a recruiter email is from",
+    headline: "See who a recruiter email is from, and whether your email agent is getting through",
     notes: [
       {
         title: "See who a recruiter email is from",
         detail:
           "In the Inbox, a recruiter email now shows the recruiter's name, title and employer, with their email, phone or LinkedIn when the agent found them. Emails with nothing to import no longer say \"No postings or status updates extracted\", which read as if something had failed.",
+      },
+      {
+        title: "Know when your email agent can't reach Job Radar",
+        detail:
+          "Settings → Email Agent now says whether your agent is getting through, and when it was last heard from. Until now, an agent that lost its connection just went quiet, which looked exactly like having no new mail. Runs it couldn't report are sent once it reconnects, and the last 7 days show when it was cut off.",
       },
     ],
   },

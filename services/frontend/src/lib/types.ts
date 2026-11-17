@@ -39,6 +39,25 @@ export interface AgentStats {
   escalation_rate: number;
   jobs_imported: number;
   last_run: AgentLastRun | null;
+  health?: AgentHealth | null;
+}
+/** Is the agent reaching Job Radar? Inferred server-side from its runs. */
+export interface AgentPeriod {
+  kind: "late" | "silent";
+  start: string;
+  end: string;
+}
+export interface AgentHealth {
+  state: "healthy" | "unreachable" | "never_connected";
+  last_seen_at: string | null;
+  unreachable_since: string | null;
+  expected_interval_minutes: number | null;
+  environment: AgentEnvironment | null;
+  periods: AgentPeriod[];
+}
+export interface AgentUserHealth extends AgentHealth {
+  user_id: string;
+  email: string;
 }
 
 // ─── Cloud mailbox connection (Gmail OAuth — JR-5) ────────────

@@ -1100,6 +1100,9 @@ class AgentRunIn(BaseModel):
     escalations: int = 0
     retries: int = 0
     error_summary: Optional[str] = None
+    # True when the agent spooled this record during an outage and is
+    # delivering it after the fact. Absent = live report.
+    late: bool = False
 
 
 class AgentRunOut(BaseModel):
@@ -1257,6 +1260,27 @@ class AgentLastRunOut(BaseModel):
         from_attributes = True
 
 
+class AgentPeriodOut(BaseModel):
+    kind: str            # "late": ran but reached Job Radar late · "silent": no runs at all
+    start: datetime
+    end: datetime
+
+
+class AgentHealthOut(BaseModel):
+    """Is the agent reaching Job Radar? Inferred from agent_runs (app/agent_health.py)."""
+    state: str           # healthy | unreachable | never_connected
+    last_seen_at: Optional[datetime] = None
+    unreachable_since: Optional[datetime] = None
+    expected_interval_minutes: Optional[float] = None
+    environment: Optional[str] = None
+    periods: List[AgentPeriodOut] = []
+
+
+class AgentUserHealthOut(AgentHealthOut):
+    user_id: UUID
+    email: str
+
+
 class AgentStatsOut(BaseModel):
     emails_today: int
     emails_this_week: int
@@ -1264,6 +1288,7 @@ class AgentStatsOut(BaseModel):
     escalation_rate: float
     jobs_imported: int
     last_run: Optional[AgentLastRunOut]
+    health: Optional[AgentHealthOut] = None   # per-user only; admin uses /agent/health/users
 
 
 # GET /agent/config

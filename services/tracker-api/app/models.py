@@ -908,6 +908,9 @@ class AgentRun(Base):
     escalations           = Column(Integer, nullable=False, default=0)
     retries               = Column(Integer, nullable=False, default=0)
     error_summary         = Column(Text, nullable=True)
+    # Spooled while Job Radar was unreachable and delivered later. Accurate
+    # about when it ran; marks the outage for the dashboard (app/agent_health.py).
+    late                  = Column(Boolean, nullable=False, default=False, server_default="false")
 
     user = relationship("User", back_populates="agent_runs")
 

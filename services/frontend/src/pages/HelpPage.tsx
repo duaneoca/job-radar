@@ -595,6 +595,13 @@ function InboxRecruitersTab({ agentEnabled }: { agentEnabled: boolean }) {
               IMAP mailbox; your mail credentials never leave your computer. See{" "}
               <strong>Settings → Email Agent → local setup</strong> for the walkthrough.</Li>
           </ul>
+          <H3>Is the agent getting through?</H3>
+          <P>At the top of <strong>Settings → Email Agent</strong>, Job Radar shows whether your
+            agent is reaching it and when it last ran. If the agent hasn't reported for several of
+            its usual runs (and at least an hour), it shows as <strong>Not reaching Job Radar</strong>
+            — usually a computer asleep or offline, for an agent you run yourself. Runs it couldn't
+            report are sent once it reconnects, and the last 7 days list the times it was cut
+            off.</P>
           <H3>Email policy (cloud)</H3>
           <P>Under the folder settings, <strong>Email policy</strong> controls which emails in
             Postings the hosted agent reads. By default it reads only job boards it knows
