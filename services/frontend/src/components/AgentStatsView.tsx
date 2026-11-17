@@ -113,7 +113,7 @@ function HealthPanel({ health }: { health: AgentHealth }) {
       {health.state === "unreachable" && (
         <p className="text-xs text-muted-foreground">
           The agent hasn't reported a run for a while. If it's running on your own machine, check
-          that the machine is awake and online. Runs it couldn't report are sent once it reconnects.
+          that the machine is awake and online.
         </p>
       )}
       {health.periods.length > 0 && (

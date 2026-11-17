@@ -61,7 +61,10 @@ def _aware(dt: datetime | None) -> datetime | None:
 def expected_interval(runs: list[Run], cloud_interval: timedelta) -> timedelta | None:
     """How often this user's agent runs. Hosted (cloud) runs on the CronJob's
     schedule; a local agent's cadence is whatever the user set, so it's the
-    median gap between their recent runs. None until there are two runs."""
+    median gap between their recent runs. None until there are two runs — so a
+    user with a single run has no cadence yet and is judged by MIN_SILENCE
+    alone: unreachable after an hour of silence. Acceptable; it corrects itself
+    from the second run on."""
     if not runs:
         return None
     newest = max(runs, key=lambda r: r.started_at)

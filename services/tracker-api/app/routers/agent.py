@@ -1533,7 +1533,9 @@ def get_health_by_user(
 ):
     """Admin: every agent user's reachability, unreachable first. A hosted user
     has no log of their own, so this is the only place an outage shows up.
-    An "agent user" is anyone with runs, a mailbox, or an active agent key."""
+    An "agent user" is anyone with runs, a mailbox, or an active agent key.
+    One _health query pair per user: fine at today's handful of users; batch
+    it into a single windowed query if that grows."""
     ids = (
         {u for (u,) in db.query(models.AgentRun.user_id).distinct()}
         | {u for (u,) in db.query(models.EmailCredential.user_id)}

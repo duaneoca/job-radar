@@ -54,7 +54,7 @@ export const RELEASES: Release[] = [
       {
         title: "Know when your email agent can't reach Job Radar",
         detail:
-          "Settings → Email Agent now says whether your agent is getting through, and when it was last heard from. Until now, an agent that lost its connection just went quiet, which looked exactly like having no new mail. Runs it couldn't report are sent once it reconnects, and the last 7 days show when it was cut off.",
+          "Settings → Email Agent now says whether your agent is getting through and when it was last heard from. Until now, an agent that lost its connection just went quiet, which looked exactly like having no new mail. The last 7 days show any period it was cut off.",
       },
     ],
   },
