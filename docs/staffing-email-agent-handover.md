@@ -59,11 +59,12 @@ its branch `feat/staffing-eval`.
      Send that task only after the outer commit.
    - **Same-role check.** `create_manual_job` returns an existing job for a same company + title +
      city twin (`_manual_twin`, line 578) unless `separate=true`. **Decided (2026-11-25): agent
-     imports apply the twin check**, the same as a manual import, and return the user's existing
-     job. **One exception:** "Not a duplicate" imports with `separate=true`, or it would land
-     straight back on the job the user just said it isn't. Known cost: vendor "company" values
-     like "Acme (agency)" can make the twin check miss. That's acceptable, because the agent has
-     already deduplicated on the job description.
+     imports behave like `separate=true`** and keep only the same-link check. Staffing agencies
+     hide the employer, so the company is often "Confidential" or the vendor's name, and two
+     different reqs with the same title and city would wrongly merge. What tells two emails apart
+     is how close together they arrived and how similar their job descriptions are. That's the
+     agent's comparison, which runs before the inbox write. "Not a duplicate" imports separately
+     for the same reason.
    - The function is used by:
      - `create_manual_job`;
      - the inbox write (`POST /agent/inbox`, `routers/agent.py:1049`);
