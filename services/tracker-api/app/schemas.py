@@ -310,7 +310,10 @@ class UserJobReviewOut(BaseModel):
 
 # Which prompts a writing skill may be attached to. `scoring` runs in the
 # ai-reviewer service and has a hard JSON contract, so it is opt-in per skill.
-SKILL_SCOPES = ("application", "research", "interview_prep", "resume", "scoring")
+# `email_draft` is used by the email agent's reply drafts (spec §3.9): GET
+# /agent/settings hands the agent the content of the enabled skills that name
+# it. Opt-in too, so no existing skill starts shaping mail to recruiters.
+SKILL_SCOPES = ("application", "research", "interview_prep", "resume", "scoring", "email_draft")
 DEFAULT_SKILL_SCOPES = ["application", "research", "interview_prep", "resume"]
 
 MAX_SKILL_CONTENT = 20_000
@@ -1340,6 +1343,15 @@ def _clean_hostnames(v, what: str):
     return out
 
 
+def _zero_postings_action(v):
+    if v is None:
+        return None
+    v = v.strip().lower()
+    if v not in ZERO_POSTINGS_ACTIONS:
+        raise ValueError(f"zero_postings_action must be one of {', '.join(ZERO_POSTINGS_ACTIONS)}")
+    return v
+
+
 class EmailPolicyIn(AgentEmailPolicy):
     """What Settings → Email Agent → Email policy saves. Validated here so a bad
     value fails on save, not as a loud failure in the agent's next run."""
@@ -1359,12 +1371,7 @@ class EmailPolicyIn(AgentEmailPolicy):
     @field_validator("zero_postings_action")
     @classmethod
     def _action(cls, v):
-        if v is None:
-            return None
-        v = v.strip().lower()
-        if v not in ZERO_POSTINGS_ACTIONS:
-            raise ValueError(f"zero_postings_action must be one of {', '.join(ZERO_POSTINGS_ACTIONS)}")
-        return v
+        return _zero_postings_action(v)
 
 
 RETENTION_MAX_DAYS = 365
@@ -1389,6 +1396,135 @@ class RetentionIn(AgentRetention):
         if not 1 <= v <= RETENTION_MAX_DAYS:
             raise ValueError(f"Days must be 1–{RETENTION_MAX_DAYS}, or 0/blank for off")
         return v
+
+
+# ── Agent settings (spec §2.4) ────────────────────────────────
+
+AGENT_DAYS_MAX = 365
+EMPLOYMENT_TYPES = ("full_time", "contract", "contract_c2c", "contract_w2", "contract_to_hire")  # = agent/staffing.py
+# The sorter's categories for Interaction mail (= the agent's sort_stage.JOBRADAR_CATEGORY keys).
+SORTER_CATEGORIES = ("recruiter_outreach", "application_update", "connection_request", "direct_message")
+MAX_DRAFT_PROMPT = 10_000
+
+def _days_or_none(v):
+    if v is None:
+        return None
+    if not 1 <= v <= AGENT_DAYS_MAX:
+        raise ValueError(f"Days must be 1–{AGENT_DAYS_MAX}")
+    return v
+
+
+class AgentSettingsIn(BaseModel):
+    """PATCH /agent/user-settings. Only the fields sent are written; sending null
+    clears a field, so the agent goes back to its own .env value or default.
+
+    Validated here, server-side, so a bad value fails on save rather than in the
+    agent's next run. Every enum is closed and every number bounded."""
+    model_config = {"extra": "forbid"}
+
+    sorter_enabled: Optional[bool] = None
+    sorter_min_confidence: Optional[float] = Field(default=None, ge=0, le=1)
+    sorter_min_margin: Optional[float] = Field(default=None, ge=0, le=1)
+    bulk_recruiter_domains: Optional[List[str]] = None
+
+    allowed_sender_domains: Optional[List[str]] = None
+    require_sender_auth: Optional[bool] = None
+    zero_postings_action: Optional[str] = None
+    trusted_authserv_ids: Optional[List[str]] = None
+    dedup_window_days: Optional[int] = None
+    max_email_age_days: Optional[int] = None
+
+    retention_social_days: Optional[int] = None
+    retention_postings_days: Optional[int] = None
+
+    staffing_enabled: Optional[bool] = None
+    staffing_auto_draft: Optional[bool] = None
+    staffing_excluded_sender_domains: Optional[List[str]] = None
+    staffing_allowed_employment_types: Optional[List[str]] = None
+    staffing_draft_score_threshold: Optional[float] = Field(default=None, ge=0, le=10)
+    staffing_dedup_window_days: Optional[int] = None
+    staffing_mark_read: Optional[dict] = None
+    staffing_draft_prompt: Optional[str] = Field(default=None, max_length=MAX_DRAFT_PROMPT)
+    staffing_slack_notify: Optional[bool] = None
+
+    @field_validator("allowed_sender_domains", "bulk_recruiter_domains", "staffing_excluded_sender_domains")
+    @classmethod
+    def _domains(cls, v):
+        return None if v is None else _clean_hostnames(v, "domain name")
+
+    @field_validator("trusted_authserv_ids")
+    @classmethod
+    def _authserv(cls, v):
+        # The agent reads [] as "its defaults" too, so [] is stored as None.
+        return None if v is None else (_clean_hostnames(v, "mail server name") or None)
+
+    @field_validator("zero_postings_action")
+    @classmethod
+    def _action(cls, v):
+        return _zero_postings_action(v)
+
+    @field_validator("dedup_window_days", "max_email_age_days", "staffing_dedup_window_days")
+    @classmethod
+    def _days(cls, v):
+        return _days_or_none(v)
+
+    @field_validator("retention_social_days", "retention_postings_days")
+    @classmethod
+    def _retention_days(cls, v):
+        return None if v == 0 else _days_or_none(v)   # 0 or null = off
+
+    @field_validator("staffing_allowed_employment_types")
+    @classmethod
+    def _employment_types(cls, v):
+        if v is None:
+            return None
+        bad = [t for t in v if t not in EMPLOYMENT_TYPES]
+        if bad:
+            raise ValueError(f"Unknown employment type(s): {', '.join(map(str, bad))}")
+        return list(dict.fromkeys(v))
+
+    @field_validator("staffing_mark_read")
+    @classmethod
+    def _mark_read(cls, v):
+        if v is None:
+            return None
+        bad = [k for k in v if k not in SORTER_CATEGORIES]
+        if bad:
+            raise ValueError(f"Unknown mail category: {', '.join(map(str, bad))}")
+        if not all(isinstance(b, bool) for b in v.values()):
+            raise ValueError("mark_read values must be true or false")
+        return v
+
+    @field_validator("staffing_draft_prompt")
+    @classmethod
+    def _prompt(cls, v):
+        return (v.strip() or None) if v is not None else None
+
+
+class AgentSettingsUserOut(BaseModel):
+    """GET /agent/user-settings — what the settings page edits: the stored values,
+    null where unset (the page shows the agent's default there)."""
+    sorter_enabled: Optional[bool] = None
+    sorter_min_confidence: Optional[float] = None
+    sorter_min_margin: Optional[float] = None
+    bulk_recruiter_domains: Optional[List[str]] = None
+    allowed_sender_domains: Optional[List[str]] = None
+    require_sender_auth: Optional[bool] = None
+    zero_postings_action: Optional[str] = None
+    trusted_authserv_ids: Optional[List[str]] = None
+    dedup_window_days: Optional[int] = None
+    max_email_age_days: Optional[int] = None
+    retention_social_days: Optional[int] = None
+    retention_postings_days: Optional[int] = None
+    staffing_enabled: Optional[bool] = None
+    staffing_auto_draft: Optional[bool] = None
+    staffing_excluded_sender_domains: Optional[List[str]] = None
+    staffing_allowed_employment_types: Optional[List[str]] = None
+    staffing_draft_score_threshold: Optional[float] = None
+    staffing_dedup_window_days: Optional[int] = None
+    staffing_mark_read: Optional[dict] = None
+    staffing_draft_prompt: Optional[str] = None
+    staffing_slack_notify: Optional[bool] = None
 
 
 class AgentSlackConfig(BaseModel):
