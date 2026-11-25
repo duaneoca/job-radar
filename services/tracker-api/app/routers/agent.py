@@ -123,25 +123,152 @@ def _get_review_owned(review_id: UUID, user: models.User, db: Session) -> models
 
 # ── Agent-facing endpoints (X-Agent-Key) ─────────────────────
 
-def _email_policy(cred: Optional[models.EmailCredential]) -> schemas.AgentEmailPolicy:
+def _agent_settings(user_id: UUID, db: Session) -> Optional[models.AgentSettings]:
+    return db.query(models.AgentSettings).filter(models.AgentSettings.user_id == user_id).first()
+
+
+def _agent_settings_for_update(user_id: UUID, db: Session) -> models.AgentSettings:
+    row = _agent_settings(user_id, db)
+    if row is None:
+        row = models.AgentSettings(user_id=user_id)
+        db.add(row)
+    return row
+
+
+def _email_policy(s: Optional[models.AgentSettings]) -> schemas.AgentEmailPolicy:
     """The stored email policy; unset fields stay None (agent default)."""
-    if cred is None:
+    if s is None:
         return schemas.AgentEmailPolicy()
     return schemas.AgentEmailPolicy(
-        allowed_sender_domains=cred.allowed_sender_domains,
-        require_sender_auth=cred.require_sender_auth,
-        zero_postings_action=cred.zero_postings_action,
-        trusted_authserv_ids=cred.trusted_authserv_ids,
+        allowed_sender_domains=s.allowed_sender_domains,
+        require_sender_auth=s.require_sender_auth,
+        zero_postings_action=s.zero_postings_action,
+        trusted_authserv_ids=s.trusted_authserv_ids,
     )
 
 
-def _retention(cred: Optional[models.EmailCredential]) -> schemas.AgentRetention:
-    if cred is None:
+def _retention(s: Optional[models.AgentSettings]) -> schemas.AgentRetention:
+    if s is None:
         return schemas.AgentRetention()
     return schemas.AgentRetention(
-        social_days=cred.retention_social_days,
-        postings_days=cred.retention_postings_days,
+        social_days=s.retention_social_days,
+        postings_days=s.retention_postings_days,
     )
+
+
+def _set(doc: dict, key: str, value) -> None:
+    """Only a set value goes in. None means "not set", and the agent then uses its
+    .env value or default (§2.4 "Missing fields"). [] and False are real settings."""
+    if value is not None:
+        doc[key] = value
+
+
+def _active_criteria(user_id: UUID, db: Session) -> Optional[models.Criteria]:
+    return (
+        db.query(models.Criteria)
+        .filter(models.Criteria.user_id == user_id, models.Criteria.is_active == True)  # noqa: E712
+        .order_by(models.Criteria.updated_at.desc())
+        .first()
+    )
+
+
+def _settings_document(user: models.User, db: Session) -> dict:
+    """The §2.4 settings document. Nothing here is a secret [H6a] or an operator
+    guard [H4] — it is reachable from outside the cluster. Empty sections are left
+    out, so a user who has set nothing gets {} (what an older Job Radar sends)."""
+    s = _agent_settings(user.id, db)
+    doc: dict = {}
+
+    if s is not None:
+        sorter: dict = {}
+        _set(sorter, "enabled", s.sorter_enabled)
+        _set(sorter, "min_confidence", s.sorter_min_confidence)
+        _set(sorter, "min_margin", s.sorter_min_margin)
+        _set(sorter, "bulk_recruiter_domains", s.bulk_recruiter_domains)
+
+        policy = _email_policy(s).model_dump(exclude_none=True)
+        _set(policy, "dedup_window_days", s.dedup_window_days)
+        _set(policy, "max_email_age_days", s.max_email_age_days)
+
+        retention = _retention(s).model_dump(exclude_none=True)
+
+        for key, section in (("sorter", sorter), ("email_policy", policy), ("retention", retention)):
+            if section:
+                doc[key] = section
+
+    staffing: dict = {}
+    if s is not None:
+        _set(staffing, "enabled", s.staffing_enabled)
+        _set(staffing, "auto_draft", s.staffing_auto_draft)
+        _set(staffing, "excluded_sender_domains", s.staffing_excluded_sender_domains)
+        _set(staffing, "allowed_employment_types", s.staffing_allowed_employment_types)
+        _set(staffing, "draft_score_threshold", s.staffing_draft_score_threshold)
+        _set(staffing, "dedup_window_days", s.staffing_dedup_window_days)
+        _set(staffing, "mark_read", s.staffing_mark_read)
+        _set(staffing, "draft_prompt", s.staffing_draft_prompt)
+        _set(staffing, "slack_notify", s.staffing_slack_notify)
+
+    # Read live from the user's search criteria and writing skills, never copied
+    # into agent_settings, so the agent filters on what the user sees in Criteria.
+    crit = _active_criteria(user.id, db)
+    if crit is not None:
+        block: dict = {}
+        _set(block, "work_style", crit.work_style)
+        _set(block, "home_city", crit.home_city)
+        _set(block, "search_locations", crit.search_locations)
+        _set(block, "min_salary", crit.min_salary)
+        _set(block, "excluded_companies", crit.excluded_companies)
+        if block:
+            staffing["criteria"] = block
+        skills = [
+            sk["content"] for sk in (crit.writing_skills or [])
+            if isinstance(sk, dict) and sk.get("enabled", True) is not False
+            and "email_draft" in (sk.get("scopes") or []) and sk.get("content")
+        ]
+        if skills:
+            staffing["writing_skills"] = skills
+    if staffing:
+        doc["staffing"] = staffing
+    return doc
+
+
+@router.get("/settings")
+def get_agent_settings(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_agent_writer),
+) -> dict:
+    """Per-user agent settings for local AND cloud agents (spec §2.4). Dual auth —
+    X-Agent-Key, or X-Internal-Token + X-User-Id; the user always comes from the
+    credential, never from the body [H1]."""
+    return _settings_document(user, db)
+
+
+@router.get("/user-settings", response_model=schemas.AgentSettingsUserOut)
+def get_user_agent_settings(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """The settings page's view: stored values, null where unset."""
+    s = _agent_settings(user.id, db)
+    if s is None:
+        return schemas.AgentSettingsUserOut()
+    return schemas.AgentSettingsUserOut.model_validate(s, from_attributes=True)
+
+
+@router.patch("/user-settings", response_model=schemas.AgentSettingsUserOut)
+def update_user_agent_settings(
+    payload: schemas.AgentSettingsIn,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Write only the fields sent; null clears one. Works with no mailbox connected,
+    since a local agent keeps its mail login in its own .env."""
+    s = _agent_settings_for_update(user.id, db)
+    for field in payload.model_fields_set:
+        setattr(s, field, getattr(payload, field))
+    db.commit()
+    db.refresh(s)
+    return schemas.AgentSettingsUserOut.model_validate(s, from_attributes=True)
 
 
 def _build_agent_config(user: models.User, db: Session) -> schemas.AgentConfigOut:
@@ -228,6 +355,7 @@ def _build_agent_config(user: models.User, db: Session) -> schemas.AgentConfigOu
         except Exception:
             logger.error("AUDIT /agent/config slack token decrypt failed user=%s", user.id)
 
+    agent_settings = _agent_settings(user.id, db)
     return schemas.AgentConfigOut(
         provider=email_provider,
         folders=folders,
@@ -237,9 +365,9 @@ def _build_agent_config(user: models.User, db: Session) -> schemas.AgentConfigOu
         slack=slack_config,
         # Omitted entirely when nothing is set, so the agent sees exactly what
         # an older Job Radar sends and applies its own defaults (spec §3.6).
-        email_policy=policy if (policy := _email_policy(cred)).model_dump(exclude_none=True) else None,
+        email_policy=policy if (policy := _email_policy(agent_settings)).model_dump(exclude_none=True) else None,
         # Omitted when both folders are off — what an older Job Radar sends (§3.8).
-        retention=ret if (ret := _retention(cred)).model_dump(exclude_none=True) else None,
+        retention=ret if (ret := _retention(agent_settings)).model_dump(exclude_none=True) else None,
     )
 
 
@@ -446,8 +574,8 @@ def _credential_status(cred: Optional[models.EmailCredential]) -> schemas.EmailC
         updated_at=cred.updated_at,
         imap_host=blob.get("host"),
         imap_username=blob.get("username"),
-        email_policy=_email_policy(cred),
-        retention=_retention(cred),
+        email_policy=_email_policy(cred.user.agent_settings),
+        retention=_retention(cred.user.agent_settings),
     )
 
 
@@ -726,10 +854,11 @@ def update_email_policy(
     )
     if not cred:
         raise HTTPException(status_code=404, detail="No mailbox connected")
-    cred.allowed_sender_domains = payload.allowed_sender_domains
-    cred.require_sender_auth = payload.require_sender_auth
-    cred.zero_postings_action = payload.zero_postings_action
-    cred.trusted_authserv_ids = payload.trusted_authserv_ids
+    s = _agent_settings_for_update(user.id, db)
+    s.allowed_sender_domains = payload.allowed_sender_domains
+    s.require_sender_auth = payload.require_sender_auth
+    s.zero_postings_action = payload.zero_postings_action
+    s.trusted_authserv_ids = payload.trusted_authserv_ids
     db.commit()
     db.refresh(cred)
     return _credential_status(cred)
@@ -751,8 +880,9 @@ def update_retention(
     )
     if not cred:
         raise HTTPException(status_code=404, detail="No mailbox connected")
-    cred.retention_social_days = payload.social_days
-    cred.retention_postings_days = payload.postings_days
+    s = _agent_settings_for_update(user.id, db)
+    s.retention_social_days = payload.social_days
+    s.retention_postings_days = payload.postings_days
     db.commit()
     db.refresh(cred)
     return _credential_status(cred)

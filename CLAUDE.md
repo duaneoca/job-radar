@@ -190,8 +190,11 @@ feeds Settings → Connected apps.
 **Email agent auth — the invariant:** every **per-user operational** endpoint accepts
 **either** `X-Agent-Key` (local self-host → user from key) **or** `X-Internal-Token` +
 `X-User-Id` (cloud CronJob, per-user) — see `get_agent_writer`. That set is
-`GET /agent/reviews` + `POST /agent/{inbox, interactions, runs, hitl/register, hitl/pending,
-hitl/consume}`. Enumeration/bootstrap (`/agent/cloud/*`) is the cloud-internal surface
+`GET /agent/{reviews, settings}` + `POST /agent/{inbox, interactions, runs, hitl/register, hitl/pending,
+hitl/consume}`. **`GET /agent/settings` is public-reachable** (local agents call it) and so must
+never carry a secret or an operator guard — `agent_settings` holds user preferences only, NULL =
+unset = omitted so the agent falls back to its `.env`; the UI edits it via
+`PATCH /agent/user-settings`. Enumeration/bootstrap (`/agent/cloud/*`) is the cloud-internal surface
 (`X-Internal-Token` only). `/agent/config` stays key-only (the cloud path uses
 `/agent/cloud/config/{user_id}` instead). `/agent/config` + `/agent/cloud/*` return DECRYPTED
 per-user secrets and

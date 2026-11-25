@@ -194,6 +194,7 @@ class User(Base):
     inbox_interactions = relationship("InboxInteraction", back_populates="user", cascade="all, delete-orphan")
     agent_api_keys    = relationship("AgentAPIKey", back_populates="user", cascade="all, delete-orphan")
     email_credential  = relationship("EmailCredential", back_populates="user", cascade="all, delete-orphan", uselist=False)
+    agent_settings    = relationship("AgentSettings", back_populates="user", cascade="all, delete-orphan", uselist=False)
     slack_connection  = relationship("SlackConnection", back_populates="user", cascade="all, delete-orphan", uselist=False)
     hitl_decisions    = relationship("HitlDecision", back_populates="user", cascade="all, delete-orphan")
     generation_jobs   = relationship("GenerationJob", back_populates="user", cascade="all, delete-orphan")
@@ -854,6 +855,64 @@ class EmailCredential(Base):
     updated_at     = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     user = relationship("User", back_populates="email_credential", uselist=False)
+
+
+class AgentSettings(Base):
+    """Per-user email agent settings, served by GET /agent/settings (spec §2.4) to
+    local and cloud agents alike — a local agent may have no EmailCredential row.
+
+    NEVER a secret here [H6a]: the endpoint is reachable from outside the cluster.
+    Never an operator guard either (spend ceiling, emails per run, …) — a user must
+    not be able to raise their own spend [H4].
+
+    Every column is nullable, and NULL means "not set": the field is omitted from
+    the response and the agent falls back to its own .env, then its default. That
+    is what lets a local agent move off .env one setting at a time. An empty list
+    is NOT the same as NULL (an empty allowed-sender list means "allow any").
+
+    The email-policy and retention columns still on EmailCredential were copied
+    here by migration 0040 and are no longer read; drop them in a later migration.
+    """
+    __tablename__ = "agent_settings"
+
+    id      = Column(Uuid(), primary_key=True, default=uuid.uuid4)
+    user_id = Column(Uuid(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+
+    # sorter (spec §3.7)
+    sorter_enabled         = Column(Boolean, nullable=True)
+    sorter_min_confidence  = Column(Float, nullable=True)
+    sorter_min_margin      = Column(Float, nullable=True)
+    bulk_recruiter_domains = Column(JSON, nullable=True)
+
+    # email_policy (spec §3.6)
+    allowed_sender_domains = Column(JSON, nullable=True)
+    require_sender_auth    = Column(Boolean, nullable=True)
+    zero_postings_action   = Column(String(20), nullable=True)
+    trusted_authserv_ids   = Column(JSON, nullable=True)
+    dedup_window_days      = Column(Integer, nullable=True)
+    max_email_age_days     = Column(Integer, nullable=True)   # the agent caps it at the operator's limit
+
+    # retention (spec §3.8): NULL = off
+    retention_social_days   = Column(Integer, nullable=True)
+    retention_postings_days = Column(Integer, nullable=True)
+
+    # staffing (spec §3.9). Its `criteria` block is read live from the active
+    # Criteria row and its `writing_skills` from the skills scoped email_draft —
+    # neither is stored here, so they can't drift.
+    staffing_enabled          = Column(Boolean, nullable=True)
+    staffing_auto_draft       = Column(Boolean, nullable=True)
+    staffing_excluded_sender_domains = Column(JSON, nullable=True)
+    staffing_allowed_employment_types = Column(JSON, nullable=True)
+    staffing_draft_score_threshold = Column(Float, nullable=True)
+    staffing_dedup_window_days = Column(Integer, nullable=True)
+    staffing_mark_read        = Column(JSON, nullable=True)   # {sorter category: bool}
+    staffing_draft_prompt     = Column(Text, nullable=True)
+    staffing_slack_notify     = Column(Boolean, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    user = relationship("User", back_populates="agent_settings", uselist=False)
 
 
 class SlackConnection(Base):
