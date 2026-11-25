@@ -58,11 +58,12 @@ its branch `feat/staffing-eval`.
      commits internally and sends the Celery review task (`app.tasks.review_job`, queue `review`).
      Send that task only after the outer commit.
    - **Same-role check.** `create_manual_job` returns an existing job for a same company + title +
-     city twin (`_manual_twin`, line 578) unless `separate=true`. Decide how agent imports treat
-     it. **Recommendation:** agent imports behave like `separate=true` and keep only the same-link
-     check. The agent has already deduplicated on the job description, and vendor "company" values
-     like "Acme (agency)" make the twin check both miss and over-merge. "Not a duplicate" must also
-     import separately, or it would land straight back on the job the user just said it isn't.
+     city twin (`_manual_twin`, line 578) unless `separate=true`. **Decided (2026-11-25): agent
+     imports apply the twin check**, the same as a manual import, and return the user's existing
+     job. **One exception:** "Not a duplicate" imports with `separate=true`, or it would land
+     straight back on the job the user just said it isn't. Known cost: vendor "company" values
+     like "Acme (agency)" can make the twin check miss. That's acceptable, because the agent has
+     already deduplicated on the job description.
    - The function is used by:
      - `create_manual_job`;
      - the inbox write (`POST /agent/inbox`, `routers/agent.py:1049`);
@@ -86,7 +87,7 @@ its branch `feat/staffing-eval`.
    Sorter settings exist only in the agent's `.env`. `/agent/settings` needs per-user storage for
    `sorter`, `email_policy`, `retention` and `staffing` that **local** users can reach too. They
    may have no `EmailCredential` row at all, since a local agent keeps its mail login in `.env`.
-   **Recommendation:** a new per-user `agent_settings` row, with the columns already on
+   **Decided (2026-11-25):** a new per-user `agent_settings` row, with the columns already on
    `EmailCredential` read as the fallback until they're migrated.
 7. **The inbox write already does dedup Phase B** (partial unique index
    `uq_inbox_postings_user_dedup_key`). Staffing postings keep sending `dedup_key`. For in-scope
