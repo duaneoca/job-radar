@@ -11,8 +11,7 @@ automatically.
 
 ## Read first
 
-The companion repo is `../job-radar-agent`. Until its PRs #22 and #23 merge, the current text is on
-its branch `feat/staffing-eval`.
+The companion repo is `../job-radar-agent` (its `main`; PRs #22 and #23 merged 2026-11-25).
 
 | Document | What it's for |
 |---|---|
